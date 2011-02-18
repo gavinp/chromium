@@ -221,9 +221,6 @@ class NavigationState : public WebKit::WebDataSource::ExtraData {
     postponed_data_.append(data, data_len);
   }
 
-  bool is_prerendering() const;
-  void set_is_prerendering(bool is_prerendering);
-
   bool was_started_as_prerender() const;
   void set_was_started_as_prerender(bool was_started_as_prerender);
 
@@ -318,11 +315,6 @@ class NavigationState : public WebKit::WebDataSource::ExtraData {
   std::string security_info_;
   bool postpone_loading_data_;
   std::string postponed_data_;
-
-  // True if page is being prerendered.  False once prerendered page is
-  // displayed.  Preserved across redirects.  Only set for the main frame's
-  // data source.
-  bool is_prerendering_;
 
   // True if a page load started as a prerender.  Preserved across redirects.
   bool was_started_as_prerender_;
