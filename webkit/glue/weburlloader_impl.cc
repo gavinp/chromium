@@ -403,7 +403,7 @@ void WebURLLoaderImpl::Context::Start(
   if (!request.allowStoredCredentials())
     load_flags |= net::LOAD_DO_NOT_SEND_AUTH_DATA;
 
-  if (request.hasPrerenderingMotivation())
+  if (request.forPrerendering())
     load_flags |= net::LOAD_PRERENDER;
 
   HeaderFlattener flattener(load_flags);
