@@ -432,6 +432,7 @@ void WebURLLoaderImpl::Context::Start(
   request_info.routing_id = request.requestorID();
   request_info.download_to_file = request.downloadToFile();
   request_info.has_user_gesture = request.hasUserGesture();
+  request_info.prerendering_motivated = request.hasPrerenderingMotivation();
   bridge_.reset(ResourceLoaderBridge::Create(request_info));
 
   if (!request.httpBody().isNull()) {

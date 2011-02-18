@@ -3618,6 +3618,7 @@ void RenderView::willSendRequest(
 
   request.setRequestorID(routing_id_);
   request.setHasUserGesture(frame->isProcessingUserGesture());
+  request.setaPrerenderingMotivated(is_prerendering_);
 
   if (CommandLine::ForCurrentProcess()->HasSwitch(switches::kNoReferrers))
     request.clearHTTPHeaderField("Referer");
