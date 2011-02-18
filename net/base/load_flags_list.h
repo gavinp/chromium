@@ -105,3 +105,4 @@ LOAD_FLAG(PREFETCH, 1 << 23)
 // Indicates that this load was motivated by the prerendering feature,
 // and is not intended for display.
 LOAD_FLAG(PRERENDER, 1 << 24)
+
