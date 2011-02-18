@@ -102,7 +102,7 @@ LOAD_FLAG(REPORT_RAW_HEADERS, 1 << 22)
 // and is (in theory) not intended for the current frame.
 LOAD_FLAG(PREFETCH, 1 << 23)
 
-// Indicates that this load was motivated by the prerendering feature,
-// and is not intended for display.
+// Indicates that this load was motivated by the prerendering feature, and
+// that prerendering renderer has not yet been displayed.
 LOAD_FLAG(PRERENDER, 1 << 24)
 
