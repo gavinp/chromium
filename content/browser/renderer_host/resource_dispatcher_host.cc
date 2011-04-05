@@ -362,6 +362,31 @@ void ResourceDispatcherHost::BeginRequest(
         ResolveBlobReferencesInUploadData(request_data.upload_data.get());
   }
 
+  // Send prefetches to the renderer_host.
+  // XYZZY: referrer squashing.
+  if (request_data.resource_type == ResourceType::PREFETCH) {
+    prerender::PrerenderManager* manager = context->prerender_manager();
+    manager->ConsiderPrerendering(request_data.url, 
+                                  request_data.referrer);
+    net::URLRequestStatus status(net::URLRequestStatus::FAILED,
+                                 net::ERR_ABORTED);
+    if (sync_result) {
+      SyncLoadResult result;
+      result.status = status;
+      ResourceHostMsg_SyncLoad::WriteReplyParams(sync_result, result);
+      filter_->Send(sync_result);
+    } else {
+      // Tell the renderer that this request was disallowed.
+      filter_->Send(new ResourceMsg_RequestComplete(
+          route_id,
+          request_id,
+          status,
+          std::string(),   // No security info needed, connection was not
+          base::Time()));  // established.
+    }
+    return;
+  }
+    
   if (is_shutdown_ ||
       !ShouldServiceRequest(process_type, child_id, request_data)) {
     net::URLRequestStatus status(net::URLRequestStatus::FAILED,

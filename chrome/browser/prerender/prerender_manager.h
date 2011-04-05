@@ -107,6 +107,11 @@ class PrerenderManager : public base::RefCounted<PrerenderManager> {
   // they time out, but new ones will not be generated.
   void set_enabled(bool enabled);
 
+  // New from gavin
+  // TODO(gavin): make it work
+  void ConsiderPrerendering(const GURL& url,
+                            const GURL& referrer);
+
   static PrerenderManagerMode GetMode();
   static void SetMode(PrerenderManagerMode mode);
   static bool IsPrerenderingPossible();
@@ -181,6 +186,8 @@ class PrerenderManager : public base::RefCounted<PrerenderManager> {
   void RemovePendingPreload(PrerenderContents* entry);
 
   bool DoesRateLimitAllowPrerender() const;
+
+  ScopedRunnableMethodFactory<PrerenderManager> method_runner_;
 
   // Specifies whether prerendering is currently enabled for this
   // manager. The value can change dynamically during the lifetime

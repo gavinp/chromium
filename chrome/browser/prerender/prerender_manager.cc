@@ -110,6 +110,7 @@ struct PrerenderManager::PendingContentsData {
 
 PrerenderManager::PrerenderManager(Profile* profile)
     : rate_limit_enabled_(true),
+      method_runner_(this),
       enabled_(true),
       profile_(profile),
       max_prerender_age_(base::TimeDelta::FromSeconds(
@@ -117,7 +118,8 @@ PrerenderManager::PrerenderManager(Profile* profile)
       max_elements_(kDefaultMaxPrerenderElements),
       prerender_contents_factory_(PrerenderContents::CreateFactory()),
       last_prerender_start_time_(GetCurrentTimeTicks() -
-          base::TimeDelta::FromMilliseconds(kMinTimeBetweenPrerendersMs)) {
+                                 base::TimeDelta::FromMilliseconds(kMinTimeBetweenPrerendersMs))
+{
 }
 
 PrerenderManager::~PrerenderManager() {
@@ -133,6 +135,25 @@ void PrerenderManager::SetPrerenderContentsFactory(
     PrerenderContents::Factory* prerender_contents_factory) {
   prerender_contents_factory_.reset(prerender_contents_factory);
 }
+
+namespace {
+void StaticAddPreload(PrerenderManager* manager,
+                      const GURL url,
+                      const GURL referrer)
+{
+  manager->AddPreload(url, std::vector<GURL>(), referrer);
+}
+}
+
+
+void PrerenderManager::ConsiderPrerendering(const GURL& url,
+                                            const GURL& referrer) {
+
+  BrowserThread::PostTask(BrowserThread::UI, FROM_HERE,
+                          NewRunnableFunction(
+                              &StaticAddPreload, this, GURL(url), GURL(referrer)));
+}
+
 
 bool PrerenderManager::AddPreload(const GURL& url,
                                   const std::vector<GURL>& alias_urls,
