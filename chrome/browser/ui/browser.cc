@@ -47,6 +47,7 @@
 #include "chrome/browser/extensions/extension_host.h"
 #include "chrome/browser/extensions/extension_prefs.h"
 #include "chrome/browser/extensions/extension_service.h"
+#include "chrome/browser/extensions/extension_tab_helper.h"
 #include "chrome/browser/extensions/extension_tabs_module.h"
 #include "chrome/browser/first_run/first_run.h"
 #include "chrome/browser/google/google_url_tracker.h"
@@ -1054,7 +1055,7 @@ TabContents* Browser::AddRestoredTab(
       GetSelectedTabContents(),
       session_storage_namespace);
   TabContents* new_tab = wrapper->tab_contents();
-  new_tab->SetExtensionAppById(extension_app_id);
+  wrapper->extension_tab_helper()->SetExtensionAppById(extension_app_id);
   new_tab->controller().RestoreFromState(navigations, selected_navigation,
                                          from_last_session);
 
@@ -1096,8 +1097,8 @@ void Browser::ReplaceRestoredTab(
       MSG_ROUTING_NONE,
       GetSelectedTabContents(),
       session_storage_namespace);
+  wrapper->extension_tab_helper()->SetExtensionAppById(extension_app_id);
   TabContents* replacement = wrapper->tab_contents();
-  replacement->SetExtensionAppById(extension_app_id);
   replacement->controller().RestoreFromState(navigations, selected_navigation,
                                              from_last_session);
 
@@ -1865,6 +1866,11 @@ void Browser::ShowHistoryTab() {
 
 void Browser::ShowDownloadsTab() {
   UserMetrics::RecordAction(UserMetricsAction("ShowDownloads"), profile_);
+  if (window()) {
+    DownloadShelf* shelf = window()->GetDownloadShelf();
+    if (shelf->IsShowing())
+      shelf->Close();
+  }
   ShowSingletonTab(GURL(chrome::kChromeUIDownloadsURL));
 }
 
@@ -3720,10 +3726,6 @@ void Browser::UpdateCommandsForTabState() {
   bool non_app_window = !(type() & TYPE_APP);
   command_updater_.UpdateCommandEnabled(IDC_DUPLICATE_TAB,
       non_app_window && CanDuplicateContentsAt(selected_index()));
-  command_updater_.UpdateCommandEnabled(IDC_SELECT_NEXT_TAB,
-      non_app_window && tab_count() > 1);
-  command_updater_.UpdateCommandEnabled(IDC_SELECT_PREVIOUS_TAB,
-      non_app_window && tab_count() > 1);
 
   // Page-related commands
   window_->SetStarredState(current_tab_wrapper->is_starred());

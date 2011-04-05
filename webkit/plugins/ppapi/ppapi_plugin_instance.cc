@@ -26,7 +26,6 @@
 #include "ppapi/c/ppb_instance.h"
 #include "ppapi/c/ppp_instance.h"
 #include "printing/units.h"
-#include "skia/ext/vector_platform_device.h"
 #include "skia/ext/platform_canvas.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebBindings.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebCursorInfo.h"
@@ -75,6 +74,7 @@
 #endif
 
 #if defined(OS_WIN)
+#include "skia/ext/vector_platform_device_emf_win.h"
 #include "ui/gfx/codec/jpeg_codec.h"
 #include "ui/gfx/gdi_util.h"
 #endif
@@ -418,6 +418,18 @@ const PPB_Zoom_Dev* PluginInstance::GetZoomInterface() {
 // method needs to access a member of the instance after the call has returned,
 // then it needs to keep its own reference on the stack.
 
+void PluginInstance::Delete() {
+  // Keep a reference on the stack. See NOTE above.
+  scoped_refptr<PluginInstance> ref(this);
+  instance_interface_->DidDestroy(pp_instance());
+
+  if (fullscreen_container_) {
+    fullscreen_container_->Destroy();
+    fullscreen_container_ = NULL;
+  }
+  container_ = NULL;
+}
+
 void PluginInstance::Paint(WebCanvas* canvas,
                            const gfx::Rect& plugin_rect,
                            const gfx::Rect& paint_rect) {
@@ -670,18 +682,6 @@ PP_Var PluginInstance::ExecuteScript(PP_Var script, PP_Var* exception) {
 
 void PluginInstance::PostMessage(PP_Var message) {
   message_channel_->PostMessageToJavaScript(message);
-}
-
-void PluginInstance::Delete() {
-  // Keep a reference on the stack. See NOTE above.
-  scoped_refptr<PluginInstance> ref(this);
-  instance_interface_->DidDestroy(pp_instance());
-
-  if (fullscreen_container_) {
-    fullscreen_container_->Destroy();
-    fullscreen_container_ = NULL;
-  }
-  container_ = NULL;
 }
 
 bool PluginInstance::Initialize(WebPluginContainer* container,
@@ -1231,8 +1231,8 @@ bool PluginInstance::PrintPDFOutput(PP_Resource print_output,
 #elif defined(OS_WIN)
   // On Windows, we now need to render the PDF to the DC that backs the
   // supplied canvas.
-  skia::VectorPlatformDevice& device =
-      static_cast<skia::VectorPlatformDevice&>(
+  skia::VectorPlatformDeviceEmf& device =
+      static_cast<skia::VectorPlatformDeviceEmf&>(
           canvas->getTopPlatformDevice());
   HDC dc = device.getBitmapDC();
   gfx::Size size_in_pixels;
@@ -1322,8 +1322,8 @@ bool PluginInstance::DrawJPEGToPlatformDC(
     const SkBitmap& bitmap,
     const gfx::Rect& printable_area,
     WebKit::WebCanvas* canvas) {
-  skia::VectorPlatformDevice& device =
-      static_cast<skia::VectorPlatformDevice&>(
+  skia::VectorPlatformDeviceEmf& device =
+      static_cast<skia::VectorPlatformDeviceEmf&>(
           canvas->getTopPlatformDevice());
   HDC dc = device.getBitmapDC();
   // TODO(sanjeevr): This is a temporary hack. If we output a JPEG

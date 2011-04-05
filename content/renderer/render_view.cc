@@ -64,7 +64,6 @@
 #include "content/renderer/device_orientation_dispatcher.h"
 #include "content/renderer/external_popup_menu.h"
 #include "content/renderer/geolocation_dispatcher.h"
-#include "content/renderer/ggl.h"
 #include "content/renderer/load_progress_tracker.h"
 #include "content/renderer/media/audio_renderer_impl.h"
 #include "content/renderer/media/ipc_video_decoder.h"
@@ -847,10 +846,15 @@ WebPlugin* RenderView::CreatePluginNoCheck(WebFrame* frame,
   if (!found || !webkit::npapi::IsPluginEnabled(info))
     return NULL;
 
+  bool pepper_plugin_was_registered = false;
   scoped_refptr<webkit::ppapi::PluginModule> pepper_module(
-      pepper_delegate_.CreatePepperPlugin(info.path));
-  if (pepper_module)
-    return CreatePepperPlugin(frame, params, info.path, pepper_module.get());
+      pepper_delegate_.CreatePepperPlugin(info.path,
+                                          &pepper_plugin_was_registered));
+  if (pepper_plugin_was_registered) {
+    if (pepper_module)
+      return CreatePepperPlugin(frame, params, info.path, pepper_module.get());
+    return NULL;
+  }
   return CreateNPAPIPlugin(frame, params, info.path, mime_type);
 }
 

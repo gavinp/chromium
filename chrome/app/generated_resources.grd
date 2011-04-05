@@ -3985,12 +3985,22 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_FLAGS_NO_EXPERIMENTS_AVAILABLE" desc="Shown if no experiments are available">
         Aww, it looks like there are currently no experiments available.
       </message>
-      <message name="IDS_FLAGS_RELAUNCH_NOTICE" desc="Notifies the user that he needs to relaunch chrome. Shown next to a button that says 'Relaunch Now'.">
-        Your changes will take effect the next time you relaunch <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph>.
-      </message>
-      <message name="IDS_FLAGS_RELAUNCH_BUTTON" desc="Text on a button that relaunchs chrome when clicked. ">
-        Relaunch Now
-      </message>
+      <if expr="not pp_ifdef('chromeos')">
+        <message name="IDS_FLAGS_RELAUNCH_NOTICE" desc="Notifies the user that he needs to relaunch chrome. Shown next to a button that says 'Relaunch Now'.">
+          Your changes will take effect the next time you relaunch <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph>.
+        </message>
+        <message name="IDS_FLAGS_RELAUNCH_BUTTON" desc="Text on a button that relaunches chrome when clicked. ">
+          Relaunch Now
+        </message>
+      </if>
+      <if expr="pp_ifdef('chromeos')">
+        <message name="IDS_FLAGS_RELAUNCH_NOTICE" desc="Notifies the user that he needs to restart Chrome OS. Shown next to a button that says 'Restart Now'.">
+          Your changes will take effect the next time you restart <ph name="PRODUCT_NAME">$1<ex>Google Chrome OS</ex></ph>.
+        </message>
+        <message name="IDS_FLAGS_RELAUNCH_BUTTON" desc="Text on a button that restarts Chrome OS when clicked. ">
+          Restart Now
+        </message>
+      </if>
       <message name="IDS_FLAGS_DISABLE" desc="The link for disabling a labs experiment.">
         Disable
       </message>
@@ -4164,12 +4174,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </message>
       <message name="IDS_FLAGS_DISABLE_INTERACTIVE_FORM_VALIDATION_DESCRIPTION" desc="Description of the 'Disable HTML5 interactive form validation' lab.">
         Disable showing validation messages and preventing form submission.
-      </message>
-      <message name="IDS_FLAGS_ENABLE_HISTORY_QUICK_PROVIDER" desc="Name of the 'Enable better visit history matching in the omnibox' lab.">
-        Enable better omnibox history matching
-      </message>
-      <message name="IDS_FLAGS_ENABLE_HISTORY_QUICK_PROVIDER_DESCRIPTION" desc="Description of the 'Enable better visit history matching in the omnibox' lab.">
-        Enables substring and multi-fragment matching within URLs from history.
       </message>
       <message name="IDS_FLAGS_NEW_TAB_PAGE_4_NAME" desc="Name of the new tab page 4 lab.">
         Experimental new tab page
@@ -6583,10 +6587,18 @@ Keep your key file in a safe place. You will need it to create new versions of y
                desc="The label for a language that is currently used for spell checking">
         This language is used for spell checking
       </message>
-      <message name="IDS_OPTIONS_SETTINGS_LANGUAGES_RELAUNCH_BUTTON"
-               desc="The label for the relaunch button for changing UI language">
-        Relaunch
-      </message>
+      <if expr="not pp_ifdef('chromeos')">
+        <message name="IDS_OPTIONS_SETTINGS_LANGUAGES_RELAUNCH_BUTTON"
+                 desc="The label for the relaunch button for changing UI language">
+          Relaunch
+        </message>
+      </if>
+      <if expr="pp_ifdef('chromeos')">
+        <message name="IDS_OPTIONS_SETTINGS_LANGUAGES_RELAUNCH_BUTTON"
+                 desc="The label for the restart button for changing UI language">
+          Restart
+        </message>
+      </if>
       <message name="IDS_OPTIONS_LANGUAGES_ADD_TITLE" desc="The title for the add language dialog.">
         Add language:
       </message>
@@ -9152,15 +9164,18 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_UPDATE_RECOMMENDED" desc="The main text of the Update Recommended dialog.">
         <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph> is out of date because it hasn't been relaunched in a while. An update is available and will be applied as soon as you relaunch.
       </message>
+      <message name="IDS_RELAUNCH_AND_UPDATE" desc="The button label for relaunching and updating Chrome.">
+        Relaunch
+      </message>
     </if>
     <if expr="pp_ifdef('chromeos')">
       <message name="IDS_UPDATE_RECOMMENDED" desc="The main text of the Update Recommended dialog.">
-        <ph name="PRODUCT_NAME">$1<ex>Google Chrome OS</ex></ph> needs to be relaunched to apply the update.
+        <ph name="PRODUCT_NAME">$1<ex>Google Chrome OS</ex></ph> needs to be restarted to apply the update.
+      </message>
+      <message name="IDS_RELAUNCH_AND_UPDATE" desc="The button label for restarting and updating Chrome OS.">
+        Restart
       </message>
     </if>
-    <message name="IDS_RELAUNCH_AND_UPDATE" desc="The button label for relaunching and updating Chrome.">
-      Relaunch
-    </message>
     <if expr="not pp_ifdef('use_titlecase')">
       <message name="IDS_NOT_NOW" desc="The button label for delaying the relaunch and updating Chrome.">
         Not now
@@ -9596,7 +9611,22 @@ Keep your key file in a safe place. You will need it to create new versions of y
         Require password to wake from sleep
       </message>
       <message name="IDS_OPTIONS_CHANGE_PICTURE" desc="In the Personal Stuff settings tab, the text on the button to change picture for the current user.">
-        Change picture...
+        Change picture
+      </message>
+      <message name="IDS_OPTIONS_CHANGE_PICTURE_DIALOG_TITLE" desc="Title of the dialog shown when user wants to change his/her picture.">
+        Change picture
+      </message>
+      <message name="IDS_OPTIONS_CHANGE_PICTURE_DIALOG_TEXT" desc="Text with description of what to do on Change picture dialog.">
+        Choose a picture to identify your account later on the Sign-in screen.
+      </message>
+      <message name="IDS_OPTIONS_CHANGE_PICTURE_PICK_FILE" desc="Text on a button that shows file picker to choose a picture.">
+        Pick a file
+      </message>
+      <message name="IDS_OPTIONS_CROP_IMAGE_DIALOG_TITLE" desc="Title of the dialog shown when user wants to crop his/her picture.">
+        Crop image
+      </message>
+      <message name="IDS_OPTIONS_CROP_IMAGE_DIALOG_TEXT" desc="Text with description of what to do on Crop image dialog.">
+        Select a square region of the image.
       </message>
       <message name="IDS_OPTIONS_TAKE_PHOTO" desc="In the Personal Stuff settings tab, the text on the button to take photo of the current user.">
         Take photo...
@@ -9804,6 +9834,19 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </message>
       <message name="IDS_NETWORK_PASSWORD_HINT" desc="In network menu, hint text for network password field.">
         network password
+      </message>
+
+      <message name="IDS_NETWORK_OTHER_MOBILE_NETWORK" desc="Text for the item in the network menu, which changes current mobile network.">
+        Other mobile network...
+      </message>
+      <message name="IDS_NETWORK_CHOOSE_MOBILE_NETWORK" desc="Title of the window for choosing mobile network.">
+        Choose a Mobile Network
+      </message>
+      <message name="IDS_NETWORK_SCANNING_FOR_MOBILE_NETWORKS" desc="Text which appears while scanning for mobile networks.">
+        Scanning for networks.
+      </message>
+      <message name="IDS_NETWORK_SCANNING_THIS_MAY_TAKE_A_MINUTE" desc="Text which appears while scanning for mobile networks, right after IDS_NETWORK_SCANNING_FOR_MOBILE_NETWORKS text.">
+        This may take a minute...
       </message>
 
       <message name="IDS_OPTIONS_SETTINGS_INTERNET_CELLULAR_SERVICE_NAME" desc="Cellular service name under network details in chrome:settings/internet.">

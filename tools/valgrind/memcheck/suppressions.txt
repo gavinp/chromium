@@ -877,6 +877,20 @@
    fun:PL_ArenaAllocate
    fun:PORT_ArenaAlloc_Util
 }
+{
+   # Histograms are used on un-joined threads, and can't be deleted atexit.
+   Histograms via FactoryGet including Linear Custom Boolean and Basic
+   Memcheck:Leak
+   fun:_Znw*
+   fun:_ZN4base*Histogram10FactoryGet*
+}
+{
+   # Histograms are used on un-joined threads, and can't be deleted atexit.
+   Histograms via FactoryGet including Stats for disk_cache
+   Memcheck:Leak
+   fun:_Znw*
+   fun:_ZN10disk_cache14StatsHistogram24StatsHistogramFactoryGet*
+}
 
 #-----------------------------------------------------------------------
 # 3. Suppressions for real chromium bugs that are not yet fixed.
@@ -1351,6 +1365,15 @@
    fun:_ZN11WebDatabase*
 }
 {
+   bug_60556g
+   Memcheck:Addr4
+   ...
+   fun:sqlite3_step
+   fun:_ZN3sql9Statement4StepEv
+   fun:_ZN7history11URLDatabase12GetRowForURLERK4GURLPNS_6URLRowE
+   fun:_ZN7history14HistoryBackend12AddPageVisitERK4GURLN4base4TimeExjNS_11VisitSourceE
+}
+{
    bug_20581
    Memcheck:Leak
    ...
@@ -1673,6 +1696,22 @@
    write(buf)
    ...
    fun:_ZNK16BrowserThemePack11WriteToDiskE8FilePath
+}
+{
+   bug_30704e
+   Memcheck:Value4
+   fun:crc32
+   ...
+   fun:png_write_row
+   fun:_ZN7WebCore12encodePixelsERKNS_7IntSizeEPhbPN3WTF6VectorIhLj0EEE
+   fun:_ZN7WebCore15PNGImageEncoder6encodeERK8SkBitmapPN3WTF6VectorIhLj0EEE
+}
+{
+   bug_30704f
+   Memcheck:Value4
+   fun:_ZN7WebCore12base64EncodeEPKcjRN3WTF6VectorIcLj0EEEb
+   fun:_ZN7WebCore12base64EncodeERKN3WTF6VectorIcLj0EEERS2_b
+   fun:_ZN7WebCore14ImageToDataURLI8SkBitmapEEN3WTF6StringERT_RKS3_PKd
 }
 {
    bug_31800
@@ -4073,7 +4112,6 @@
    fun:_ZN7WebCore8Gradient16platformGradientEv
    fun:_ZN7WebCore15GraphicsContext*EPNS_8GradientE
    fun:_ZN7WebCore15GraphicsContext*EN3WTF10PassRefPtrINS_8GradientEEE
-   fun:_ZN7WebCore25RenderSVGResourceGradient13applyResourceEPNS_12RenderObjectEPNS_11RenderStyleERPNS_15GraphicsContextEt
 }
 {
    bug_77258_a
@@ -4138,47 +4176,6 @@
    fun:gtk_file_chooser_dialog_constructor
 }
 {
-   bug_77712
-   Memcheck:Leak
-   fun:_Znw*
-   fun:_ZN3gfx9GfxModule14GetBitmapNamedEi
-   fun:_ZN3gfx16NativeThemeLinux*Paint*EPN4skia14PlatformCanvasENS0_5StateERKNS_4RectERKNS0_17ButtonExtraParamsE
-   fun:_ZN3gfx16NativeThemeLinux5PaintEPN4skia14PlatformCanvasENS0_4PartENS0_5StateERKNS_4RectERKNS0_11ExtraParamsE
-   fun:_ZN11webkit_glue18WebThemeEngineImpl5paintEPN4skia14PlatformCanvasEN6WebKit14WebThemeEngine4PartENS5_5StateERKNS4_7WebRectEPKNS5_11ExtraParamsE
-   fun:_ZN7WebCore14PlatformBridge14paintThemePartEPNS_15GraphicsContextENS0_9ThemePartENS0_15ThemePaintStateERKNS_7IntRectEPKNS0_21ThemePaintExtraParamsE
-   fun:_ZN7WebCore24RenderThemeChromiumLinux*paint*EPNS_12RenderObjectERKNS_9PaintInfoERKNS_7IntRectE
-   fun:_ZN7WebCore11RenderTheme5paintEPNS_12RenderObjectERKNS_9PaintInfoERKNS_7IntRectE
-   fun:_ZN7WebCore9RenderBox27paintBoxDecorationsWithSizeERNS_9PaintInfoEiiii
-   fun:_ZN7WebCore9RenderBox19paintBoxDecorationsERNS_9PaintInfoEii
-   fun:_ZN7WebCore11RenderBlock11paintObjectERNS_9PaintInfoEii
-   fun:_ZN7WebCore11RenderBlock5paintERNS_9PaintInfoEii
-}
-{
-   bug_77721
-   Memcheck:Leak
-   fun:_Znw*
-   fun:_ZN3gfx9GfxModule14GetBitmapNamedEi
-   fun:_ZN3gfx16NativeThemeLinux*
-   fun:_ZN3gfx16NativeThemeLinux5PaintEPN4skia14PlatformCanvasENS0_4PartENS0_5StateERKNS_4RectERKNS0_11ExtraParamsE
-   fun:_ZN11webkit_glue18WebThemeEngineImpl5paintEPN4skia14PlatformCanvasEN6WebKit14WebThemeEngine4PartENS5_5StateERKNS4_7WebRectEPKNS5_11ExtraParamsE
-   fun:_ZN7WebCore14PlatformBridge14paintThemePartEPNS_15GraphicsContextENS0_9ThemePartENS0_15ThemePaintStateERKNS_7IntRectEPKNS0_21ThemePaintExtraParamsE
-   fun:_ZN7WebCore24RenderThemeChromiumLinux*
-   fun:_ZN7WebCore11RenderTheme5paintEPNS_12RenderObjectERKNS_9PaintInfoERKNS_7IntRectE
-}
-{
-   bug_77885
-   Memcheck:Leak
-   fun:malloc
-   fun:_ZN3WTF10fastMalloc*
-   fun:_ZN3WTF6VectorINS_6OwnPtrIN7WebCore17CSSParserSelector*
-   fun:_ZN7WebCore9CSSParser28createFloatingSelectorVectorEv
-   fun:_Z10cssyyparsePv
-   fun:_ZN7WebCore9CSSParser10parseSheetEPNS_13CSSStyleSheetERKN3WTF6StringEiPNS3_7HashMapIPNS_12CSSStyleRuleENS3_6RefPtrINS_17CSSRuleSourceDataEEENS3_7PtrHashIS9_EENS3_10HashTraitsIS9_EENSF_ISC_EEEE
-   fun:_ZN7WebCore13CSSStyleSheet17parseStringAtLineERKN3WTF6StringEbi
-   fun:_ZN7WebCore13CSSStyleSheet11parseStringERKN3WTF6StringEb
-   fun:_ZN7WebCore*parseUASheetERKN3WTF6StringE
-}
-{
    bug_77990
    Memcheck:Leak
    fun:calloc
@@ -4202,7 +4199,7 @@
    fun:_ZN4base13AtExitManagerD1Ev
 }
 {
-   bug_78067
+   bug_78067a
    Memcheck:Leak
    fun:_Znw*
    fun:_ZN25ChromeRenderMessageFilterC1EiP7Profile*URLRequestContextGetter*
@@ -4218,6 +4215,21 @@
    fun:_ZN20NavigationController9LoadEntryEP15NavigationEntry
    fun:_ZN20NavigationController7LoadURLERK4GURLS2_j
    fun:_ZN7browser8NavigateEPNS_14NavigateParamsE
+}
+{
+   bug_78067b
+   Memcheck:Leak
+   fun:_Znw*
+   ...
+   fun:_ZN25ChromeRenderMessageFilterC1EiP7Profile*URLRequestContextGetter*
+   fun:_ZN24BrowserRenderProcessHost20CreateMessageFiltersEv
+   fun:_ZN24BrowserRenderProcessHost4InitEbb
+   fun:_ZN14RenderViewHost16CreateRenderViewERKSbItN4base20string16_char_traitsESaItEE
+   fun:_ZN13ExtensionHost19CreateRenderViewNowEv
+   fun:_ZN13ExtensionHost20ProcessCreationQueue14ProcessOneHostEv
+   fun:_Z16DispatchToMethodIN13ExtensionHost20ProcessCreationQueueEMS1_FvvEEvPT_T0_RK6Tuple0
+   fun:_ZN27ScopedRunnableMethodFactoryIN13ExtensionHost20ProcessCreationQueueEE14RunnableMethodIMS1_FvvE6Tuple0E3RunEv
+   fun:_ZN11MessageLoop7RunTaskEP4Task
 }
 {
    bug_78197

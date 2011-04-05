@@ -4,7 +4,7 @@ vars = {
   "googlecode_url": "http://%s.googlecode.com/svn",
   "webkit_trunk": "http://svn.webkit.org/repository/webkit/trunk",
   "nacl_trunk": "http://src.chromium.org/native_client/trunk",
-  "webkit_revision": "82765",
+  "webkit_revision": "82870",
   "chromium_git": "http://git.chromium.org/git",
   "swig_revision": "69281",
   "nacl_revision": "4559",
@@ -12,7 +12,7 @@ vars = {
   "libjingle_revision": "55",
   "libvpx_revision": "76510",
   "ffmpeg_revision": "79854",
-  "skia_revision": "1033",
+  "skia_revision": "1044",
   "v8_revision": "7491",
 }
 
@@ -39,7 +39,7 @@ deps = {
     (Var("googlecode_url") % "googlemock") + "/trunk@374",
 
   "src/third_party/angle":
-    (Var("googlecode_url") % "angleproject") + "/trunk@594",
+    (Var("googlecode_url") % "angleproject") + "/trunk@606",
 
   # Note that this is *not* where we check out WebKit -- this just
   # puts some extra files into place for the real WebKit checkout to
@@ -64,10 +64,10 @@ deps = {
     (Var("googlecode_url") % "google-cache-invalidation-api") + "/trunk@70",
 
   "src/third_party/leveldb":
-    (Var("googlecode_url") % "leveldb") + "/trunk@17",
+    (Var("googlecode_url") % "leveldb") + "/trunk@19",
 
   "src/third_party/snappy/src":
-    (Var("googlecode_url") % "snappy") + "/trunk@21",
+    (Var("googlecode_url") % "snappy") + "/trunk@25",
 
   "src/tools/gyp":
     (Var("googlecode_url") % "gyp") + "/trunk@904",
@@ -300,7 +300,7 @@ deps_os = {
       "/trunk/deps/reference_builds/chrome_linux@70120",
 
     "src/third_party/xdg-utils":
-      "/trunk/deps/third_party/xdg-utils@79914",
+      "/trunk/deps/third_party/xdg-utils@80408",
 
     "src/third_party/swig/linux":
       "/trunk/deps/third_party/swig/linux@" + Var("swig_revision"),

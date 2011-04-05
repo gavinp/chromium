@@ -1053,6 +1053,10 @@ const ExtensionPrefs& ExtensionService::const_extension_prefs() const {
   return *extension_prefs_;
 }
 
+ExtensionUpdater* ExtensionService::updater() {
+  return updater_.get();
+}
+
 void ExtensionService::CheckAdminBlacklist() {
   std::vector<std::string> to_be_removed;
   // Loop through extensions list, unload installed extensions.
@@ -1482,10 +1486,16 @@ void ExtensionService::OnExtensionInstalled(const Extension* extension) {
 
     if (!pending_extension_info.ShouldAllowInstall(*extension)) {
       LOG(WARNING)
-          << "should_install_extension() returned false for "
+          << "ShouldAllowInstall() returned false for "
           << extension->id() << " of type " << extension->GetType()
           << " and update URL " << extension->update_url().spec()
           << "; not installing";
+
+      NotificationService::current()->Notify(
+          NotificationType::EXTENSION_INSTALL_NOT_ALLOWED,
+          Source<Profile>(profile_),
+          Details<const Extension>(extension));
+
       // Delete the extension directory since we're not going to
       // load it.
       BrowserThread::PostTask(

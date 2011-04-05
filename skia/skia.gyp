@@ -648,11 +648,10 @@
         'ext/skia_utils_win.h',
         'ext/vector_canvas.cc',
         'ext/vector_canvas.h',
-        'ext/vector_platform_device.h',
-        'ext/vector_platform_device_linux.cc',
-        'ext/vector_platform_device_linux.h',
-        'ext/vector_platform_device_win.cc',
-        'ext/vector_platform_device_win.h',
+        'ext/vector_platform_device_cairo_linux.cc',
+        'ext/vector_platform_device_cairo_linux.h',
+        'ext/vector_platform_device_emf_win.cc',
+        'ext/vector_platform_device_emf_win.h',
       ],
       'include_dirs': [
         '..',
@@ -679,6 +678,7 @@
         'GR_GL_CUSTOM_SETUP_HEADER="GrGLConfig_chrome.h"',
         'GR_STATIC_RECT_VB=1',
         'GR_AGGRESSIVE_SHADER_OPTS=1',
+        'SK_DISABLE_FAST_AA_STROKE_RECT',
       ],
       'sources!': [
         '../third_party/skia/include/core/SkTypes.h',

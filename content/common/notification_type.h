@@ -399,7 +399,7 @@ class NotificationType {
     TAB_CONTENTS_DESTROYED,
 
     // This notification is sent when TabContents::SetAppExtension is invoked.
-    // The source is the TabContents SetAppExtension was invoked on.
+    // The source is the ExtensionTabHelper SetAppExtension was invoked on.
     TAB_CONTENTS_APPLICATION_EXTENSION_CHANGED,
 
     // A RenderViewHost was created for a TabContents. The source is the
@@ -881,6 +881,11 @@ class NotificationType {
     // An error occured during extension install. The details are a string with
     // details about why the install failed.
     EXTENSION_INSTALL_ERROR,
+
+    // Sent when an extension install is not allowed, as indicated by
+    // PendingExtensionInfo::ShouldAllowInstall. The details are an Extension,
+    // and the source is a Profile.
+    EXTENSION_INSTALL_NOT_ALLOWED,
 
     // Sent when an extension has been uninstalled.  The details are
     // an UninstalledExtensionInfo struct and the source is a Profile.
