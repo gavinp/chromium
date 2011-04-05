@@ -132,6 +132,12 @@ void ChromotingClient::ProcessVideoPacket(const VideoPacket* packet,
   // Record size of the packet for statistics.
   stats_.video_bandwidth()->Record(packet->data().size());
 
+  // Record statistics received from host.
+  if (packet->has_capture_time_ms())
+    stats_.video_capture_ms()->Record(packet->capture_time_ms());
+  if (packet->has_encode_time_ms())
+    stats_.video_encode_ms()->Record(packet->encode_time_ms());
+
   received_packets_.push_back(QueuedVideoPacket(packet, done));
   if (!packet_being_processed_)
     DispatchPacket();
@@ -154,8 +160,16 @@ void ChromotingClient::DispatchPacket() {
   packet_being_processed_ = true;
 
   ScopedTracer tracer("Handle video packet");
+
+  // Measure the latency between the last packet being received and presented.
+  bool last_packet = (packet->flags() & VideoPacket::LAST_PACKET) != 0;
+  base::Time decode_start;
+  if (last_packet)
+    decode_start = base::Time::Now();
+
   rectangle_decoder_->DecodePacket(
-      packet, NewTracedMethod(this, &ChromotingClient::OnPacketDone));
+      packet, NewTracedMethod(this, &ChromotingClient::OnPacketDone,
+                              last_packet, decode_start));
 }
 
 void ChromotingClient::OnConnectionOpened(protocol::ConnectionToHost* conn) {
@@ -194,15 +208,24 @@ void ChromotingClient::SetConnectionState(ConnectionState s) {
   Repaint();
 }
 
-void ChromotingClient::OnPacketDone() {
+void ChromotingClient::OnPacketDone(bool last_packet,
+                                    base::Time decode_start) {
   if (message_loop() != MessageLoop::current()) {
     message_loop()->PostTask(
         FROM_HERE,
-        NewTracedMethod(this, &ChromotingClient::OnPacketDone));
+        NewTracedMethod(this, &ChromotingClient::OnPacketDone,
+                        last_packet, decode_start));
     return;
   }
 
   TraceContext::tracer()->PrintString("Packet done");
+
+  // Record the latency between the final packet being received and
+  // presented.
+  if (last_packet) {
+    stats_.video_decode_ms()->Record(
+        (base::Time::Now() - decode_start).InMilliseconds());
+  }
 
   received_packets_.front().done->Run();
   delete received_packets_.front().done;
@@ -210,6 +233,7 @@ void ChromotingClient::OnPacketDone() {
 
   packet_being_processed_ = false;
 
+  // Process the next video packet.
   DispatchPacket();
 }
 
