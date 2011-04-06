@@ -14,7 +14,7 @@
 #include "base/utf_string_conversions.h"
 #include "chrome/browser/browser_list.h"
 #include "chrome/browser/browser_window.h"
-#include "chrome/browser/extensions/extension_install_dialog2.h"
+#include "chrome/browser/extensions/extension_install_dialog.h"
 #include "chrome/browser/extensions/theme_installed_infobar_delegate.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/profiles/profile.h"
@@ -33,7 +33,6 @@
 #include "grit/generated_resources.h"
 #include "grit/theme_resources.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/base/resource/resource_bundle.h"
 
 #if defined(TOOLKIT_GTK)
 #include "chrome/browser/extensions/gtk_theme_installed_infobar_delegate.h"
@@ -186,15 +185,8 @@ void ExtensionInstallUI::SetIcon(SkBitmap* image) {
     icon_ = *image;
   else
     icon_ = SkBitmap();
-  if (icon_.empty()) {
-    if (extension_->is_app()) {
-      icon_ = *ResourceBundle::GetSharedInstance().GetBitmapNamed(
-          IDR_APP_DEFAULT_ICON);
-    } else {
-      icon_ = *ResourceBundle::GetSharedInstance().GetBitmapNamed(
-          IDR_EXTENSION_DEFAULT_ICON);
-    }
-  }
+  if (icon_.empty())
+    icon_ = Extension::GetDefaultIcon(extension_->is_app());
 }
 
 void ExtensionInstallUI::OnImageLoaded(
@@ -212,7 +204,7 @@ void ExtensionInstallUI::OnImageLoaded(
           NotificationService::NoDetails());
 
       std::vector<string16> warnings = extension_->GetPermissionMessages();
-      ShowExtensionInstallDialog2(
+      ShowExtensionInstallDialog(
           profile_, delegate_, extension_, &icon_, warnings, prompt_type_);
       break;
     }

@@ -1101,7 +1101,9 @@ void RenderWidgetHostViewMac::DeallocFakePluginWindowHandle(
   if (render_widget_host_ &&
       plugin_container_manager_.IsRootContainer(window)) {
     GpuProcessHostUIShim* ui_shim = GpuProcessHostUIShim::GetForRenderer(
-        render_widget_host_->process()->id());
+        render_widget_host_->process()->id(),
+        content::
+          CAUSE_FOR_GPU_LAUNCH_RENDERWIDGETHOSTVIEWMAC_DEALLOCFAKEPLUGINWINDOWHANDLE);
     if (ui_shim) {
       ui_shim->DidDestroyAcceleratedSurface(
           render_widget_host_->process()->id(),
@@ -1454,7 +1456,12 @@ void RenderWidgetHostViewMac::SetTextInputActive(bool active) {
   closeOnDeactivate_ = b;
 }
 
-- (void)mouseEvent:(NSEvent*)theEvent {
+- (BOOL)shouldIgnoreMouseEvent:(NSEvent*)theEvent {
+  // If this is a background window, don't handle mouse events. This is
+  // the expected behavior on the Mac as evidenced by other applications.
+  if (![[self window] isKeyWindow])
+    return YES;
+
   // Use hitTest to check whether the mouse is over a nonWebContentView - in
   // which case the mouse event should not be handled by the render host.
   const SEL nonWebContentViewSelector = @selector(nonWebContentView);
@@ -1467,20 +1474,25 @@ void RenderWidgetHostViewMac::SetTextInputActive(bool active) {
     if ([view respondsToSelector:nonWebContentViewSelector] &&
         [view performSelector:nonWebContentViewSelector]) {
       // The cursor is over a nonWebContentView - ignore this mouse event.
-      // If this is the first such event, send a mouse exit to the host view.
-      if (!mouseEventWasIgnored_ &&
-          renderWidgetHostView_->render_widget_host_) {
-        WebMouseEvent exitEvent =
-            WebInputEventFactory::mouseEvent(theEvent, self);
-        exitEvent.type = WebInputEvent::MouseLeave;
-        exitEvent.button = WebMouseEvent::ButtonNone;
-        renderWidgetHostView_->render_widget_host_->ForwardMouseEvent(
-            exitEvent);
-      }
-      mouseEventWasIgnored_ = YES;
-      return;
+      return YES;
     }
     view = [view superview];
+  }
+  return NO;
+}
+
+- (void)mouseEvent:(NSEvent*)theEvent {
+  if ([self shouldIgnoreMouseEvent:theEvent]) {
+    // If this is the first such event, send a mouse exit to the host view.
+    if (!mouseEventWasIgnored_ && renderWidgetHostView_->render_widget_host_) {
+      WebMouseEvent exitEvent =
+          WebInputEventFactory::mouseEvent(theEvent, self);
+      exitEvent.type = WebInputEvent::MouseLeave;
+      exitEvent.button = WebMouseEvent::ButtonNone;
+      renderWidgetHostView_->render_widget_host_->ForwardMouseEvent(exitEvent);
+    }
+    mouseEventWasIgnored_ = YES;
+    return;
   }
 
   if (mouseEventWasIgnored_) {

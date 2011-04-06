@@ -1,4 +1,4 @@
-// Copyright (c) 2010 The Chromium Authors. All rights reserved.
+// Copyright (c) 2011 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 
 #include <string>
 
+#include "base/compiler_specific.h"
 #include "base/string16.h"
 #include "base/task.h"
 #include "chrome/browser/chromeos/login/new_user_view.h"
@@ -18,6 +19,7 @@
 #include "views/controls/button/button.h"
 #include "views/controls/textfield/textfield.h"
 #include "views/widget/widget_delegate.h"
+
 namespace views {
 class WidgetGtk;
 }
@@ -46,6 +48,10 @@ class UserController : public views::WidgetDelegate,
     // Selects user entry with specified |index|.
     // Does nothing if current user is already selected.
     virtual void SelectUser(int index) = 0;
+
+    // Switch to the enterprise enrollment screen (if applicable).
+    virtual void StartEnterpriseEnrollment() = 0;
+
    protected:
     virtual ~Delegate() {}
   };
@@ -110,6 +116,7 @@ class UserController : public views::WidgetDelegate,
                        const std::string& password) OVERRIDE;
   virtual void OnLoginAsGuest() OVERRIDE;
   virtual void OnCreateAccount() OVERRIDE;
+  virtual void OnStartEnterpriseEnrollment() OVERRIDE;
   virtual void ClearErrors() OVERRIDE;
   virtual void NavigateAway() OVERRIDE;
 
@@ -141,6 +148,8 @@ class UserController : public views::WidgetDelegate,
                                          bool need_guest_link);
   views::WidgetGtk* CreateImageWindow(int index);
   views::WidgetGtk* CreateLabelWindow(int index, WmIpcWindowType type);
+  gfx::Font GetLabelFont();
+  gfx::Font GetUnselectedLabelFont();
   void CreateBorderWindow(int index,
                           int total_user_count,
                           int controls_width, int controls_height);

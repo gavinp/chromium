@@ -1817,7 +1817,7 @@ int BrowserMain(const MainFunctionParams& parameters) {
   // shutdown because otherwise we can't be sure the user has finished
   // selecting a search engine through the dialog reached from the first run
   // bubble link.
-  if (FirstRun::InSearchExperimentLocale() && record_search_engine) {
+  if (record_search_engine) {
     const TemplateURL* default_search_engine =
         profile->GetTemplateURLModel()->GetDefaultSearchProvider();
     // The default engine can be NULL if the administrator has disabled

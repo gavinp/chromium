@@ -6,36 +6,72 @@
 #define CHROME_BROWSER_CHROMEOS_LOGIN_ENTERPRISE_ENROLLMENT_SCREEN_H_
 #pragma once
 
+#include <string>
+
 #include "base/basictypes.h"
 #include "base/compiler_specific.h"
 #include "chrome/browser/chromeos/login/enterprise_enrollment_view.h"
 #include "chrome/browser/chromeos/login/view_screen.h"
+#include "chrome/common/net/gaia/gaia_auth_fetcher.h"
 
 namespace chromeos {
 
 // Controller interface for driving the enterprise enrollment UI.
 class EnterpriseEnrollmentController {
  public:
+  // Runs authentication with the given parameters.
+  virtual void Authenticate(const std::string& user,
+                            const std::string& password,
+                            const std::string& captcha,
+                            const std::string& access_code) = 0;
+
   // Cancels the enrollment operation.
   virtual void CancelEnrollment() = 0;
+
+  // Closes the confirmation window.
+  virtual void CloseConfirmation() = 0;
 };
 
 // The screen implementation that links the enterprise enrollment UI into the
 // OOBE wizard.
 class EnterpriseEnrollmentScreen
-    : public DefaultViewScreen<EnterpriseEnrollmentView>,
-      public EnterpriseEnrollmentController {
+    : public ViewScreen<EnterpriseEnrollmentView>,
+      public EnterpriseEnrollmentController,
+      public GaiaAuthConsumer {
  public:
   explicit EnterpriseEnrollmentScreen(WizardScreenDelegate* delegate);
   virtual ~EnterpriseEnrollmentScreen();
 
-  // Overriden from ViewScreen:
-  void Show() OVERRIDE;
-
   // EnterpriseEnrollmentController implementation:
-  void CancelEnrollment() OVERRIDE;
+  virtual void Authenticate(const std::string& user,
+                            const std::string& password,
+                            const std::string& captcha,
+                            const std::string& access_code) OVERRIDE;
+  virtual void CancelEnrollment() OVERRIDE;
+  virtual void CloseConfirmation() OVERRIDE;
+
+  // GaiaAuthConsumer implementation:
+  virtual void OnClientLoginSuccess(const ClientLoginResult& result) OVERRIDE;
+  virtual void OnClientLoginFailure(
+      const GoogleServiceAuthError& error) OVERRIDE;
+
+  virtual void OnIssueAuthTokenSuccess(const std::string& service,
+                                       const std::string& auth_token) OVERRIDE;
+  virtual void OnIssueAuthTokenFailure(
+      const std::string& service,
+      const GoogleServiceAuthError& error) OVERRIDE;
+
+
+ protected:
+  // Overriden from ViewScreen:
+  virtual EnterpriseEnrollmentView* AllocateView() OVERRIDE;
 
  private:
+  void HandleAuthError(const GoogleServiceAuthError& error);
+
+  scoped_ptr<GaiaAuthFetcher> auth_fetcher_;
+  std::string captcha_token_;
+
   DISALLOW_COPY_AND_ASSIGN(EnterpriseEnrollmentScreen);
 };
 
