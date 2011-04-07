@@ -69,6 +69,12 @@ const char kDisableSeccompSandbox[]         = "disable-seccomp-sandbox";
 // Disable Web Sockets support.
 const char kDisableWebSockets[]             = "disable-web-sockets";
 
+// Enable hardware accelerated page drawing.
+// Please note that this flag is honored only if chromium is compiled with
+// SKIA_GPU flag, which can be enabled by setting use_skia_gpu variable to 1
+// in build/features_override.gypi.
+const char kEnableAcceleratedDrawing[]      = "enable-accelerated-drawing";
+
 // Enables the benchmarking extensions.
 const char kEnableBenchmarking[]            = "enable-benchmarking";
 
@@ -161,6 +167,9 @@ const char kPluginProcess[]                 = "plugin";
 
 // Causes the plugin process to display a dialog on launch.
 const char kPluginStartupDialog[]           = "plugin-startup-dialog";
+
+// Argument to the process type that indicates a PPAPI broker process type.
+const char kPpapiBrokerProcess[]            = "ppapi-broker";
 
 // Use the PPAPI (Pepper) Flash found at the given path.
 const char kPpapiFlashPath[]                = "ppapi-flash-path";

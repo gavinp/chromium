@@ -2091,6 +2091,10 @@ Other platform defines such as use_titlecase are declared in build/common.gypi.
                desc="Link label shown at the corner of the download shelf">
         Show all downloads...
       </message>
+      <message name="IDS_DOWNLOAD_STATUS_INTERRUPTED"
+               desc="The download experienced an error and was interrupted, size downloaded/total.">
+        <ph name="DOWNLOAD_RECEIVED">$1<ex>54kB</ex></ph>/<ph name="DOWNLOAD_TOTAL">$2<ex>154MB</ex></ph>, Interrupted
+      </message>
 
       <!-- Download Shelf Items -->
       <message name="IDS_DOWNLOAD_STATUS_STARTING"
@@ -2203,6 +2207,10 @@ Other platform defines such as use_titlecase are declared in build/common.gypi.
       <message name="IDS_DOWNLOAD_PROGRESS_PAUSED"
                desc="Indicate the download is in progress but paused">
         Paused
+      </message>
+      <message name="IDS_DOWNLOAD_PROGRESS_INTERRUPTED"
+               desc="Indicate the download was interrupted">
+        Interrupted
       </message>
       <message name="IDS_DOWNLOAD_LINK_CLEAR_ALL"
          desc="Clear all downloads link">
@@ -7129,6 +7137,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
         </ph>, Exp: <ph name="CC_EXPIRATION_DATE">$2<ex>03/2020</ex>
         </ph>
       </message>
+      <message name="IDS_SAVE_PAGE_STATUS_INTERRUPTED" desc="Saving the page was interrupted, the number of bytes saved and total bytes expected">
+        <ph name="SAVED_BYTES">$1<ex>5</ex></ph> / <ph name="TOTAL_BYTES">$2<ex>13</ex></ph> bytes, Interrupted
+      </message>
 
       <message name="IDS_AUTOFILL_DIALOG_FULL_NAME" desc="The label of the Full name entry.">
         Full name
@@ -8149,6 +8160,87 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </message>
       <message name="IDS_MULTI_DOWNLOAD_WARNING_DENY" desc="Text on the deny button in the IDS_MULTI_DOWNLOAD_WARNING dialog">
         Deny
+      </message>
+      
+      <!-- cr.Locale -->
+      <message name="IDS_LOCALE_DATE_SHORT" desc="Preferred short date format for this locale.">
+        %b %-d, %Y
+      </message>
+      <message name="IDS_LOCALE_MONTHS_SHORT" desc="Abbreviated month names, caret delimited.">
+        Jan^Feb^Mar^Apr^May^Jun^Jul^Aug^Sep^Oct^Nov^Dec
+      </message>
+      <message name="IDS_LOCALE_DAYS_SHORT" desc="Abbreviated day names, caret delimited.">
+        Sun^Mon^Tue^Wed^Thu^Fri^Sat
+      </message>
+
+      <!-- File Browser -->
+      <message name="IDS_FILE_BROWSER_BODY_FONT_FAMILY" desc="Font family for the file dialog.">
+        sans-serif
+      </message>
+      <message name="IDS_FILE_BROWSER_BODY_FONT_SIZE" desc="Font size for the file dialog.">
+        13px
+      </message>
+
+      <message name="IDS_FILE_BROWSER_FILES_DISPLAYED_SUMMARY" desc="Files displayed summary.">
+        %1 Files Displayed
+      </message>
+      <message name="IDS_FILE_BROWSER_FILES_SELECTED_SUMMARY" desc="Files selected summary.">
+        %1 Files Selected
+      </message>
+      <message name="IDS_FILE_BROWSER_ROOT_DIRECTORY_LABEL" desc="Root directory label.">
+        Files
+      </message>
+      <message name="IDS_FILE_BROWSER_NAME_COLUMN_LABEL" desc="Name column label.">
+        Name
+      </message>
+      <message name="IDS_FILE_BROWSER_SIZE_COLUMN_LABEL" desc="Size column label.">
+        Size
+      </message>
+      <message name="IDS_FILE_BROWSER_DATE_COLUMN_LABEL" desc="Date column label.">
+        Date
+      </message>
+      <message name="IDS_FILE_BROWSER_PREVIEW_COLUMN_LABEL" desc="Preview column label.">
+        Preview
+      </message>
+
+      <message name="IDS_FILE_BROWSER_FILENAME_LABEL" desc="Filename text area label.">
+        File name
+      </message>
+
+      <message name="IDS_FILE_BROWSER_CANCEL_LABEL" desc="Cancel label.">
+        Cancel
+      </message>
+      <message name="IDS_FILE_BROWSER_OPEN_LABEL" desc="Open label.">
+        Open
+      </message>
+      <message name="IDS_FILE_BROWSER_SAVE_LABEL" desc="Save label.">
+        Save
+      </message>
+
+      <message name="IDS_FILE_BROWSER_SELECT_FOLDER_TITLE" desc="Select folder title.">
+        Select a folder to open
+      </message>
+      <message name="IDS_FILE_BROWSER_SELECT_OPEN_FILE_TITLE" desc="Select open file title.">
+        Select a file to open
+      </message>
+      <message name="IDS_FILE_BROWSER_SELECT_OPEN_MULTI_FILE_TITLE" desc="Select open multi file title.">
+        Select one or more files
+      </message>
+      <message name="IDS_FILE_BROWSER_SELECT_SAVEAS_FILE_TITLE" desc="Select saveas file title.">
+        Select a file to save as
+      </message>
+
+      <message name="IDS_FILE_BROWSER_COMPUTING_SELECTION" desc="Computing selection...">
+        Computing selection...
+      </message>
+      <message name="IDS_FILE_BROWSER_NOTHING_SELECTED" desc="Nothing selected.">
+        No files selected
+      </message>
+      <message name="IDS_FILE_BROWSER_ONE_FILE_SELECTED" desc="One file selected.">
+        One file selected, $1
+      </message>
+      <message name="IDS_FILE_BROWSER_MANY_FILES_SELECTED" desc="Many files selected.">
+        $1 files selected, $2
       </message>
 
       <!-- Bookmark manager -->

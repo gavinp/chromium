@@ -4,7 +4,7 @@ vars = {
   "googlecode_url": "http://%s.googlecode.com/svn",
   "webkit_trunk": "http://svn.webkit.org/repository/webkit/trunk",
   "nacl_trunk": "http://src.chromium.org/native_client/trunk",
-  "webkit_revision": "83167",
+  "webkit_revision": "83199",
   "chromium_git": "http://git.chromium.org/git",
   "swig_revision": "69281",
   "nacl_revision": "4559",
@@ -12,7 +12,7 @@ vars = {
   "libjingle_revision": "55",
   "libvpx_revision": "76510",
   "ffmpeg_revision": "79854",
-  "skia_revision": "1066",
+  "skia_revision": "1074",
   "v8_revision": "7530",
 }
 
@@ -39,7 +39,7 @@ deps = {
     (Var("googlecode_url") % "googlemock") + "/trunk@374",
 
   "src/third_party/angle":
-    (Var("googlecode_url") % "angleproject") + "/trunk@606",
+    (Var("googlecode_url") % "angleproject") + "/trunk@609",
 
   # Note that this is *not* where we check out WebKit -- this just
   # puts some extra files into place for the real WebKit checkout to

@@ -116,6 +116,7 @@ PrepareFrameAndViewForPrint::~PrepareFrameAndViewForPrint() {
 
 PrintWebViewHelper::PrintWebViewHelper(RenderView* render_view)
     : RenderViewObserver(render_view),
+      RenderViewObserverTracker<PrintWebViewHelper>(render_view),
       print_web_view_(NULL),
       script_initiated_preview_frame_(NULL),
       context_menu_preview_node_(NULL),
@@ -126,7 +127,8 @@ PrintWebViewHelper::PrintWebViewHelper(RenderView* render_view)
 
 PrintWebViewHelper::~PrintWebViewHelper() {}
 
-void PrintWebViewHelper::ScriptInitiatedPrint(WebKit::WebFrame* frame) {
+// Prints |frame| which called window.print().
+void PrintWebViewHelper::PrintPage(WebKit::WebFrame* frame) {
   DCHECK(frame);
 
   if (IsScriptInitiatedPrintTooFrequent(frame))
@@ -402,14 +404,14 @@ void PrintWebViewHelper::PrintPages(const PrintMsg_PrintPages_Params& params,
   if (params.pages.empty()) {
     for (int i = 0; i < page_count; ++i) {
       page_params.page_number = i;
-      PrintPage(page_params, canvas_size, frame);
+      PrintPageInternal(page_params, canvas_size, frame);
     }
   } else {
     for (size_t i = 0; i < params.pages.size(); ++i) {
       if (params.pages[i] >= page_count)
         break;
       page_params.page_number = params.pages[i];
-      PrintPage(page_params, canvas_size, frame);
+      PrintPageInternal(page_params, canvas_size, frame);
     }
   }
 }

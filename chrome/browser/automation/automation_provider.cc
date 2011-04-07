@@ -235,6 +235,7 @@ DictionaryValue* AutomationProvider::GetDictionaryFromDownloadItem(
   state_to_string[DownloadItem::IN_PROGRESS] = std::string("IN_PROGRESS");
   state_to_string[DownloadItem::CANCELLED] = std::string("CANCELLED");
   state_to_string[DownloadItem::REMOVING] = std::string("REMOVING");
+  state_to_string[DownloadItem::INTERRUPTED] = std::string("INTERRUPTED");
   state_to_string[DownloadItem::COMPLETE] = std::string("COMPLETE");
 
   std::map<DownloadItem::SafetyState, std::string> safety_state_to_string;
@@ -819,7 +820,7 @@ void AutomationProvider::UninstallExtension(int extension_handle,
   ExtensionService* service = profile_->GetExtensionService();
   if (extension && service) {
     ExtensionUnloadNotificationObserver observer;
-    service->UninstallExtension(extension->id(), false);
+    service->UninstallExtension(extension->id(), false, NULL);
     // The extension unload notification should have been sent synchronously
     // with the uninstall. Just to be safe, check that it was received.
     *success = observer.did_receive_unload_notification();

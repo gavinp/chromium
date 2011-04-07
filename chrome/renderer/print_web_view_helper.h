@@ -10,6 +10,7 @@
 #include "base/shared_memory.h"
 #include "base/time.h"
 #include "content/renderer/render_view_observer.h"
+#include "content/renderer/render_view_observer_tracker.h"
 #include "printing/native_metafile.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebFrameClient.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebViewClient.h"
@@ -69,14 +70,12 @@ class PrepareFrameAndViewForPrint {
 // We plan on making print asynchronous and that will require copying the DOM
 // of the document and creating a new WebView with the contents.
 class PrintWebViewHelper : public RenderViewObserver ,
+                           public RenderViewObserverTracker<PrintWebViewHelper>,
                            public WebKit::WebViewClient,
                            public WebKit::WebFrameClient {
  public:
   explicit PrintWebViewHelper(RenderView* render_view);
   virtual ~PrintWebViewHelper();
-
-  // Prints |frame| which called window.print().
-  void ScriptInitiatedPrint(WebKit::WebFrame* frame);
 
  protected:
   // WebKit::WebViewClient override:
@@ -93,6 +92,7 @@ class PrintWebViewHelper : public RenderViewObserver ,
 
   // RenderViewObserver implementation.
   virtual bool OnMessageReceived(const IPC::Message& message);
+  virtual void PrintPage(WebKit::WebFrame* frame);
 
   // Message handlers ---------------------------------------------------------
 
@@ -149,15 +149,15 @@ class PrintWebViewHelper : public RenderViewObserver ,
 
   // Prints the page listed in |params|.
 #if defined(USE_X11)
-  void PrintPage(const PrintMsg_PrintPage_Params& params,
-                 const gfx::Size& canvas_size,
-                 WebKit::WebFrame* frame,
-                 printing::NativeMetafile* metafile,
-                 scoped_ptr<skia::VectorCanvas>* canvas);
+  void PrintPageInternal(const PrintMsg_PrintPage_Params& params,
+                         const gfx::Size& canvas_size,
+                         WebKit::WebFrame* frame,
+                         printing::NativeMetafile* metafile,
+                         scoped_ptr<skia::VectorCanvas>* canvas);
 #else
-  void PrintPage(const PrintMsg_PrintPage_Params& params,
-                 const gfx::Size& canvas_size,
-                 WebKit::WebFrame* frame);
+  void PrintPageInternal(const PrintMsg_PrintPage_Params& params,
+                         const gfx::Size& canvas_size,
+                         WebKit::WebFrame* frame);
 #endif
 
   // Render the frame for printing.
