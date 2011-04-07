@@ -138,22 +138,34 @@ void PrerenderManager::SetPrerenderContentsFactory(
   prerender_contents_factory_.reset(prerender_contents_factory);
 }
 
-namespace {
-void StaticAddPreload(PrerenderManager* manager,
-                      const GURL url,
-                      const GURL referrer)
-{
-  manager->AddPreload(url, std::vector<GURL>(), referrer);
+void PrerenderManager::ConsiderPrerenderingUIThread(
+    const GURL& url,
+    const GURL& referrer,
+    const std::pair<int, int>& child_route_id_pair,
+    bool already_prerendering) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  if (!is_enabled())
+    return;
+  
+  if (already_prerendering)
+    AddPendingPreload(child_route_id_pair, url, std::vector<GURL>(), referrer);
+  else
+    AddPreload(url, std::vector<GURL>(), referrer);
 }
-}
-
 
 void PrerenderManager::ConsiderPrerendering(const GURL& url,
-                                            const GURL& referrer) {
-
+                                            const GURL& referrer,
+                                            const std::pair<int, int>& child_route_id_pair,
+                                            bool already_prerendering) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
   BrowserThread::PostTask(BrowserThread::UI, FROM_HERE,
-                          NewRunnableFunction(
-                              &StaticAddPreload, this, GURL(url), GURL(referrer)));
+                          NewRunnableMethod(
+                              this, 
+                              &PrerenderManager::ConsiderPrerenderingUIThread,
+                              url,
+                              referrer,
+                              child_route_id_pair,
+                              already_prerendering));
 }
 
 

@@ -9,6 +9,8 @@
 #include <set>
 #include <vector>
 
+#include <iostream>
+
 #include "base/command_line.h"
 #include "base/logging.h"
 #include "base/memory/scoped_ptr.h"
@@ -26,7 +28,7 @@
 #include "chrome/browser/net/chrome_url_request_context.h"
 #include "chrome/browser/net/url_request_tracking.h"
 #include "chrome/browser/prerender/prerender_manager.h"
-#include "chrome/browser/prerender/prerender_resource_handler.h"
+//#include "chrome/browser/prerender/prerender_resource_handler.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/renderer_host/download_resource_handler.h"
 #include "chrome/browser/renderer_host/safe_browsing_resource_handler.h"
@@ -118,6 +120,32 @@ const int kMaxPendingDataMessages = 20;
 // See delcaration of |max_outstanding_requests_cost_per_process_| for details.
 // This bound is 25MB, which allows for around 6000 outstanding requests.
 const int kMaxOutstandingRequestsCostPerProcess = 26214400;
+
+// Kills a request
+void SquashRequest(ResourceMessageFilter* filter,
+                   IPC::Message* sync_result,
+                   int route_id,
+                   int request_id) {
+  if (sync_result) {
+    net::URLRequestStatus status(net::URLRequestStatus::FAILED,
+                                   net::ERR_ABORTED);
+    if (sync_result) {
+      SyncLoadResult result;
+      result.status = status;
+      ResourceHostMsg_SyncLoad::WriteReplyParams(sync_result, result);
+      filter->Send(sync_result);
+    } else {
+      // Tell the renderer that this request was disallowed.
+      filter->Send(new ResourceMsg_RequestComplete(
+          route_id,
+          request_id,
+          status,
+          std::string(),   // No security info needed, connection was not
+          base::Time()));  // established.
+    }
+    return;
+  }
+}
 
 // Consults the RendererSecurity policy to determine whether the
 // ResourceDispatcherHost should service this request.  A request might be
@@ -361,53 +389,33 @@ void ResourceDispatcherHost::BeginRequest(
     context->blob_storage_context()->controller()->
         ResolveBlobReferencesInUploadData(request_data.upload_data.get());
   }
+  
+  const std::string referrer(CommandLine::ForCurrentProcess()->HasSwitch(
+      switches::kNoReferrers) ? std::string() : request_data.referrer.spec());
+  const bool is_prerendering = IsPrerenderingChildRoutePair(child_id, route_id);
+  
+  if (is_shutdown_ ||
+      !ShouldServiceRequest(process_type, child_id, request_data)) {
+    SquashRequest(filter_, sync_result, route_id, request_id);
+    return;
+  }
 
-  // Send prefetches to the renderer_host.
-  // XYZZY: referrer squashing.
-  if (request_data.resource_type == ResourceType::PREFETCH) {
-    prerender::PrerenderManager* manager = context->prerender_manager();
-    manager->ConsiderPrerendering(request_data.url, 
-                                  request_data.referrer);
-    net::URLRequestStatus status(net::URLRequestStatus::FAILED,
-                                 net::ERR_ABORTED);
-    if (sync_result) {
-      SyncLoadResult result;
-      result.status = status;
-      ResourceHostMsg_SyncLoad::WriteReplyParams(sync_result, result);
-      filter_->Send(sync_result);
-    } else {
-      // Tell the renderer that this request was disallowed.
-      filter_->Send(new ResourceMsg_RequestComplete(
-          route_id,
-          request_id,
-          status,
-          std::string(),   // No security info needed, connection was not
-          base::Time()));  // established.
-    }
+  if (prerender::PrerenderManager::IsPrerenderingPossible() &&
+      request_data.resource_type == ResourceType::PREFETCH) {
+
+    std::cout << "contemplating prerender: " << request_data.url.spec()
+              << "  is_prerendering=" << (is_prerendering ? "true" : "false") 
+              << "\n";
+    
+    context->prerender_manager()->ConsiderPrerendering(
+        request_data.url,
+        GURL(referrer),
+        std::make_pair(child_id, route_id),
+        is_prerendering);
+    SquashRequest(filter_, sync_result, route_id, request_id);
     return;
   }
     
-  if (is_shutdown_ ||
-      !ShouldServiceRequest(process_type, child_id, request_data)) {
-    net::URLRequestStatus status(net::URLRequestStatus::FAILED,
-                                 net::ERR_ABORTED);
-    if (sync_result) {
-      SyncLoadResult result;
-      result.status = status;
-      ResourceHostMsg_SyncLoad::WriteReplyParams(sync_result, result);
-      filter_->Send(sync_result);
-    } else {
-      // Tell the renderer that this request was disallowed.
-      filter_->Send(new ResourceMsg_RequestComplete(
-          route_id,
-          request_id,
-          status,
-          std::string(),   // No security info needed, connection was not
-          base::Time()));  // established.
-    }
-    return;
-  }
-
   // Construct the event handler.
   scoped_refptr<ResourceHandler> handler;
   if (sync_result) {
@@ -432,8 +440,8 @@ void ResourceDispatcherHost::BeginRequest(
   net::URLRequest* request = new net::URLRequest(request_data.url, this);
   request->set_method(request_data.method);
   request->set_first_party_for_cookies(request_data.first_party_for_cookies);
-  request->set_referrer(CommandLine::ForCurrentProcess()->HasSwitch(
-      switches::kNoReferrers) ? std::string() : request_data.referrer.spec());
+  request->set_referrer(referrer);
+
   net::HttpRequestHeaders headers;
   headers.AddHeadersFromString(request_data.headers);
   request->SetExtraRequestHeaders(headers);
@@ -452,7 +460,7 @@ void ResourceDispatcherHost::BeginRequest(
     load_flags |= net::LOAD_PREFETCH;
   }
 
-  if (IsPrerenderingChildRoutePair(child_id, route_id))
+  if (is_prerendering)
     load_flags |= net::LOAD_PRERENDER;
 
   if (sync_result)
@@ -478,6 +486,7 @@ void ResourceDispatcherHost::BeginRequest(
     upload_size = request_data.upload_data->GetContentLength();
   }
 
+  /*
   // Install a PrerenderResourceHandler if the requested URL could
   // be prerendered. This should be in front of the [a]syncResourceHandler,
   // but after the BufferedResourceHandler since it depends on the MIME
@@ -491,6 +500,7 @@ void ResourceDispatcherHost::BeginRequest(
           child_id, route_id);
   if (pre_handler)
     handler = pre_handler;
+  */
 
   // Install a CrossSiteResourceHandler if this request is coming from a
   // RenderViewHost with a pending cross-site request.  We only check this for

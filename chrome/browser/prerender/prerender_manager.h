@@ -38,7 +38,7 @@ namespace prerender {
 
 // PrerenderManager is responsible for initiating and keeping prerendered
 // views of webpages.
-class PrerenderManager : public base::RefCounted<PrerenderManager> {
+class PrerenderManager : public base::RefCountedThreadSafe<PrerenderManager> {
  public:
   // PrerenderManagerMode is used in a UMA_HISTOGRAM, so please do not
   // add in the middle.
@@ -109,8 +109,16 @@ class PrerenderManager : public base::RefCounted<PrerenderManager> {
 
   // New from gavin
   // TODO(gavin): make it work
+  void ConsiderPrerenderingUIThread(
+      const GURL& url,
+      const GURL& referrer,
+      const std::pair<int, int>& child_route_id_pair,
+      bool already_prerendering);
+
   void ConsiderPrerendering(const GURL& url,
-                            const GURL& referrer);
+                            const GURL& referrer,
+                            const std::pair<int, int>& child_route_id_pair,
+                            bool already_prerendering);
 
   static PrerenderManagerMode GetMode();
   static void SetMode(PrerenderManagerMode mode);
@@ -134,11 +142,12 @@ class PrerenderManager : public base::RefCounted<PrerenderManager> {
   // the operation succeeded (i.e. a valid URL was found).
   static bool MaybeGetQueryStringBasedAliasURL(const GURL& url,
                                                GURL* alias_url);
+  virtual ~PrerenderManager();
 
  protected:
   struct PendingContentsData;
 
-  virtual ~PrerenderManager();
+
 
   void SetPrerenderContentsFactory(
       PrerenderContents::Factory* prerender_contents_factory);
