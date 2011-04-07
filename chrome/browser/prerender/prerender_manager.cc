@@ -112,7 +112,6 @@ struct PrerenderManager::PendingContentsData {
 
 PrerenderManager::PrerenderManager(Profile* profile)
     : rate_limit_enabled_(true),
-      method_runner_(this),
       enabled_(true),
       profile_(profile),
       max_prerender_age_(base::TimeDelta::FromSeconds(
@@ -120,8 +119,7 @@ PrerenderManager::PrerenderManager(Profile* profile)
       max_elements_(kDefaultMaxPrerenderElements),
       prerender_contents_factory_(PrerenderContents::CreateFactory()),
       last_prerender_start_time_(GetCurrentTimeTicks() -
-                                 base::TimeDelta::FromMilliseconds(kMinTimeBetweenPrerendersMs))
-{
+          base::TimeDelta::FromMilliseconds(kMinTimeBetweenPrerendersMs)) {
 }
 
 PrerenderManager::~PrerenderManager() {

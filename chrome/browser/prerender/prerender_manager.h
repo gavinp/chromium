@@ -53,6 +53,15 @@ class PrerenderManager : public base::RefCountedThreadSafe<PrerenderManager> {
   // Owned by a Profile object for the lifetime of the profile.
   explicit PrerenderManager(Profile* profile);
 
+  virtual ~PrerenderManager();
+
+  // Called from the IO thread, either begins prerendering, or adds the 
+  // request to the queue of pending preloads.
+  void ConsiderPrerendering(const GURL& url,
+                            const GURL& referrer,
+                            const std::pair<int, int>& child_route_id_pair,
+                            bool already_prerendering);
+
   // Preloads the URL supplied.  alias_urls indicates URLs that redirect
   // to the same URL to be preloaded. Returns true if the URL was added,
   // false if it was not.
@@ -107,19 +116,6 @@ class PrerenderManager : public base::RefCountedThreadSafe<PrerenderManager> {
   // they time out, but new ones will not be generated.
   void set_enabled(bool enabled);
 
-  // New from gavin
-  // TODO(gavin): make it work
-  void ConsiderPrerenderingUIThread(
-      const GURL& url,
-      const GURL& referrer,
-      const std::pair<int, int>& child_route_id_pair,
-      bool already_prerendering);
-
-  void ConsiderPrerendering(const GURL& url,
-                            const GURL& referrer,
-                            const std::pair<int, int>& child_route_id_pair,
-                            bool already_prerendering);
-
   static PrerenderManagerMode GetMode();
   static void SetMode(PrerenderManagerMode mode);
   static bool IsPrerenderingPossible();
@@ -142,12 +138,15 @@ class PrerenderManager : public base::RefCountedThreadSafe<PrerenderManager> {
   // the operation succeeded (i.e. a valid URL was found).
   static bool MaybeGetQueryStringBasedAliasURL(const GURL& url,
                                                GURL* alias_url);
-  virtual ~PrerenderManager();
 
  protected:
   struct PendingContentsData;
 
-
+  void ConsiderPrerenderingUIThread(
+      const GURL& url,
+      const GURL& referrer,
+      const std::pair<int, int>& child_route_id_pair,
+      bool already_prerendering);
 
   void SetPrerenderContentsFactory(
       PrerenderContents::Factory* prerender_contents_factory);
@@ -195,8 +194,6 @@ class PrerenderManager : public base::RefCountedThreadSafe<PrerenderManager> {
   void RemovePendingPreload(PrerenderContents* entry);
 
   bool DoesRateLimitAllowPrerender() const;
-
-  ScopedRunnableMethodFactory<PrerenderManager> method_runner_;
 
   // Specifies whether prerendering is currently enabled for this
   // manager. The value can change dynamically during the lifetime

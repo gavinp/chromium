@@ -9,8 +9,6 @@
 #include <set>
 #include <vector>
 
-#include <iostream>
-
 #include "base/command_line.h"
 #include "base/logging.h"
 #include "base/memory/scoped_ptr.h"
@@ -28,7 +26,6 @@
 #include "chrome/browser/net/chrome_url_request_context.h"
 #include "chrome/browser/net/url_request_tracking.h"
 #include "chrome/browser/prerender/prerender_manager.h"
-//#include "chrome/browser/prerender/prerender_resource_handler.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/renderer_host/download_resource_handler.h"
 #include "chrome/browser/renderer_host/safe_browsing_resource_handler.h"
@@ -121,29 +118,25 @@ const int kMaxPendingDataMessages = 20;
 // This bound is 25MB, which allows for around 6000 outstanding requests.
 const int kMaxOutstandingRequestsCostPerProcess = 26214400;
 
-// Kills a request
 void SquashRequest(ResourceMessageFilter* filter,
                    IPC::Message* sync_result,
                    int route_id,
                    int request_id) {
+  net::URLRequestStatus status(net::URLRequestStatus::FAILED,
+                                 net::ERR_ABORTED);
   if (sync_result) {
-    net::URLRequestStatus status(net::URLRequestStatus::FAILED,
-                                   net::ERR_ABORTED);
-    if (sync_result) {
-      SyncLoadResult result;
-      result.status = status;
-      ResourceHostMsg_SyncLoad::WriteReplyParams(sync_result, result);
-      filter->Send(sync_result);
-    } else {
-      // Tell the renderer that this request was disallowed.
-      filter->Send(new ResourceMsg_RequestComplete(
-          route_id,
-          request_id,
-          status,
-          std::string(),   // No security info needed, connection was not
-          base::Time()));  // established.
-    }
-    return;
+    SyncLoadResult result;
+    result.status = status;
+    ResourceHostMsg_SyncLoad::WriteReplyParams(sync_result, result);
+    filter->Send(sync_result);
+  } else {
+    // Tell the renderer that this request was disallowed.
+    filter->Send(new ResourceMsg_RequestComplete(
+        route_id,
+        request_id,
+        status,
+        std::string(),   // No security info needed, connection was not
+        base::Time()));  // established.
   }
 }
 
@@ -402,11 +395,6 @@ void ResourceDispatcherHost::BeginRequest(
 
   if (prerender::PrerenderManager::IsPrerenderingPossible() &&
       request_data.resource_type == ResourceType::PREFETCH) {
-
-    std::cout << "contemplating prerender: " << request_data.url.spec()
-              << "  is_prerendering=" << (is_prerendering ? "true" : "false") 
-              << "\n";
-    
     context->prerender_manager()->ConsiderPrerendering(
         request_data.url,
         GURL(referrer),
@@ -441,7 +429,6 @@ void ResourceDispatcherHost::BeginRequest(
   request->set_method(request_data.method);
   request->set_first_party_for_cookies(request_data.first_party_for_cookies);
   request->set_referrer(referrer);
-
   net::HttpRequestHeaders headers;
   headers.AddHeadersFromString(request_data.headers);
   request->SetExtraRequestHeaders(headers);
@@ -485,22 +472,6 @@ void ResourceDispatcherHost::BeginRequest(
     request->set_upload(request_data.upload_data);
     upload_size = request_data.upload_data->GetContentLength();
   }
-
-  /*
-  // Install a PrerenderResourceHandler if the requested URL could
-  // be prerendered. This should be in front of the [a]syncResourceHandler,
-  // but after the BufferedResourceHandler since it depends on the MIME
-  // sniffing capabilities in the BufferedResourceHandler.
-  prerender::PrerenderResourceHandler* pre_handler =
-      prerender::PrerenderResourceHandler::MaybeCreate(
-          *request,
-          context,
-          handler,
-          ((load_flags & net::LOAD_PRERENDER) != 0),
-          child_id, route_id);
-  if (pre_handler)
-    handler = pre_handler;
-  */
 
   // Install a CrossSiteResourceHandler if this request is coming from a
   // RenderViewHost with a pending cross-site request.  We only check this for
