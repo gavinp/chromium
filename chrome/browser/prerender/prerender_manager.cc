@@ -144,21 +144,22 @@ void PrerenderManager::ConsiderPrerenderingUIThread(
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   if (!is_enabled())
     return;
-  
+
   if (already_prerendering)
     AddPendingPreload(child_route_id_pair, url, std::vector<GURL>(), referrer);
   else
     AddPreload(url, std::vector<GURL>(), referrer);
 }
 
-void PrerenderManager::ConsiderPrerendering(const GURL& url,
-                                            const GURL& referrer,
-                                            const std::pair<int, int>& child_route_id_pair,
-                                            bool already_prerendering) {
+void PrerenderManager::ConsiderPrerendering(
+    const GURL& url,
+    const GURL& referrer,
+    const std::pair<int, int>& child_route_id_pair,
+    bool already_prerendering) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
   BrowserThread::PostTask(BrowserThread::UI, FROM_HERE,
                           NewRunnableMethod(
-                              this, 
+                              this,
                               &PrerenderManager::ConsiderPrerenderingUIThread,
                               url,
                               referrer,

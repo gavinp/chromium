@@ -382,11 +382,11 @@ void ResourceDispatcherHost::BeginRequest(
     context->blob_storage_context()->controller()->
         ResolveBlobReferencesInUploadData(request_data.upload_data.get());
   }
-  
+
   const std::string referrer(CommandLine::ForCurrentProcess()->HasSwitch(
       switches::kNoReferrers) ? std::string() : request_data.referrer.spec());
   const bool is_prerendering = IsPrerenderingChildRoutePair(child_id, route_id);
-  
+
   if (is_shutdown_ ||
       !ShouldServiceRequest(process_type, child_id, request_data)) {
     SquashRequest(filter_, sync_result, route_id, request_id);
@@ -403,7 +403,7 @@ void ResourceDispatcherHost::BeginRequest(
     SquashRequest(filter_, sync_result, route_id, request_id);
     return;
   }
-    
+
   // Construct the event handler.
   scoped_refptr<ResourceHandler> handler;
   if (sync_result) {

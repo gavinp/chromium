@@ -55,7 +55,7 @@ class PrerenderManager : public base::RefCountedThreadSafe<PrerenderManager> {
 
   virtual ~PrerenderManager();
 
-  // Called from the IO thread, either begins prerendering, or adds the 
+  // Called from the IO thread, either begins prerendering, or adds the
   // request to the queue of pending preloads.
   void ConsiderPrerendering(const GURL& url,
                             const GURL& referrer,
