@@ -15,7 +15,6 @@
 #include "base/threading/thread.h"
 #include "base/utf_string_conversions.h"
 #include "base/version.h"
-#include "chrome/browser/browser_list.h"
 #include "chrome/browser/debugger/devtools_manager.h"
 #include "chrome/browser/debugger/devtools_toggle_action.h"
 #include "chrome/browser/extensions/crx_installer.h"
@@ -30,6 +29,7 @@
 #include "chrome/browser/prefs/pref_service.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/tab_contents/background_contents.h"
+#include "chrome/browser/ui/browser_list.h"
 #include "chrome/browser/ui/webui/extension_icon_source.h"
 #include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_icon_set.h"
@@ -411,7 +411,8 @@ void ExtensionsDOMHandler::HandleEnableIncognitoMessage(const ListValue* args) {
   //
   // Bug: http://crbug.com/41384
   ignore_notifications_ = true;
-  extensions_service_->SetIsIncognitoEnabled(extension, enable_str == "true");
+  extensions_service_->SetIsIncognitoEnabled(extension_id,
+                                             enable_str == "true");
   ignore_notifications_ = false;
 }
 
@@ -699,7 +700,7 @@ DictionaryValue* ExtensionsDOMHandler::CreateExtensionDetailValue(
   extension_data->SetBoolean("enabled", enabled);
   extension_data->SetBoolean("terminated", terminated);
   extension_data->SetBoolean("enabledIncognito",
-      service ? service->IsIncognitoEnabled(extension) : false);
+      service ? service->IsIncognitoEnabled(extension->id()) : false);
   extension_data->SetBoolean("wantsFileAccess", extension->wants_file_access());
   extension_data->SetBoolean("allowFileAccess",
       service ? service->AllowFileAccess(extension) : false);

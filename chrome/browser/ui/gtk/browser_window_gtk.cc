@@ -22,7 +22,6 @@
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/autocomplete/autocomplete_edit_view.h"
 #include "chrome/browser/bookmarks/bookmark_utils.h"
-#include "chrome/browser/browser_list.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/debugger/devtools_window.h"
 #include "chrome/browser/download/download_item_model.h"
@@ -36,6 +35,7 @@
 #include "chrome/browser/ui/app_modal_dialogs/app_modal_dialog_queue.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_dialogs.h"
+#include "chrome/browser/ui/browser_list.h"
 #include "chrome/browser/ui/find_bar/find_bar_controller.h"
 #include "chrome/browser/ui/find_bar/find_tab_helper.h"
 #include "chrome/browser/ui/gtk/about_chrome_dialog.h"
@@ -71,6 +71,7 @@
 #include "chrome/browser/ui/tab_contents/tab_contents_wrapper.h"
 #include "chrome/browser/ui/webui/bug_report_ui.h"
 #include "chrome/browser/ui/window_sizer.h"
+#include "chrome/browser/web_applications/web_app.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
 #include "content/browser/renderer_host/render_widget_host_view.h"
@@ -294,12 +295,12 @@ void BrowserWindowGtk::Init() {
   g_object_unref(gtk_window_get_group(window_));
 
   if (browser_->type() & Browser::TYPE_APP) {
-    std::string wmclassname = browser_->app_name();
-    if (wmclassname != DevToolsWindow::kDevToolsApp) {
-      file_util::ReplaceIllegalCharactersInPath(&wmclassname, '_');
-      TrimString(wmclassname, "_", &wmclassname);
-      gtk_window_set_wmclass(window_, wmclassname.c_str(),
-                             wmclassname.c_str());
+    std::string app_name = browser_->app_name();
+    if (app_name != DevToolsWindow::kDevToolsApp) {
+      std::string wmclassname = web_app::GetWMClassFromAppName(app_name);
+      gtk_window_set_wmclass(window_,
+                             wmclassname.c_str(),
+                             gdk_get_program_class());
     }
   }
 

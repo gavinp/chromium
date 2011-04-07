@@ -40,6 +40,8 @@ without changes to the corresponding grd file. paaaae -->
                file="shared/js/cr/event_target.js" type="BINDATA" />
       <include name="IDR_SHARED_JS_CR_LINK_CONTROLLER"
                file="shared/js/cr/link_controller.js" type="BINDATA" />
+      <include name="IDR_SHARED_JS_CR_LOCALE"
+               file="shared/js/cr/locale.js" type="BINDATA" />
       <include name="IDR_SHARED_JS_CR_PROMISE"
                file="shared/js/cr/promise.js" type="BINDATA" />
       <include name="IDR_SHARED_JS_CR_UI"
@@ -96,6 +98,8 @@ without changes to the corresponding grd file. paaaae -->
                file="shared/js/cr/ui/tabs.js" type="BINDATA" />
       <include name="IDR_SHARED_JS_CR_UI_TREE"
                file="shared/js/cr/ui/tree.js" type="BINDATA" />
+      <include name="IDR_SHARED_JS_EVENT_TRACKER"
+               file="shared/js/event_tracker.js" type="BINDATA" />
       <include name="IDR_SHARED_JS_I18N_TEMPLATE"
                file="shared/js/i18n_template.js" type="BINDATA" />
       <include name="IDR_SHARED_JS_LOCAL_STRINGS"

@@ -6,13 +6,13 @@
 #include "base/string_number_conversions.h"
 #include "base/string_util.h"
 #include "base/utf_string_conversions.h"
-#include "chrome/browser/browser_list.h"
 #include "chrome/browser/dom_operation_notification_details.h"
 #include "chrome/browser/geolocation/geolocation_content_settings_map.h"
 #include "chrome/browser/geolocation/geolocation_settings_state.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/tab_contents/confirm_infobar_delegate.h"
 #include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/browser_list.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/test/in_process_browser_test.h"
 #include "chrome/test/ui_test_utils.h"
@@ -195,7 +195,7 @@ void NotifyGeoposition(const Geoposition& geoposition) {
 // 3. Allowing the infobar does not trigger an error, and allow a geoposition to
 // be passed to javascript.
 // 4. Permissions persisted in disk are respected.
-// 5. Off the record profiles don't use saved permissions.
+// 5. Incognito profiles don't use saved permissions.
 class GeolocationBrowserTest : public InProcessBrowserTest {
  public:
   GeolocationBrowserTest()

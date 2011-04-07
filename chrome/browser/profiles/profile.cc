@@ -15,7 +15,6 @@
 #include "base/string_util.h"
 #include "build/build_config.h"
 #include "chrome/browser/background_contents_service.h"
-#include "chrome/browser/browser_list.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/content_settings/host_content_settings_map.h"
 #include "chrome/browser/download/download_manager.h"
@@ -32,6 +31,7 @@
 #include "chrome/browser/sync/profile_sync_service.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/transport_security_persister.h"
+#include "chrome/browser/ui/browser_list.h"
 #include "chrome/browser/ui/find_bar/find_bar_state.h"
 #include "chrome/browser/ui/webui/chrome_url_data_manager.h"
 #include "chrome/browser/ui/webui/extension_icon_source.h"
@@ -152,7 +152,7 @@ bool Profile::IsSyncAccessible() {
 ////////////////////////////////////////////////////////////////////////////////
 //
 // OffTheRecordProfileImpl is a profile subclass that wraps an existing profile
-// to make it suitable for the off the record mode.
+// to make it suitable for the incognito mode.
 //
 ////////////////////////////////////////////////////////////////////////////////
 class OffTheRecordProfileImpl : public Profile,
@@ -241,7 +241,8 @@ class OffTheRecordProfileImpl : public Profile,
           NewRunnableMethod(
               appcache_service_.get(),
               &ChromeAppCacheService::InitializeOnIOThread,
-              GetPath(), IsOffTheRecord(),
+              IsOffTheRecord()
+                  ? FilePath() : GetPath().Append(chrome::kAppCacheDirname),
               make_scoped_refptr(GetHostContentSettingsMap()),
               make_scoped_refptr(GetExtensionSpecialStoragePolicy()),
               false));
@@ -474,7 +475,7 @@ class OffTheRecordProfileImpl : public Profile,
   }
 
   virtual SessionService* GetSessionService() {
-    // Don't save any sessions when off the record.
+    // Don't save any sessions when incognito.
     return NULL;
   }
 

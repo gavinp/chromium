@@ -42,11 +42,6 @@ int kDefaultSendUMADataInterval = 20000;  // in milliseconds.
 
 static const wchar_t kUmaSendIntervalValue[] = L"UmaSendInterval";
 
-// This lock ensures that histograms created by ChromeFrame are thread safe.
-// The histograms created in ChromeFrame can be initialized on multiple
-// threads.
-base::Lock g_ChromeFrameHistogramLock;
-
 class ChromeFrameAutomationProxyImpl::TabProxyNotificationMessageFilter
     : public IPC::ChannelProxy::MessageFilter {
  public:
@@ -120,15 +115,6 @@ class ChromeFrameAutomationProxyImpl::CFMsgDispatcher
       case AutomationMsg_NavigateInExternalTab::ID:
         InvokeCallback<BeginNavigateContext>(msg, context);
         break;
-      case AutomationMsg_InstallExtension::ID:
-        InvokeCallback<InstallExtensionContext>(msg, context);
-        break;
-      case AutomationMsg_LoadExpandedExtension::ID:
-        InvokeCallback<InstallExtensionContext>(msg, context);
-        break;
-      case AutomationMsg_GetEnabledExtensions::ID:
-        InvokeCallback<GetEnabledExtensionsContext>(msg, context);
-        break;
       case AutomationMsg_RunUnloadHandlers::ID:
         InvokeCallback<UnloadContext>(msg, context);
         break;
@@ -200,8 +186,7 @@ struct LaunchTimeStats {
 
   void Dump() {
     base::TimeDelta launch_time = base::Time::Now() - launch_time_begin_;
-    THREAD_SAFE_UMA_HISTOGRAM_TIMES("ChromeFrame.AutomationServerLaunchTime",
-                                    launch_time);
+    UMA_HISTOGRAM_TIMES("ChromeFrame.AutomationServerLaunchTime", launch_time);
     const int64 launch_milliseconds = launch_time.InMilliseconds();
     if (launch_milliseconds > kAutomationServerReasonableLaunchDelay) {
       LOG(WARNING) << "Automation server launch took longer than expected: " <<
@@ -355,18 +340,18 @@ void AutomationProxyCacheEntry::CreateProxy(ChromeFrameLaunchParams* params,
         base::TimeTicks::Now() - automation_server_launch_start_time_;
 
     if (launch_result_ == AUTOMATION_SUCCESS) {
-      THREAD_SAFE_UMA_HISTOGRAM_TIMES(
+      UMA_HISTOGRAM_TIMES(
           "ChromeFrame.AutomationServerLaunchSuccessTime", delta);
     } else {
-      THREAD_SAFE_UMA_HISTOGRAM_TIMES(
+      UMA_HISTOGRAM_TIMES(
           "ChromeFrame.AutomationServerLaunchFailedTime", delta);
     }
 
-    THREAD_SAFE_UMA_HISTOGRAM_CUSTOM_COUNTS("ChromeFrame.LaunchResult",
-                                            launch_result_,
-                                            AUTOMATION_SUCCESS,
-                                            AUTOMATION_CREATE_TAB_FAILED,
-                                            AUTOMATION_CREATE_TAB_FAILED + 1);
+    UMA_HISTOGRAM_CUSTOM_COUNTS("ChromeFrame.LaunchResult",
+                                launch_result_,
+                                AUTOMATION_SUCCESS,
+                                AUTOMATION_CREATE_TAB_FAILED,
+                                AUTOMATION_CREATE_TAB_FAILED + 1);
   }
 
   TRACE_EVENT_END("chromeframe.createproxy", this, "");
@@ -849,69 +834,6 @@ void ChromeFrameAutomationClient::FindInPage(const std::wstring& search_string,
   automation_server_->SendAsAsync(msg, NULL, this);
 }
 
-void ChromeFrameAutomationClient::InstallExtension(
-    const FilePath& crx_path,
-    void* user_data) {
-  if (automation_server_ == NULL) {
-    InstallExtensionComplete(crx_path,
-                             user_data,
-                             AUTOMATION_MSG_EXTENSION_INSTALL_FAILED);
-    return;
-  }
-
-  InstallExtensionContext* ctx = new InstallExtensionContext(
-      this, crx_path, user_data);
-
-  IPC::SyncMessage* msg = new AutomationMsg_InstallExtension(crx_path, NULL);
-
-  // The context will delete itself after it is called.
-  automation_server_->SendAsAsync(msg, ctx, this);
-}
-
-void ChromeFrameAutomationClient::InstallExtensionComplete(
-    const FilePath& crx_path,
-    void* user_data,
-    AutomationMsg_ExtensionResponseValues res) {
-  DCHECK_EQ(base::PlatformThread::CurrentId(), ui_thread_id_);
-
-  if (chrome_frame_delegate_) {
-    chrome_frame_delegate_->OnExtensionInstalled(crx_path, user_data, res);
-  }
-}
-
-void ChromeFrameAutomationClient::GetEnabledExtensions(void* user_data) {
-    if (automation_server_ == NULL) {
-      GetEnabledExtensionsComplete(user_data, &std::vector<FilePath>());
-      return;
-    }
-
-    GetEnabledExtensionsContext* ctx = new GetEnabledExtensionsContext(
-        this, user_data);
-
-    IPC::SyncMessage* msg = new AutomationMsg_GetEnabledExtensions(
-        ctx->extension_directories());
-
-    // The context will delete itself after it is called.
-    automation_server_->SendAsAsync(msg, ctx, this);
-}
-
-void ChromeFrameAutomationClient::GetEnabledExtensionsComplete(
-    void* user_data,
-    std::vector<FilePath>* extension_directories) {
-  DCHECK_EQ(base::PlatformThread::CurrentId(), ui_thread_id_);
-
-  if (chrome_frame_delegate_) {
-    chrome_frame_delegate_->OnGetEnabledExtensionsComplete(
-        user_data, *extension_directories);
-  }
-
-  delete extension_directories;
-}
-
-int ChromeFrameAutomationClient::GetSessionId() const {
-  return session_id_;
-}
-
 void ChromeFrameAutomationClient::OnChromeFrameHostMoved() {
   // Use a local var to avoid the small possibility of getting the tab_
   // member be cleared while we try to use it.
@@ -921,25 +843,6 @@ void ChromeFrameAutomationClient::OnChromeFrameHostMoved() {
   // so we still need to test for NULL.
   if (tab)
     tab->OnHostMoved();
-}
-
-void ChromeFrameAutomationClient::LoadExpandedExtension(
-    const FilePath& path,
-    void* user_data) {
-  if (automation_server_ == NULL) {
-    InstallExtensionComplete(path,
-                             user_data,
-                             AUTOMATION_MSG_EXTENSION_INSTALL_FAILED);
-    return;
-  }
-
-  InstallExtensionContext* ctx = new InstallExtensionContext(
-      this, path, user_data);
-
-  IPC::SyncMessage* msg = new AutomationMsg_LoadExpandedExtension(path, NULL);
-
-  // The context will delete itself after it is called.
-  automation_server_->SendAsAsync(msg, ctx, this);
 }
 
 void ChromeFrameAutomationClient::CreateExternalTab() {
@@ -964,12 +867,11 @@ void ChromeFrameAutomationClient::CreateExternalTab() {
       !chrome_launch_params_->widget_mode(),
       chrome_launch_params_->route_all_top_level_navigations());
 
-  THREAD_SAFE_UMA_HISTOGRAM_CUSTOM_COUNTS(
+  UMA_HISTOGRAM_CUSTOM_COUNTS(
       "ChromeFrame.HostNetworking", !use_chrome_network_, 0, 1, 2);
 
-  THREAD_SAFE_UMA_HISTOGRAM_CUSTOM_COUNTS(
-      "ChromeFrame.HandleTopLevelRequests", handle_top_level_requests_, 0, 1,
-      2);
+  UMA_HISTOGRAM_CUSTOM_COUNTS("ChromeFrame.HandleTopLevelRequests",
+                              handle_top_level_requests_, 0, 1, 2);
 
   IPC::SyncMessage* message =
       new AutomationMsg_CreateExternalTab(settings, NULL, NULL, 0, 0);
@@ -998,19 +900,6 @@ AutomationLaunchResult ChromeFrameAutomationClient::CreateExternalTabComplete(
     session_id_ = session_id;
   }
   return launch_result;
-}
-
-void ChromeFrameAutomationClient::SetEnableExtensionAutomation(
-    const std::vector<std::string>& functions_enabled) {
-  if (!is_initialized())
-    return;
-
-  // We are doing initialization, so there is no need to reset extension
-  // automation, only to set it.  Also, we want to avoid resetting extension
-  // automation that some other automation client has set up.  Therefore only
-  // send the message if we are going to enable automation of some functions.
-  if (!functions_enabled.empty())
-    tab_->SetEnableExtensionAutomation(functions_enabled);
 }
 
 // Invoked in launch background thread.

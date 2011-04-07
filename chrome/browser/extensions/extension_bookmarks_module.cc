@@ -20,7 +20,6 @@
 #include "chrome/browser/bookmarks/bookmark_html_writer.h"
 #include "chrome/browser/bookmarks/bookmark_model.h"
 #include "chrome/browser/bookmarks/bookmark_utils.h"
-#include "chrome/browser/browser_list.h"
 #include "chrome/browser/extensions/extension_bookmark_helpers.h"
 #include "chrome/browser/extensions/extension_bookmarks_module_constants.h"
 #include "chrome/browser/extensions/extension_event_router.h"
@@ -29,6 +28,7 @@
 #include "chrome/browser/importer/importer_host.h"
 #include "chrome/browser/prefs/pref_service.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/browser_list.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/pref_names.h"
 #include "content/common/notification_service.h"
@@ -853,10 +853,10 @@ void ImportBookmarksFunction::FileSelected(const FilePath& path,
                                            int index,
                                            void* params) {
   scoped_refptr<ImporterHost> importer_host(new ImporterHost);
-  importer::ProfileInfo profile_info;
-  profile_info.importer_type = importer::BOOKMARKS_HTML;
-  profile_info.source_path = path;
-  importer_host->StartImportSettings(profile_info,
+  importer::SourceProfile source_profile;
+  source_profile.importer_type = importer::BOOKMARKS_HTML;
+  source_profile.source_path = path;
+  importer_host->StartImportSettings(source_profile,
                                      profile(),
                                      importer::FAVORITES,
                                      new ProfileWriter(profile()),

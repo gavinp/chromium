@@ -552,10 +552,25 @@ void WriteNode::PutNigoriSpecificsAndMarkForSyncing(
 void WriteNode::SetPasswordSpecifics(
     const sync_pb::PasswordSpecificsData& data) {
   DCHECK_EQ(syncable::PASSWORDS, GetModelType());
+
+  Cryptographer* cryptographer = GetTransaction()->GetCryptographer();
+
+  // Idempotency check to prevent unnecessary syncing: if the plaintexts match
+  // and the old ciphertext is encrypted with the most current key, there's
+  // nothing to do here.  Because each encryption is seeded with a different
+  // random value, checking for equivalence post-encryption doesn't suffice.
+  const sync_pb::EncryptedData& old_ciphertext =
+      GetEntry()->Get(SPECIFICS).GetExtension(sync_pb::password).encrypted();
+  scoped_ptr<sync_pb::PasswordSpecificsData> old_plaintext(
+      DecryptPasswordSpecifics(GetEntry()->Get(SPECIFICS), cryptographer));
+  if (old_plaintext.get() &&
+      old_plaintext->SerializeAsString() == data.SerializeAsString() &&
+      cryptographer->CanDecryptUsingDefaultKey(old_ciphertext)) {
+    return;
+  }
+
   sync_pb::PasswordSpecifics new_value;
-  if (!GetTransaction()->GetCryptographer()->Encrypt(
-      data,
-      new_value.mutable_encrypted())) {
+  if (!cryptographer->Encrypt(data, new_value.mutable_encrypted())) {
     NOTREACHED();
   }
   PutPasswordSpecificsAndMarkForSyncing(new_value);
@@ -1077,6 +1092,21 @@ DictionaryValue* SyncManager::ChangeRecord::ToValue(
   return value;
 }
 
+bool BaseNode::ContainsString(const std::string& lowercase_query) const {
+  DCHECK(GetEntry());
+  // TODO(lipalani) - figure out what to do if the node is encrypted.
+  const sync_pb::EntitySpecifics& specifics = GetEntry()->Get(SPECIFICS);
+  std::string temp;
+  // The protobuf serialized string contains the original strings. So
+  // we will just serialize it and search it.
+  specifics.SerializeToString(&temp);
+
+  // Now convert to lower case.
+  StringToLowerASCII(&temp);
+
+  return temp.find(lowercase_query) != std::string::npos;
+}
+
 SyncManager::ExtraPasswordChangeRecordData::ExtraPasswordChangeRecordData() {}
 
 SyncManager::ExtraPasswordChangeRecordData::ExtraPasswordChangeRecordData(
@@ -1349,6 +1379,8 @@ class SyncManager::SyncInternal
                               const browser_sync::JsArgList& args,
                               const browser_sync::JsEventHandler* sender);
 
+  ListValue* FindNodesContainingString(const std::string& query);
+
  private:
   // Helper to call OnAuthError when no authentication credentials are
   // available.
@@ -1465,6 +1497,9 @@ class SyncManager::SyncInternal
   browser_sync::JsArgList ProcessGetNodeByIdMessage(
       const browser_sync::JsArgList& args);
 
+  browser_sync::JsArgList ProcessFindNodesContainingString(
+      const browser_sync::JsArgList& args);
+
   // We couple the DirectoryManager and username together in a UserShare member
   // so we can return a handle to share_ to clients of the API for use when
   // constructing any transaction type.
@@ -1484,7 +1519,7 @@ class SyncManager::SyncInternal
   scoped_ptr<SyncerThreadAdapter> syncer_thread_;
 
   // The SyncNotifier which notifies us when updates need to be downloaded.
-  scoped_ptr<sync_notifier::SyncNotifier> sync_notifier_;
+  sync_notifier::SyncNotifier* sync_notifier_;
 
   // A multi-purpose status watch object that aggregates stats from various
   // sync components.
@@ -1694,7 +1729,7 @@ bool SyncManager::SyncInternal::Init(
   registrar_ = model_safe_worker_registrar;
   setup_for_test_mode_ = setup_for_test_mode;
 
-  sync_notifier_.reset(sync_notifier);
+  sync_notifier_ = sync_notifier;
   sync_notifier_->AddObserver(this);
 
   share_.dir_manager.reset(new DirectoryManager(database_location));
@@ -1817,7 +1852,7 @@ void SyncManager::SyncInternal::MarkAndNotifyInitializationComplete() {
 
 void SyncManager::SyncInternal::SendNotification() {
   DCHECK_EQ(MessageLoop::current(), core_message_loop_);
-  if (!sync_notifier_.get()) {
+  if (!sync_notifier_) {
     VLOG(1) << "Not sending notification: sync_notifier_ is NULL";
     return;
   }
@@ -2036,6 +2071,52 @@ void SyncManager::SyncInternal::EncryptDataTypes(
   return;
 }
 
+namespace {
+
+void FindChildNodesContainingString(const std::string& lowercase_query,
+    const ReadNode& parent_node,
+    sync_api::ReadTransaction* trans,
+    ListValue* result) {
+  int64 child_id = parent_node.GetFirstChildId();
+  while (child_id != kInvalidId) {
+    ReadNode node(trans);
+    if (node.InitByIdLookup(child_id)) {
+      if (node.ContainsString(lowercase_query)) {
+        result->Append(new StringValue(base::Int64ToString(child_id)));
+      }
+      FindChildNodesContainingString(lowercase_query, node, trans, result);
+      child_id = node.GetSuccessorId();
+    } else {
+      LOG(WARNING) << "Lookup of node failed. Id: " << child_id;
+      return;
+    }
+  }
+}
+}  // namespace
+
+// Returned pointer owned by the caller.
+ListValue* SyncManager::SyncInternal::FindNodesContainingString(
+    const std::string& query) {
+  // Convert the query string to lower case to perform case insensitive
+  // searches.
+  std::string lowercase_query = query;
+  StringToLowerASCII(&lowercase_query);
+  ReadTransaction trans(GetUserShare());
+  ReadNode root(&trans);
+  root.InitByRootLookup();
+
+  ListValue* result = new ListValue();
+
+  base::Time start_time = base::Time::Now();
+  FindChildNodesContainingString(lowercase_query, root, &trans, result);
+  base::Time end_time = base::Time::Now();
+
+  base::TimeDelta delta = end_time - start_time;
+  VLOG(1) << "Time taken in milliseconds to search " << delta.InMilliseconds();
+
+  return result;
+}
+
 void SyncManager::SyncInternal::ReEncryptEverything(WriteTransaction* trans) {
   syncable::ModelTypeSet encrypted_types =
       GetEncryptedDataTypes(trans->GetWrappedTrans());
@@ -2138,9 +2219,8 @@ void SyncManager::SyncInternal::Shutdown() {
   // We NULL out sync_notifer_ so that any pending tasks do not
   // trigger further notifications.
   // TODO(akalin): NULL the other member variables defensively, too.
-  if (sync_notifier_.get()) {
+  if (sync_notifier_) {
     sync_notifier_->RemoveObserver(this);
-    sync_notifier_.reset();
   }
 
   // |this| is about to be destroyed, so we have to ensure any messages
@@ -2602,6 +2682,14 @@ void SyncManager::SyncInternal::ProcessMessage(
     }
     parent_router_->RouteJsEvent(
         "onGetNodeByIdFinished", ProcessGetNodeByIdMessage(args), sender);
+  } else if (name == "findNodesContainingString") {
+    if (!parent_router_) {
+      LogNoRouter(name, args);
+      return;
+    }
+    parent_router_->RouteJsEvent(
+        "onFindNodesContainingStringFinished",
+        ProcessFindNodesContainingString(args), sender);
   } else {
     VLOG(1) << "Dropping unknown message " << name
               << " with args " << args.ToString();
@@ -2631,6 +2719,21 @@ browser_sync::JsArgList SyncManager::SyncInternal::ProcessGetNodeByIdMessage(
   }
   ListValue return_args;
   return_args.Append(node.ToValue());
+  return browser_sync::JsArgList(return_args);
+}
+
+browser_sync::JsArgList SyncManager::SyncInternal::
+    ProcessFindNodesContainingString(
+    const browser_sync::JsArgList& args) {
+  std::string query;
+  ListValue return_args;
+  if (!args.Get().GetString(0, &query)) {
+    return_args.Append(new ListValue());
+    return browser_sync::JsArgList(return_args);
+  }
+
+  ListValue* result = FindNodesContainingString(query);
+  return_args.Append(result);
   return browser_sync::JsArgList(return_args);
 }
 

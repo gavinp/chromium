@@ -19,7 +19,6 @@
 #include "chrome/browser/background_contents_service.h"
 #include "chrome/browser/background_mode_manager.h"
 #include "chrome/browser/bookmarks/bookmark_model.h"
-#include "chrome/browser/browser_list.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_signin.h"
 #include "chrome/browser/content_settings/host_content_settings_map.h"
@@ -69,6 +68,7 @@
 #include "chrome/browser/sync/profile_sync_service.h"
 #include "chrome/browser/tabs/pinned_tab_service.h"
 #include "chrome/browser/transport_security_persister.h"
+#include "chrome/browser/ui/browser_list.h"
 #include "chrome/browser/ui/find_bar/find_bar_state.h"
 #include "chrome/browser/ui/webui/chrome_url_data_manager.h"
 #include "chrome/browser/ui/webui/extension_icon_source.h"
@@ -651,7 +651,8 @@ ChromeAppCacheService* ProfileImpl::GetAppCacheService() {
         NewRunnableMethod(
             appcache_service_.get(),
             &ChromeAppCacheService::InitializeOnIOThread,
-            GetPath(), IsOffTheRecord(),
+            IsOffTheRecord()
+                ? FilePath() : GetPath().Append(chrome::kAppCacheDirname),
             make_scoped_refptr(GetHostContentSettingsMap()),
             make_scoped_refptr(GetExtensionSpecialStoragePolicy()),
             clear_local_state_on_exit_));

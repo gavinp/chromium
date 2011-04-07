@@ -11,11 +11,11 @@
 #include "base/string_util.h"
 #include "base/threading/thread.h"
 #include "base/utf_string_conversions.h"
-#include "chrome/browser/browser_list.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/dom_operation_notification_details.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/renderer_preferences_util.h"
+#include "chrome/browser/ui/browser_list.h"
 #include "chrome/common/bindings_policy.h"
 #include "content/browser/browser_thread.h"
 #include "content/browser/renderer_host/render_process_host.h"
@@ -247,7 +247,7 @@ void InterstitialPage::Show() {
 
 void InterstitialPage::Hide() {
   RenderWidgetHostView* old_view = tab_->render_view_host()->view();
-  if (old_view && !old_view->IsShowing()) {
+  if (tab_->interstitial_page() == this && old_view && !old_view->IsShowing()) {
     // Show the original RVH since we're going away.  Note it might not exist if
     // the renderer crashed while the interstitial was showing.
     // Note that it is important that we don't call Show() if the view is

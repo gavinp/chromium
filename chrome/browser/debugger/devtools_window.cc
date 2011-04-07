@@ -7,7 +7,6 @@
 #include "base/string_number_conversions.h"
 #include "base/utf_string_conversions.h"
 #include "base/values.h"
-#include "chrome/browser/browser_list.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_window.h"
 #include "chrome/browser/debugger/devtools_manager.h"
@@ -21,6 +20,7 @@
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/browser_list.h"
 #include "chrome/browser/ui/tab_contents/tab_contents_wrapper.h"
 #include "chrome/common/bindings_policy.h"
 #include "chrome/common/pref_names.h"
@@ -145,7 +145,6 @@ void DevToolsWindow::Show(DevToolsToggleAction action) {
       BrowserWindow* inspected_window = inspected_browser->window();
       tab_contents_->tab_contents()->set_delegate(this);
       inspected_window->UpdateDevTools();
-      SetAttachedWindow();
       tab_contents_->view()->SetInitialFocus();
       inspected_window->Show();
       TabStripModel* tabstrip_model = inspected_browser->tabstrip_model();
@@ -166,11 +165,10 @@ void DevToolsWindow::Show(DevToolsToggleAction action) {
   if (!browser_)
     CreateDevToolsBrowser();
 
-  if (should_show_window)
+  if (should_show_window) {
     browser_->window()->Show();
-  SetAttachedWindow();
-  if (should_show_window)
     tab_contents_->view()->SetInitialFocus();
+  }
 
   ScheduleAction(action);
 }
@@ -279,7 +277,7 @@ bool DevToolsWindow::IsInspectedBrowserPopup() {
   return (browser->type() & Browser::TYPE_POPUP) != 0;
 }
 
-void DevToolsWindow::SetAttachedWindow() {
+void DevToolsWindow::UpdateFrontendAttachedState() {
   tab_contents_->render_view_host()->ExecuteJavascriptInWebFrame(
       string16(),
       docked_ ? ASCIIToUTF16("WebInspector.setAttachedWindow(true);")
@@ -327,7 +325,6 @@ void DevToolsWindow::Observe(NotificationType type,
                              const NotificationSource& source,
                              const NotificationDetails& details) {
   if (type == NotificationType::LOAD_STOP && !is_loaded_) {
-    SetAttachedWindow();
     is_loaded_ = true;
     UpdateTheme();
     DoAction();
@@ -354,6 +351,7 @@ void DevToolsWindow::ScheduleAction(DevToolsToggleAction action) {
 }
 
 void DevToolsWindow::DoAction() {
+  UpdateFrontendAttachedState();
   // TODO: these messages should be pushed through the WebKit API instead.
   switch (action_on_load_) {
     case DEVTOOLS_TOGGLE_ACTION_SHOW_CONSOLE:

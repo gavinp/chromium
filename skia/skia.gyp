@@ -17,6 +17,7 @@
         '../third_party/skia/gpu/src/GrContext.cpp',
         '../third_party/skia/gpu/src/GrCreatePathRenderer_none.cpp',
         '../third_party/skia/gpu/src/GrDrawTarget.cpp',
+        '../third_party/skia/gpu/src/GrGLDefaultInterface_none.cpp',
         '../third_party/skia/gpu/src/GrGLIndexBuffer.cpp',
         '../third_party/skia/gpu/src/GrGLInterface.cpp',
         '../third_party/skia/gpu/src/GrGLTexture.cpp',
@@ -39,6 +40,7 @@
         '../third_party/skia/gpu/src/GrRectanizer_fifo.cpp',
         '../third_party/skia/gpu/src/GrResource.cpp',
         '../third_party/skia/gpu/src/GrStencil.cpp',
+        '../third_party/skia/gpu/src/GrTexture.cpp',
         '../third_party/skia/gpu/src/GrTextureCache.cpp',
         '../third_party/skia/gpu/src/GrTextContext.cpp',
         '../third_party/skia/gpu/src/GrTextStrike.cpp',
@@ -666,8 +668,6 @@
         '../third_party/skia/gpu/include',
         '../third_party/skia/gpu/src',
         '../third_party/skia/src/core',
-
-        '../gpu',
       ],
       'msvs_disabled_warnings': [4244, 4267,4345, 4390, 4554, 4800],
       'mac_framework_dirs': [
@@ -732,7 +732,6 @@
             '../build/linux/system.gyp:freetype2',
             '../third_party/harfbuzz/harfbuzz.gyp:harfbuzz',
             '../third_party/icu/icu.gyp:icuuc',
-            '../gpu/gpu.gyp:gles2_c_lib',
           ],
           'cflags': [
             '-Wno-unused',
@@ -786,10 +785,6 @@
           ],
           'dependencies': [
             '../base/base.gyp:base',
-            '../gpu/gpu.gyp:gles2_c_lib',
-            '../gpu/gpu.gyp:gles2_implementation',
-            '../gpu/gpu.gyp:command_buffer_client',
-            '../gpu/gpu.gyp:command_buffer_common',
           ],
           'direct_dependent_settings': {
             'defines': [

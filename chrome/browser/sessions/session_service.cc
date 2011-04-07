@@ -15,7 +15,6 @@
 #include "base/metrics/histogram.h"
 #include "base/pickle.h"
 #include "base/threading/thread.h"
-#include "chrome/browser/browser_list.h"
 #include "chrome/browser/browser_window.h"
 #include "chrome/browser/extensions/extension_tab_helper.h"
 #include "chrome/browser/prefs/session_startup_pref.h"
@@ -26,6 +25,7 @@
 #include "chrome/browser/sessions/session_types.h"
 #include "chrome/browser/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/browser_init.h"
+#include "chrome/browser/ui/browser_list.h"
 #include "chrome/browser/ui/tab_contents/tab_contents_wrapper.h"
 #include "chrome/common/extensions/extension.h"
 #include "content/browser/tab_contents/navigation_controller.h"
@@ -1265,14 +1265,12 @@ bool SessionService::IsOnlyOneTabLeft() {
     return false;
   }
 
-  // NOTE: This uses the original profile so that closing the last non-off the
-  // record window while there are open incognito windows resets state).
   int window_count = 0;
   for (BrowserList::const_iterator i = BrowserList::begin();
        i != BrowserList::end(); ++i) {
     const SessionID::id_type window_id = (*i)->session_id().id();
     if (should_track_changes_for_browser_type((*i)->type()) &&
-        (*i)->profile()->GetOriginalProfile() == profile() &&
+        (*i)->profile() == profile() &&
         window_closing_ids_.find(window_id) == window_closing_ids_.end()) {
       if (++window_count > 1)
         return false;
@@ -1291,8 +1289,6 @@ bool SessionService::HasOpenTrackableBrowsers(const SessionID& window_id) {
     return true;
   }
 
-  // NOTE: This uses the original profile so that closing the last non-off the
-  // record window while there are open incognito window resets state).
   for (BrowserList::const_iterator i = BrowserList::begin();
        i != BrowserList::end(); ++i) {
     Browser* browser = *i;
@@ -1300,7 +1296,7 @@ bool SessionService::HasOpenTrackableBrowsers(const SessionID& window_id) {
     if (browser_id != window_id.id() &&
         window_closing_ids_.find(browser_id) == window_closing_ids_.end() &&
         should_track_changes_for_browser_type(browser->type()) &&
-        browser->profile()->GetOriginalProfile() == profile()) {
+        browser->profile() == profile()) {
       return true;
     }
   }

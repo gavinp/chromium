@@ -203,8 +203,6 @@
         'browser/automation/automation_browser_tracker.h',
         'browser/automation/automation_util.cc',
         'browser/automation/automation_util.h',
-        'browser/automation/automation_extension_function.cc',
-        'browser/automation/automation_extension_function.h',
         'browser/automation/automation_extension_tracker.cc',
         'browser/automation/automation_extension_tracker.h',
         'browser/automation/automation_provider.cc',
@@ -233,10 +231,6 @@
         'browser/automation/automation_window_tracker.h',
         'browser/automation/chrome_frame_automation_provider.cc',
         'browser/automation/chrome_frame_automation_provider.h',
-        'browser/automation/extension_automation_constants.cc',
-        'browser/automation/extension_automation_constants.h',
-        'browser/automation/extension_port_container.cc',
-        'browser/automation/extension_port_container.h',
         'browser/automation/testing_automation_provider.cc',
         'browser/automation/testing_automation_provider.h',
         'browser/automation/testing_automation_provider_chromeos.cc',
@@ -1352,7 +1346,6 @@
         'browser/net/sqlite_persistent_cookie_store.h',
         'browser/net/ssl_config_service_manager.h',
         'browser/net/ssl_config_service_manager_pref.cc',
-        'browser/net/ssl_config_service_manager_system.cc',
         'browser/net/url_fixer_upper.cc',
         'browser/net/url_fixer_upper.h',
         'browser/net/url_info.cc',
@@ -2959,7 +2952,6 @@
         'browser/ui/views/js_modal_dialog_views.h',
         'browser/ui/views/keyboard_overlay_delegate.cc',
         'browser/ui/views/keyboard_overlay_delegate.h',
-        'browser/ui/views/list_background.h',
         'browser/ui/views/local_storage_info_view.cc',
         'browser/ui/views/local_storage_info_view.h',
         'browser/ui/views/local_storage_set_item_info_view.cc',
@@ -3516,17 +3508,6 @@
             '../build/linux/system.gyp:gtkprint',
             '../build/linux/system.gyp:nss',
             '../build/linux/system.gyp:x11',
-          ],
-        }],
-        # Use system SSL settings on Mac and Windows.  Use preferences
-        # for SSL settings on other platforms.
-        ['OS=="mac" or OS=="win"', {
-          'sources!': [
-            'browser/net/ssl_config_service_manager_pref.cc',
-          ],
-        }, {  # else
-          'sources!': [
-            'browser/net/ssl_config_service_manager_system.cc',
           ],
         }],
         ['OS=="mac"', {

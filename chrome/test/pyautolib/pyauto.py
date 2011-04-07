@@ -1861,6 +1861,7 @@ class PyUITest(pyautolib.PyUITestBase, unittest.TestCase):
           u'last synced': u'Just now',
           u'summary': u'READY',
           u'sync url': u'clients4.google.com',
+          u'updates received': 42,
           u'synced datatypes': [ u'Bookmarks',
                                  u'Preferences',
                                  u'Passwords',
@@ -2105,32 +2106,36 @@ class PyUITest(pyautolib.PyUITestBase, unittest.TestCase):
     SAMPLE:
     [
       {
-        u'description': u'Web Store',
-        u'options_url': u'',
         u'app_launch_index': 2,
-        u'name': u'Chrome Web Store',
-        u'launch_url': u'https://chrome.google.com/webstore',
-        u'icon_small': u'chrome://favicon/https://chrome.google.com/webstore',
-        u'launch_container': 2,
+        u'description': u'Web Store',
         u'icon_big': u'chrome://theme/IDR_APP_DEFAULT_ICON',
+        u'icon_small': u'chrome://favicon/https://chrome.google.com/webstore',
         u'id': u'ahfgeienlihckogmohjhadlkjgocpleb',
-        u'launch_type': 1
+        u'is_component_extension': True,
+        u'is_disabled': False,
+        u'launch_container': 2,
+        u'launch_type': 1,
+        u'launch_url': u'https://chrome.google.com/webstore',
+        u'name': u'Chrome Web Store',
+        u'options_url': u'',
       },
       {
-        u'description': u'A countdown app',
-        u'options_url': u'',
         u'app_launch_index': 1,
-        u'name': u'Countdown',
-        u'launch_url': (u'chrome-extension://aeabikdlfbfeihglecobdkdflahfgcpd/'
-                        u'launchLocalPath.html'),
+        u'description': u'A countdown app',
+        u'icon_big': (u'chrome-extension://aeabikdlfbfeihglecobdkdflahfgcpd/'
+                      u'countdown128.png'),
         u'icon_small': (u'chrome://favicon/chrome-extension://'
                         u'aeabikdlfbfeihglecobdkdflahfgcpd/'
                         u'launchLocalPath.html'),
-        u'launch_container': 2,
-        u'icon_big': (u'chrome-extension://aeabikdlfbfeihglecobdkdflahfgcpd/'
-                      u'countdown128.png'),
         u'id': u'aeabikdlfbfeihglecobdkdflahfgcpd',
+        u'is_component_extension': False,
+        u'is_disabled': False,
+        u'launch_container': 2,
         u'launch_type': 1
+        u'launch_url': (u'chrome-extension://aeabikdlfbfeihglecobdkdflahfgcpd/'
+                        u'launchLocalPath.html'),
+        u'name': u'Countdown',
+        u'options_url': u'',
       }
     ]
 
@@ -2500,11 +2505,15 @@ class PyUITest(pyautolib.PyUITestBase, unittest.TestCase):
 
     Blocks until scanning is complete.
 
+    Returns:
+      The new list of networks obtained from GetNetworkInfo().
+
     Raises:
       pyauto_errors.JSONInterfaceError if the automation call returns an error.
     """
     cmd_dict = { 'command': 'NetworkScan' }
     self._GetResultFromJSONRequest(cmd_dict, windex=-1)
+    return self.GetNetworkInfo()
 
   PROXY_TYPE_DIRECT = 1
   PROXY_TYPE_MANUAL = 2
@@ -2605,10 +2614,15 @@ class PyUITest(pyautolib.PyUITestBase, unittest.TestCase):
 
     Blocks until connection succeeds or fails.
 
+    Args:
+      service_path: Flimflam path that defines the wifi network.
+      password: Passphrase for connecting to the wifi network.
+      identity: Identity for 802.11x networks.
+      certpath: Certificate path for 802.11x networks.
+
     Returns:
-      A tuple.
-      The first element is True on success and False on failure.
-      The second element is None on success or an error string on failure.
+      An error string if an error occured.
+      None otherwise.
 
     Raises:
       pyauto_errors.JSONInterfaceError if the automation call returns an error.
@@ -2621,13 +2635,10 @@ class PyUITest(pyautolib.PyUITestBase, unittest.TestCase):
         'certpath': certpath,
     }
     result = self._GetResultFromJSONRequest(cmd_dict, windex=-1)
-    if result.has_key('error_code'):
-      return (False, result['error_code'])
-    else:
-      return (True, None)
+    return result.get('error_code')
 
   def DisconnectFromWifiNetwork(self):
-    """Disconnect from a wifi network by its service path.
+    """Disconnect from the connected wifi network.
 
     Blocks until disconnect is complete.
 

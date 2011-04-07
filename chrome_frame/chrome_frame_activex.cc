@@ -303,37 +303,9 @@ void ChromeFrameActivex::OnAutomationServerLaunchFailed(
 
   if (reason == AUTOMATION_VERSION_MISMATCH &&
       ShouldShowVersionMismatchDialog(is_privileged(), m_spClientSite)) {
-    THREAD_SAFE_UMA_HISTOGRAM_COUNTS(
-        "ChromeFrame.VersionMismatchDisplayed", 1);
+    UMA_HISTOGRAM_COUNTS("ChromeFrame.VersionMismatchDisplayed", 1);
     DisplayVersionMismatchWarning(m_hWnd, server_version);
   }
-}
-
-void ChromeFrameActivex::OnExtensionInstalled(
-    const FilePath& path,
-    void* user_data,
-    AutomationMsg_ExtensionResponseValues response) {
-  base::win::ScopedBstr path_str(path.value().c_str());
-  Fire_onextensionready(path_str, response);
-}
-
-void ChromeFrameActivex::OnGetEnabledExtensionsComplete(
-    void* user_data,
-    const std::vector<FilePath>& extension_directories) {
-  SAFEARRAY* sa = ::SafeArrayCreateVector(VT_BSTR, 0,
-                                          extension_directories.size());
-  sa->fFeatures = sa->fFeatures | FADF_BSTR;
-  ::SafeArrayLock(sa);
-
-  for (size_t i = 0; i < extension_directories.size(); ++i) {
-    LONG index = static_cast<LONG>(i);
-    ::SafeArrayPutElement(sa, &index, reinterpret_cast<void*>(
-        CComBSTR(extension_directories[i].value().c_str()).Detach()));
-  }
-
-  Fire_ongetenabledextensionscomplete(sa);
-  ::SafeArrayUnlock(sa);
-  ::SafeArrayDestroy(sa);
 }
 
 void ChromeFrameActivex::OnChannelError() {
@@ -485,20 +457,6 @@ HRESULT ChromeFrameActivex::IOleObject_SetClientSite(
 
     std::wstring profile_name(GetHostProcessName(false));
     if (is_privileged()) {
-
-      base::win::ScopedBstr automated_functions_arg;
-      service_hr = service->GetExtensionApisToAutomate(
-          automated_functions_arg.Receive());
-      if (S_OK == service_hr && automated_functions_arg) {
-        std::string automated_functions(
-            WideToASCII(static_cast<BSTR>(automated_functions_arg)));
-        functions_enabled_.clear();
-        // base::SplitString writes one empty entry for blank strings, so we
-        // need this to allow specifying zero automation of API functions.
-        if (!automated_functions.empty())
-          base::SplitString(automated_functions, ',', &functions_enabled_);
-      }
-
       base::win::ScopedBstr profile_name_arg;
       service_hr = service->GetChromeProfileName(profile_name_arg.Receive());
       if (S_OK == service_hr && profile_name_arg)
@@ -531,7 +489,7 @@ HRESULT ChromeFrameActivex::IOleObject_SetClientSite(
     }
 
     // Log a metric that Chrome Frame is being used in Widget mode
-    THREAD_SAFE_UMA_LAUNCH_TYPE_COUNT(RENDERER_TYPE_CHROME_WIDGET);
+    UMA_LAUNCH_TYPE_COUNT(RENDERER_TYPE_CHROME_WIDGET);
   }
 
   return hr;

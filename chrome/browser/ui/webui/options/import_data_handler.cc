@@ -88,8 +88,8 @@ void ImportDataHandler::ImportData(const ListValue* args) {
     selected_items |= importer::SEARCH_ENGINES;
   }
 
-  const importer::ProfileInfo& source_profile =
-      importer_list_->GetSourceProfileInfoAt(browser_index);
+  const importer::SourceProfile& source_profile =
+      importer_list_->GetSourceProfileAt(browser_index);
   uint16 supported_items = source_profile.services_supported;
 
   uint16 import_services = (selected_items & supported_items);
@@ -114,7 +114,7 @@ void ImportDataHandler::ImportData(const ListValue* args) {
                                         new ProfileWriter(profile), false);
   } else {
     LOG(WARNING) << "There were no settings to import from '"
-        << source_profile.description << "'.";
+        << source_profile.importer_name << "'.";
   }
 }
 
@@ -122,12 +122,12 @@ void ImportDataHandler::SourceProfilesLoaded() {
   ListValue browser_profiles;
   int profiles_count = importer_list_->GetAvailableProfileCount();
   for (int i = 0; i < profiles_count; i++) {
-    const importer::ProfileInfo& source_profile =
-        importer_list_->GetSourceProfileInfoAt(i);
+    const importer::SourceProfile& source_profile =
+        importer_list_->GetSourceProfileAt(i);
     uint16 browser_services = source_profile.services_supported;
 
     DictionaryValue* browser_profile = new DictionaryValue();
-    browser_profile->SetString("name", source_profile.description);
+    browser_profile->SetString("name", source_profile.importer_name);
     browser_profile->SetInteger("index", i);
     browser_profile->SetBoolean("history",
         (browser_services & importer::HISTORY) != 0);

@@ -23,19 +23,19 @@
 
 namespace IPC {
 
-// Traits for importer::ProfileInfo struct to pack/unpack.
+// Traits for importer::SourceProfile struct to pack/unpack.
 template <>
-struct ParamTraits<importer::ProfileInfo> {
-  typedef importer::ProfileInfo param_type;
+struct ParamTraits<importer::SourceProfile> {
+  typedef importer::SourceProfile param_type;
   static void Write(Message* m, const param_type& p) {
-    WriteParam(m, p.description);
+    WriteParam(m, p.importer_name);
     WriteParam(m, static_cast<int>(p.importer_type));
     WriteParam(m, p.source_path);
     WriteParam(m, p.app_path);
     WriteParam(m, static_cast<int>(p.services_supported));
   }
   static bool Read(const Message* m, void** iter, param_type* p) {
-    if (!ReadParam(m, iter, &p->description))
+    if (!ReadParam(m, iter, &p->importer_name))
       return false;
 
     int importer_type = 0;
@@ -56,7 +56,7 @@ struct ParamTraits<importer::ProfileInfo> {
   }
   static void Log(const param_type& p, std::string* l) {
     l->append("(");
-    LogParam(p.description, l);
+    LogParam(p.importer_name, l);
     l->append(", ");
     LogParam(static_cast<int>(p.importer_type), l);
     l->append(", ");
@@ -67,7 +67,7 @@ struct ParamTraits<importer::ProfileInfo> {
     LogParam(static_cast<int>(p.services_supported), l);
     l->append(")");
   }
-};  // ParamTraits<importer::ProfileInfo>
+};  // ParamTraits<importer::SourceProfile>
 
 // Traits for history::URLRow to pack/unpack.
 template <>
@@ -373,10 +373,10 @@ struct ParamTraits<TemplateURL> {
 // ProfileImportProcess messages
 // These are messages sent from the browser to the profile import process.
 IPC_MESSAGE_CONTROL4(ProfileImportProcessMsg_StartImport,
-                     importer::ProfileInfo /* ProfileInfo struct */,
-                     int                   /* bitmask of items to import */,
-                     DictionaryValue       /* localized strings */,
-                     bool                  /* import to bookmark bar */)
+                     importer::SourceProfile,
+                     int                     /* Bitmask of items to import. */,
+                     DictionaryValue         /* Localized strings. */,
+                     bool                    /* Import to bookmark bar. */)
 
 IPC_MESSAGE_CONTROL0(ProfileImportProcessMsg_CancelImport)
 

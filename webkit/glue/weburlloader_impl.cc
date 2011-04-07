@@ -157,6 +157,7 @@ bool GetInfoFromDataURL(const GURL& url,
     info->charset.swap(charset);
     info->security_info.clear();
     info->content_length = -1;
+    info->load_timing.base_time = Time::Now();
 
     return true;
   }
@@ -194,24 +195,22 @@ void PopulateURLResponse(
   response->setConnectionReused(info.connection_reused);
   response->setDownloadFilePath(FilePathToWebString(info.download_file_path));
 
+  WebURLLoadTiming timing;
+  timing.initialize();
   const ResourceLoadTimingInfo& timing_info = info.load_timing;
-  if (!timing_info.base_time.is_null()) {
-    WebURLLoadTiming timing;
-    timing.initialize();
-    timing.setRequestTime(timing_info.base_time.ToDoubleT());
-    timing.setProxyStart(timing_info.proxy_start);
-    timing.setProxyEnd(timing_info.proxy_end);
-    timing.setDNSStart(timing_info.dns_start);
-    timing.setDNSEnd(timing_info.dns_end);
-    timing.setConnectStart(timing_info.connect_start);
-    timing.setConnectEnd(timing_info.connect_end);
-    timing.setSSLStart(timing_info.ssl_start);
-    timing.setSSLEnd(timing_info.ssl_end);
-    timing.setSendStart(timing_info.send_start);
-    timing.setSendEnd(timing_info.send_end);
-    timing.setReceiveHeadersEnd(timing_info.receive_headers_end);
-    response->setLoadTiming(timing);
-  }
+  timing.setRequestTime(timing_info.base_time.ToDoubleT());
+  timing.setProxyStart(timing_info.proxy_start);
+  timing.setProxyEnd(timing_info.proxy_end);
+  timing.setDNSStart(timing_info.dns_start);
+  timing.setDNSEnd(timing_info.dns_end);
+  timing.setConnectStart(timing_info.connect_start);
+  timing.setConnectEnd(timing_info.connect_end);
+  timing.setSSLStart(timing_info.ssl_start);
+  timing.setSSLEnd(timing_info.ssl_end);
+  timing.setSendStart(timing_info.send_start);
+  timing.setSendEnd(timing_info.send_end);
+  timing.setReceiveHeadersEnd(timing_info.receive_headers_end);
+  response->setLoadTiming(timing);
 
   if (info.devtools_info.get()) {
     WebHTTPLoadInfo load_info;
@@ -608,8 +607,7 @@ void WebURLLoaderImpl::Context::OnReceivedData(const char* data, int len) {
     // client_->didReceiveData and client_->didReceiveResponse.
     multipart_delegate_->OnReceivedData(data, len);
   } else {
-    // FIXME(vsevik): rename once renamed in webkit
-    client_->didReceiveData2(loader_, data, len, -1);
+    client_->didReceiveData(loader_, data, len, -1);
   }
 }
 
