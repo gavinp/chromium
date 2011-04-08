@@ -399,11 +399,8 @@ IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, PrerenderPopup) {
 }
 
 IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, PrerenderDontDoHttps) {
-  net::TestServer https_server(net::TestServer::TYPE_HTTPS,
-                               FilePath(FILE_PATH_LITERAL("chrome/test/data")));
-  ASSERT_TRUE(https_server.Start());
-  GURL https_url = https_server.GetURL("files/prerender/prerender_page.html");
-  PrerenderTestURL(https_url.spec(), FINAL_STATUS_HTTPS, 1);
+  set_use_https_src(true);
+  PrerenderTestURL("prerender_page.html", FINAL_STATUS_HTTPS, 1);
 }
 
 // Test that page-based redirects to https will cancel prerenders.
