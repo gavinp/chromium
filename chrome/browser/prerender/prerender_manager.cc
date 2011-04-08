@@ -167,7 +167,6 @@ void PrerenderManager::ConsiderPrerendering(
                               already_prerendering));
 }
 
-
 bool PrerenderManager::AddPreload(const GURL& url,
                                   const std::vector<GURL>& alias_urls,
                                   const GURL& referrer) {
