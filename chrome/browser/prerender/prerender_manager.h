@@ -53,8 +53,6 @@ class PrerenderManager : public base::RefCountedThreadSafe<PrerenderManager> {
   // Owned by a Profile object for the lifetime of the profile.
   explicit PrerenderManager(Profile* profile);
 
-  virtual ~PrerenderManager();
-
   // Called from the IO thread, either begins prerendering, or adds the
   // request to the queue of pending preloads.
   void ConsiderPrerendering(const GURL& url,
@@ -142,6 +140,8 @@ class PrerenderManager : public base::RefCountedThreadSafe<PrerenderManager> {
  protected:
   struct PendingContentsData;
 
+  virtual ~PrerenderManager();
+
   void ConsiderPrerenderingUIThread(
       const GURL& url,
       const GURL& referrer,
@@ -158,7 +158,7 @@ class PrerenderManager : public base::RefCountedThreadSafe<PrerenderManager> {
   // Test that needs needs access to internal functions.
   friend class PrerenderBrowserTest;
 
-  friend class base::RefCounted<PrerenderManager>;
+  friend class base::RefCountedThreadSafe<PrerenderManager>;
 
   struct PrerenderContentsData;
 

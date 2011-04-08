@@ -123,7 +123,7 @@ void SquashRequest(ResourceMessageFilter* filter,
                    int route_id,
                    int request_id) {
   net::URLRequestStatus status(net::URLRequestStatus::FAILED,
-                                 net::ERR_ABORTED);
+                               net::ERR_ABORTED);
   if (sync_result) {
     SyncLoadResult result;
     result.status = status;
