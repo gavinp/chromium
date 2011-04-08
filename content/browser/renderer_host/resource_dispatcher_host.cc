@@ -118,10 +118,12 @@ const int kMaxPendingDataMessages = 20;
 // This bound is 25MB, which allows for around 6000 outstanding requests.
 const int kMaxOutstandingRequestsCostPerProcess = 26214400;
 
-void SquashRequest(ResourceMessageFilter* filter,
-                   IPC::Message* sync_result,
-                   int route_id,
-                   int request_id) {
+// Stop a request early, before any browser side resources (URLRequest,
+// ResourceHandler, etc...) have been attached to it.
+void AbortRequestEarly(ResourceMessageFilter* filter,
+                       IPC::Message* sync_result,
+                       int route_id,
+                       int request_id) {
   net::URLRequestStatus status(net::URLRequestStatus::FAILED,
                                net::ERR_ABORTED);
   if (sync_result) {
@@ -383,16 +385,15 @@ void ResourceDispatcherHost::BeginRequest(
         ResolveBlobReferencesInUploadData(request_data.upload_data.get());
   }
 
-  const std::string referrer(CommandLine::ForCurrentProcess()->HasSwitch(
-      switches::kNoReferrers) ? std::string() : request_data.referrer.spec());
-  const bool is_prerendering = IsPrerenderingChildRoutePair(child_id, route_id);
-
   if (is_shutdown_ ||
       !ShouldServiceRequest(process_type, child_id, request_data)) {
-    SquashRequest(filter_, sync_result, route_id, request_id);
+    AbortRequestEarly(filter_, sync_result, route_id, request_id);
     return;
   }
 
+  const std::string referrer(CommandLine::ForCurrentProcess()->HasSwitch(
+      switches::kNoReferrers) ? std::string() : request_data.referrer.spec());
+  const bool is_prerendering = IsPrerenderingChildRoutePair(child_id, route_id);
   if (prerender::PrerenderManager::IsPrerenderingPossible() &&
       request_data.resource_type == ResourceType::PREFETCH) {
     context->prerender_manager()->ConsiderPrerendering(
@@ -400,7 +401,10 @@ void ResourceDispatcherHost::BeginRequest(
         GURL(referrer),
         std::make_pair(child_id, route_id),
         is_prerendering);
-    SquashRequest(filter_, sync_result, route_id, request_id);
+    // Abort the request here, because the PrerenderManager is now
+    // responsible for launching a (possibly delayed) request for this
+    // resource.
+    AbortRequestEarly(filter_, sync_result, route_id, request_id);
     return;
   }
 
