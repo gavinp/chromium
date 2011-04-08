@@ -53,8 +53,13 @@ class PrerenderManager : public base::RefCountedThreadSafe<PrerenderManager> {
   // Owned by a Profile object for the lifetime of the profile.
   explicit PrerenderManager(Profile* profile);
 
-  // Called from the IO thread, either begins prerendering, or adds the
-  // request to the queue of pending preloads.
+  // Either begins prerendering the URL supplied, or adds the request
+  // to the queue of pending preloads.  In the case that this request
+  // originates from a LINK element in an already_prerendering main
+  // resource, the request will be placed in a queue associated with
+  // the child_route_id_pair, so that when we use our already_prerendering
+  // mani resource we can launch this request.
+  // This must be called from the IO thread.
   void ConsiderPrerendering(const GURL& url,
                             const GURL& referrer,
                             const std::pair<int, int>& child_route_id_pair,

@@ -23,6 +23,20 @@
 
 #include <deque>
 
+/*
+- link to a pdf
+  - link to an application/octet-stream
+  - link to many other mime types [images, video, audio, etc.] 
+  - link to an HTTPS page.
+
+  - link to an HTTP page which does an HTTP redirect to an HTTPS page.
+PrerenderRedirectToHttps
+
+  - link to a non-GET request [actually, this may be impossible since
+LOAD_PREFETCH should only be triggered via a <link rel=prefetch> and I think
+(it's impossible)
+*/
+
 // Prerender tests work as follows:
 //
 // A page with a prefetch link to the test page is loaded.  Once prerendered,
@@ -384,8 +398,15 @@ IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, PrerenderPopup) {
   PrerenderTestURL("prerender_popup.html", FINAL_STATUS_CREATE_NEW_WINDOW, 1);
 }
 
+IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, PrerenderDontDoHttps) {
+  net::TestServer https_server(net::TestServer::TYPE_HTTPS,
+                               FilePath(FILE_PATH_LITERAL("chrome/test/data")));
+  ASSERT_TRUE(https_server.Start());
+  GURL https_url = https_server.GetURL("files/prerender/prerender_page.html");
+  PrerenderTestURL(https_url.spec(), FINAL_STATUS_HTTPS, 1);
+}
+
 // Test that page-based redirects to https will cancel prerenders.
-// Disabled, http://crbug.com/73580
 IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, PrerenderRedirectToHttps) {
   net::TestServer https_server(net::TestServer::TYPE_HTTPS,
                                FilePath(FILE_PATH_LITERAL("chrome/test/data")));
