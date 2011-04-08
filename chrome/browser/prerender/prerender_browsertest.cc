@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <iostream>
+
 #include "base/command_line.h"
 #include "base/path_service.h"
 #include "base/string_util.h"
@@ -296,7 +298,9 @@ class PrerenderBrowserTest : public InProcessBrowserTest {
   GURL UrlForHtmlFile(const std::string& html_file) {
     std::string dest_path = "files/prerender/";
     dest_path.append(html_file);
-    return test_server()->GetURL(dest_path);
+    GURL tmp = test_server()->GetURL(dest_path);
+    std::cout << "UrlForHtmlFile = " << tmp.spec() << "\n";
+    return tmp;
   }
 
   WaitForLoadPrerenderContentsFactory* prc_factory_;
