@@ -9,7 +9,7 @@
 #include "base/mac/mac_util.h"
 #include "base/process_util.h"
 #include "base/sys_string_conversions.h"
-#include "chrome/browser/favicon_tab_helper.h"
+#include "chrome/browser/favicon_helper.h"
 #include "chrome/browser/ui/browser_dialogs.h"
 #include "chrome/browser/ui/browser_list.h"
 #import "chrome/browser/ui/cocoa/multi_key_equivalent_button.h"
@@ -148,7 +148,7 @@ HungRendererController* g_instance = NULL;
 
       // TabContents can return a null SkBitmap if it has no favicon.  If this
       // happens, use the default favicon.
-      const SkBitmap& bitmap = it->favicon_tab_helper()->GetFavicon();
+      const SkBitmap& bitmap = it->tab_contents()->GetFavicon();
       if (!bitmap.isNull()) {
         [favicons addObject:gfx::SkBitmapToNSImage(bitmap)];
       } else {

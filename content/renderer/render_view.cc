@@ -176,7 +176,7 @@
 #include "ui/gfx/native_theme_win.h"
 #elif defined(USE_X11)
 #include "third_party/WebKit/Source/WebKit/chromium/public/linux/WebRenderTheme.h"
-#include "ui/gfx/native_theme_linux.h"
+#include "ui/gfx/native_theme.h"
 #elif defined(OS_MACOSX)
 #include "skia/ext/skia_utils_mac.h"
 #endif
@@ -2796,17 +2796,22 @@ void RenderView::willSubmitForm(WebFrame* frame, const WebFormElement& form) {
 void RenderView::willPerformClientRedirect(
     WebFrame* frame, const WebURL& from, const WebURL& to, double interval,
     double fire_time) {
-  // Ignore
+  FOR_EACH_OBSERVER(
+      RenderViewObserver, observers_,
+      WillPerformClientRedirect(frame, from, to, interval, fire_time));
 }
 
 void RenderView::didCancelClientRedirect(WebFrame* frame) {
-  // Ignore
+  FOR_EACH_OBSERVER(
+      RenderViewObserver, observers_, DidCancelClientRedirect(frame));
 }
 
 void RenderView::didCompleteClientRedirect(
     WebFrame* frame, const WebURL& from) {
   if (!frame->parent())
     completed_client_redirect_src_ = from;
+  FOR_EACH_OBSERVER(
+      RenderViewObserver, observers_, DidCompleteClientRedirect(frame, from));
 }
 
 void RenderView::didCreateDataSource(WebFrame* frame, WebDataSource* ds) {
@@ -4257,7 +4262,7 @@ void RenderView::OnSetRendererPrefs(const RendererPreferences& renderer_prefs) {
   WebColorName name = WebKit::WebColorWebkitFocusRingColor;
   WebKit::setNamedColors(&name, &renderer_prefs.focus_ring_color, 1);
   WebKit::setCaretBlinkInterval(renderer_prefs.caret_blink_interval);
-  gfx::NativeThemeLinux::instance()->SetScrollbarColors(
+  gfx::NativeTheme::instance()->SetScrollbarColors(
       renderer_prefs.thumb_inactive_color,
       renderer_prefs.thumb_active_color,
       renderer_prefs.track_color);
