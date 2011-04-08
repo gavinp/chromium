@@ -4,7 +4,7 @@ vars = {
   "googlecode_url": "http://%s.googlecode.com/svn",
   "webkit_trunk": "http://svn.webkit.org/repository/webkit/trunk",
   "nacl_trunk": "http://src.chromium.org/native_client/trunk",
-  "webkit_revision": "83210",
+  "webkit_revision": "83283",
   "chromium_git": "http://git.chromium.org/git",
   "swig_revision": "69281",
   "nacl_revision": "4559",
@@ -13,7 +13,7 @@ vars = {
   "libvpx_revision": "76510",
   "ffmpeg_revision": "79854",
   "skia_revision": "1074",
-  "v8_revision": "7530",
+  "v8_revision": "7550",
 }
 
 deps = {

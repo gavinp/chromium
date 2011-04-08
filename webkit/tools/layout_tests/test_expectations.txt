@@ -6,5 +6,5 @@
 // until the changes can be landed upstream.
 
 BUGANTONM : fast/events/window-onerror7.html = TEXT
+// Waiting for a V8 roll.
 BUGANTONM : plugins/netscape-plugin-property-access-exception.html = TEXT
-
