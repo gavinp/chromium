@@ -7,8 +7,33 @@
 #include "ipc/ipc_message.h"
 #include "ipc/ipc_message_macros.h"
 #include "ipc/ipc_param_traits.h"
+#include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebReferrerPolicy.h"
 
 #define IPC_MESSAGE_START PrerenderMsgStart
+
+IPC_ENUM_TRAITS(WebKit::WebReferrerPolicy)
+
+// Prerender Link Manager Messages
+// These are messages sent in relation to <link rel=prerender> elements.
+
+// Notifies of the insertion of a <link rel=prerender> element in the
+// document.
+IPC_MESSAGE_ROUTED4(PrerenderMsg_NewLinkPrerender,
+                    int /* id, assigned by the WebCore::PrerenderHandle */,
+                    GURL /* href from the element */,
+                    GURL /* referrer for launching document */,
+                    WebKit::WebReferrerPolicy)
+
+// Notifies on removal of a <link rel=prerender> element from the document.
+IPC_MESSAGE_ROUTED1(PrerenderMsg_RemovedLinkPrerender,
+                    int /* id, assigned by the WebCore::PrerenderHandle */)
+
+// Notifies on unloading a <link rel=prerender> element from a frame.
+IPC_MESSAGE_ROUTED1(PrerenderMsg_UnloadedLinkPrerender,
+                    int /* id, assigned by the WebCore::PrerenderHandle */)
+
+// Prerender View Host Messages
+// These are messages sent in relation to running prerenders.
 
 // Tells a renderer if it's currently being prerendered.  Must only be set
 // to true before any navigation occurs, and only set to false at most once

@@ -47,6 +47,12 @@ class CONTENT_EXPORT RendererWebKitPlatformSupportImpl
   virtual bool isLinkVisited(unsigned long long linkHash) OVERRIDE;
   virtual WebKit::WebMessagePortChannel* createMessagePortChannel() OVERRIDE;
   virtual void prefetchHostName(const WebKit::WebString&) OVERRIDE;
+  // TODO(gavinp): Add OVERRIDE when the WebKit bug xxx is gardened.
+  virtual void newLinkPrerender(
+      int id, const WebKit::WebView&, const WebKit::WebURL& url, const WebKit::WebString& referrer,
+      WebKit::WebReferrerPolicy policy);
+  virtual void removedLinkPrerender(int id);
+  virtual void unloadedLinkPrerender(int id);
   virtual void cacheMetadata(
       const WebKit::WebURL&, double, const char*, size_t) OVERRIDE;
   virtual WebKit::WebString defaultLocale() OVERRIDE;

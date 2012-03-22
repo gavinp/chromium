@@ -24,6 +24,7 @@
 #include "chrome/common/extensions/extension_process_policy.h"
 #include "chrome/common/extensions/extension_set.h"
 #include "chrome/common/jstemplate_builder.h"
+#include "chrome/common/prerender_messages.h"
 #include "chrome/common/render_messages.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/renderer/autofill/autofill_agent.h"
@@ -761,6 +762,32 @@ bool ChromeContentRendererClient::ShouldOverridePageVisibilityState(
   *override_state = WebKit::WebPageVisibilityStatePrerender;
   return true;
 }
+
+void ChromeContentRendererClient::NewLinkPrerender(
+    content::RenderView* sender,
+    int routing_id,
+    int prerender_id,
+    const GURL& url,
+    const GURL& referrer,
+    WebKit::WebReferrerPolicy policy) {
+  sender->Send(new PrerenderMsg_NewLinkPrerender(
+      MSG_ROUTING_NONE, routing_id, id, url, referrer, policy));
+}
+
+void ChromeContentRendererClient::RemovedLinkPrerender(
+    content::RenderView* sender,
+    int id) {
+  sender->Send(new PrerenderMsg_RemovedLinkPrerender(
+      MSG_ROUTING_NONE, id));
+}
+
+void ChromeContentRendererClient::UnloadedLinkPrerender(
+    content::RenderView* sender,
+    int id) {
+  sender->Send(new PrerenderMsg_UnloadedLinkPrerender(
+      MSG_ROUTING_NONE, id));
+}
+
 
 bool ChromeContentRendererClient::HandleGetCookieRequest(
     content::RenderView* sender,
