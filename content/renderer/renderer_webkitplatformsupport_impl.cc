@@ -21,6 +21,7 @@
 #include "content/common/webmessageportchannel_impl.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/gpu_info.h"
+#include "content/public/common/referrer.h"
 #include "content/public/renderer/content_renderer_client.h"
 #include "content/renderer/gamepad_shared_memory_reader.h"
 #include "content/renderer/media/audio_device.h"
@@ -262,8 +263,9 @@ void RendererWebKitPlatformSupportImpl::newLinkPrerender(
     const WebKit::WebString& referrer,
     WebKit::WebReferrerPolicy policy,
     const WebKit::WebSize& size) {
+  content::Referrer content_referrer(GURL(referrer),policy);
   RenderThread::current()->Send(new PrerenderMsg_NewLinkPrerender(
-      MSG_ROUTING_NONE, prerender_id, url, GURL(referrer), policy, size));
+      MSG_ROUTING_NONE, prerender_id, url, referrer, policy, size));
 }
 
 void RendererWebKitPlatformSupportImpl::removedLinkPrerender(int prerender_id) {

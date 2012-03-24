@@ -3,11 +3,13 @@
 // found in the LICENSE file.
 
 // Multiply-included message file, no traditional include guard.
+#include "content/public/common/referrer.h"
 #include "googleurl/src/gurl.h"
 #include "ipc/ipc_message.h"
 #include "ipc/ipc_message_macros.h"
 #include "ipc/ipc_param_traits.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebReferrerPolicy.h"
+#include "ui/gfx/size.h"
 
 #define IPC_MESSAGE_START PrerenderMsgStart
 
@@ -18,11 +20,10 @@ IPC_ENUM_TRAITS(WebKit::WebReferrerPolicy)
 
 // Notifies of the insertion of a <link rel=prerender> element in the
 // document.
-IPC_MESSAGE_CONTROL5(PrerenderMsg_NewLinkPrerender,
+IPC_MESSAGE_CONTROL4(PrerenderMsg_NewLinkPrerender,
                      int /* id, assigned by the WebCore::PrerenderHandle */,
                      GURL /* href from the element */,
-                     GURL /* referrer for launching document */,
-                     WebKit::WebReferrerPolicy,
+                     content::Referrer,
                      gfx::Size);
 
 // Notifies on removal of a <link rel=prerender> element from the document.

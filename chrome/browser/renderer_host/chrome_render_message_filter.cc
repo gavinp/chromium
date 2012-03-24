@@ -21,6 +21,7 @@
 #include "chrome/browser/nacl_host/nacl_process_host.h"
 #include "chrome/browser/net/chrome_url_request_context.h"
 #include "chrome/browser/net/predictor.h"
+#include "chrome/browser/prerender/prerender_link_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/task_manager/task_manager.h"
 #include "chrome/common/chrome_notification_types.h"
@@ -511,4 +512,24 @@ void ChromeRenderMessageFilter::OnSetCookie(const IPC::Message& message,
   AutomationResourceMessageFilter::SetCookiesForUrl(
       render_process_id_, message.routing_id(), url, cookie);
 #endif
+}
+
+void ChromeRenderMessageFilter::OnNewLinkPrerender(
+    const IPC::Message& message,
+    int prerender_id,
+    const GURL& url,
+    const content::Referrer& referrer,
+    const gfx::Size& size) {
+}
+
+void ChromeRenderMessageFilter::OnRemovedLinkPrerender(
+    const IPC::Message& message,
+    int prerender_id) {
+  PrerenderLinkManager::OnRemovedLinkPrerender(message, prerender_id);
+}
+
+void ChromeRenderMessageFilter::OnUnloadedLinkPrerender(
+    const IPC::Message& message,
+    int prerender_id) {
+  PrerenderLinkManager::OnUnloadedLinkPrerender(message, prerender_id);
 }
