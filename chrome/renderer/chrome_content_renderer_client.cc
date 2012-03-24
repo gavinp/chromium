@@ -763,32 +763,6 @@ bool ChromeContentRendererClient::ShouldOverridePageVisibilityState(
   return true;
 }
 
-void ChromeContentRendererClient::NewLinkPrerender(
-    content::RenderView* sender,
-    int routing_id,
-    int prerender_id,
-    const GURL& url,
-    const GURL& referrer,
-    WebKit::WebReferrerPolicy policy) {
-  sender->Send(new PrerenderMsg_NewLinkPrerender(
-      MSG_ROUTING_NONE, routing_id, id, url, referrer, policy));
-}
-
-void ChromeContentRendererClient::RemovedLinkPrerender(
-    content::RenderView* sender,
-    int id) {
-  sender->Send(new PrerenderMsg_RemovedLinkPrerender(
-      MSG_ROUTING_NONE, id));
-}
-
-void ChromeContentRendererClient::UnloadedLinkPrerender(
-    content::RenderView* sender,
-    int id) {
-  sender->Send(new PrerenderMsg_UnloadedLinkPrerender(
-      MSG_ROUTING_NONE, id));
-}
-
-
 bool ChromeContentRendererClient::HandleGetCookieRequest(
     content::RenderView* sender,
     const GURL& url,

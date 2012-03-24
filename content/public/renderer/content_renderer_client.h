@@ -159,14 +159,6 @@ class ContentRendererClient {
       const RenderView* render_view,
       WebKit::WebPageVisibilityState* override_state) const = 0;
 
-  virtual void NewLinkPrerender(int routing_id,
-                                int prerender_id,
-                                const GURL& url,
-                                const GURL& referrer,
-                                WebKit::WebReferrerPolicy policy) = 0;
-  virtual void RemovedLinkPrerender(int id) = 0;
-  virtual void UnloadedLinkPrerender(int id) = 0;
-
   // Return true if the GetCookie request will be handled by the embedder.
   // Cookies are returned in the cookie parameter.
   virtual bool HandleGetCookieRequest(RenderView* sender,

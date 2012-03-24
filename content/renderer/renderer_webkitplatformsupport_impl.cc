@@ -256,34 +256,25 @@ void RendererWebKitPlatformSupportImpl::prefetchHostName(
       hostname_utf8.data(), hostname_utf8.length());
 }
 
-
 void RendererWebKitPlatformSupportImpl::newLinkPrerender(
-    int id,
-    const WebKit::WebView& webView,
+    int prerender_id,
     WebKit::WebURL& url,
     const WebKit::WebString& referrer,
-    WebKit::WebReferrerPolicy policy) {
-  RenderViewImpl* render_view = RenderViewImpl::FromWebView(webView);
-  const int route_id = render_view->GetRoutingID();
-  content::GetContentClient()->renderer()->NewLinkPrerender(
-      route_id, id, url, GURL(referrer), policy);
+    WebKit::WebReferrerPolicy policy,
+    const WebKit::WebSize& size) {
+  RenderThread::current()->Send(new PrerenderMsg_NewLinkPrerender(
+      MSG_ROUTING_NONE, prerender_id, url, GURL(referrer), policy, size));
 }
 
-void RendererWebKitPlatformSupportImpl::removedLinkPrerender(int id) {
-  WebFrame* web_frame = WebFrame::frameForCurrentContext();
-  if (!web_frame)
-    return;
-  RenderViewImpl* render_view = RenderViewImpl::FromWebView(web_frame->view());
-  content::GetContentClient()->renderer()->RemovedLinkPrerender(render_view, id);
+void RendererWebKitPlatformSupportImpl::removedLinkPrerender(int prerender_id) {
+  RenderThread::current()->Send(new PrerenderMsg_RemovedLinkPrerender(
+      MSG_ROUTING_NONE, prerender_id));
 }
 
-void RendererWebKitPlatformSupportImpl::unloadedLinkPrerender(int id) {
-  WebFrame* web_frame = WebFrame::frameForCurrentContext();
-  if (!web_frame)
-    return;
-  RenderViewImpl* render_view = RenderViewImpl::FromWebView(web_frame->view());
-  content::GetContentClient()->renderer()->UnloadedLinkPrerender(render_view,
-                                                                 id);
+void RendererWebKitPlatformSupportImpl::unloadedLinkPrerender(
+    int prerender_id) {
+  RenderThread::current()->Send(new PrerenderMsg_UnloadedLinkPrerender(
+      MSG_ROUTING_NONE, prerender_id));
 }
 
 bool

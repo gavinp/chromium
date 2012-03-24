@@ -18,19 +18,20 @@ IPC_ENUM_TRAITS(WebKit::WebReferrerPolicy)
 
 // Notifies of the insertion of a <link rel=prerender> element in the
 // document.
-IPC_MESSAGE_ROUTED4(PrerenderMsg_NewLinkPrerender,
-                    int /* id, assigned by the WebCore::PrerenderHandle */,
-                    GURL /* href from the element */,
-                    GURL /* referrer for launching document */,
-                    WebKit::WebReferrerPolicy)
+IPC_MESSAGE_CONTROL5(PrerenderMsg_NewLinkPrerender,
+                     int /* id, assigned by the WebCore::PrerenderHandle */,
+                     GURL /* href from the element */,
+                     GURL /* referrer for launching document */,
+                     WebKit::WebReferrerPolicy,
+                     gfx::Size);
 
 // Notifies on removal of a <link rel=prerender> element from the document.
-IPC_MESSAGE_ROUTED1(PrerenderMsg_RemovedLinkPrerender,
-                    int /* id, assigned by the WebCore::PrerenderHandle */)
+IPC_MESSAGE_CONTROL1(PrerenderMsg_RemovedLinkPrerender,
+                     int /* id, assigned by the WebCore::PrerenderHandle */)
 
 // Notifies on unloading a <link rel=prerender> element from a frame.
-IPC_MESSAGE_ROUTED1(PrerenderMsg_UnloadedLinkPrerender,
-                    int /* id, assigned by the WebCore::PrerenderHandle */)
+IPC_MESSAGE_CONTROL1(PrerenderMsg_UnloadedLinkPrerender,
+                     int /* id, assigned by the WebCore::PrerenderHandle */)
 
 // Prerender View Host Messages
 // These are messages sent in relation to running prerenders.

@@ -100,13 +100,6 @@ class ChromeContentRendererClient : public content::ContentRendererClient {
   virtual bool ShouldOverridePageVisibilityState(
       const content::RenderView* render_view,
       WebKit::WebPageVisibilityState* override_state) const OVERRIDE;
-  virtual void NewLinkPrerender(int routing_id,
-                                int prerender_id,
-                                const GURL& url,
-                                const GURL& referrer,
-                                WebKit::WebReferrerPolicy policy) OVERRIDE;
-  virtual void RemovedLinkPrerender(int id) OVERRIDE;
-  virtual void UnloadedLinkPrerender(int id) OVERRIDE;
   virtual bool HandleGetCookieRequest(content::RenderView* sender,
                                       const GURL& url,
                                       const GURL& first_party_for_cookies,
