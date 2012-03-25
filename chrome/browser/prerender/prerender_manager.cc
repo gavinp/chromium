@@ -26,6 +26,7 @@
 #include "chrome/browser/prerender/prerender_histograms.h"
 #include "chrome/browser/prerender/prerender_history.h"
 #include "chrome/browser/prerender/prerender_manager_factory.h"
+#include "chrome/browser/prerender/prerender_link_manager.h"
 #include "chrome/browser/prerender/prerender_tab_helper.h"
 #include "chrome/browser/prerender/prerender_tracker.h"
 #include "chrome/browser/prerender/prerender_util.h"
@@ -254,7 +255,8 @@ PrerenderManager::PrerenderManager(Profile* profile,
           base::TimeDelta::FromMilliseconds(kMinTimeBetweenPrerendersMs)),
       weak_factory_(this),
       prerender_history_(new PrerenderHistory(kHistoryLength)),
-      histograms_(new PrerenderHistograms()) {
+      histograms_(new PrerenderHistograms()),
+      link_manager_(new PrerenderLinkManager(this)) {
   // There are some assumptions that the PrerenderManager is on the UI thread.
   // Any other checks simply make sure that the PrerenderManager is accessed on
   // the same thread that it was created on.
@@ -269,6 +271,21 @@ void PrerenderManager::Shutdown() {
 }
 
 bool PrerenderManager::AddPrerenderFromLinkRelPrerender(
+    int process_id,
+    const GURL& url,
+    const content::Referrer& referrer,
+    const gfx::Size& size) {
+#if defined(OS_ANDROID)
+  // TODO(jcivelli): http://crbug.com/113322 We should have an option to disable
+  //                link-prerender and enable omnibox-prerender only.
+  return false;
+#else
+  return AddPrerender(ORIGIN_LINK_REL_PRERENDER, child_route_id_pair,
+                      url, referrer, NULL);
+#endif  
+}
+
+bool PrerenderManager::AddPrerenderFromLinkRelPrerenderDeprecated(
     int process_id,
     int route_id,
     const GURL& url,

@@ -22,6 +22,8 @@
 #include "chrome/browser/net/chrome_url_request_context.h"
 #include "chrome/browser/net/predictor.h"
 #include "chrome/browser/prerender/prerender_link_manager.h"
+#include "chrome/browser/prerender/prerender_manager.h"
+#include "chrome/browser/prerender/prerender_manager_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/task_manager/task_manager.h"
 #include "chrome/common/chrome_notification_types.h"
@@ -515,21 +517,27 @@ void ChromeRenderMessageFilter::OnSetCookie(const IPC::Message& message,
 }
 
 void ChromeRenderMessageFilter::OnNewLinkPrerender(
-    const IPC::Message& message,
     int prerender_id,
     const GURL& url,
     const content::Referrer& referrer,
     const gfx::Size& size) {
+  if (prerender::PrerenderManager* prerender_manager =
+      prerender::PrerenderManagerFactory::GetForProfile(profile_)) {
+    prerender_manager->link_manager()->OnNewLinkPrerender(
+        render_process_id_, prerender_id, url, referrer, size);
+  }
 }
 
 void ChromeRenderMessageFilter::OnRemovedLinkPrerender(
-    const IPC::Message& message,
     int prerender_id) {
-  PrerenderLinkManager::OnRemovedLinkPrerender(message, prerender_id);
+  if (prerender::PrerenderManager* prerender_manager =
+      prerender::PrerenderManagerFactory::GetForProfile(profile_))
+    prerender_manager->link_manager()->OnRemovedLinkPrerender(prerender_id);
 }
 
 void ChromeRenderMessageFilter::OnUnloadedLinkPrerender(
-    const IPC::Message& message,
     int prerender_id) {
-  PrerenderLinkManager::OnUnloadedLinkPrerender(message, prerender_id);
+  if (prerender::PrerenderManager* prerender_manager =
+      prerender::PrerenderManagerFactory::GetForProfile(profile_))
+    prerender_manager->link_manager()->OnUnloadedLinkPrerender(prerender_id);
 }

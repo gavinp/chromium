@@ -12,11 +12,11 @@
 #include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebReferrerPolicy.h"
 
 namespace content {
-class RenderViewHost;
+class Referrer;
 }
 
-namespace IPC {
-class Message;
+namespace ui {
+class Size;
 }
 
 namespace prerender {
@@ -24,27 +24,26 @@ namespace prerender {
 class PrerenderManager;
 
 // Launch and cancel prerenders based on the LinkPrerender element events.
-class PrerenderLinkManager : public content::RenderViewHostObserver {
+class PrerenderLinkManager {
  public:
-  PrerenderLinkManager(content::RenderViewHost* render_view_host);
+  PrerenderLinkManager(PrerenderManager* manager);
   virtual ~PrerenderLinkManager();
 
-  // content::RenderViewHostObserver overrides
-  virtual bool OnMessageReceived(const IPC::Message& message) OVERRIDE;
+  void OnNewLinkPrerender(
+      int prerender_id,
+      int child_id,
+      const GURL& url,
+      const content::Referrer& referrer,
+      WebKit::WebReferrerPolicy policy,
+      const gfx::Size& size);
+  void OnRemovedLinkPrerender(int prerender_id);
+  void OnUnloadedLinkPrerender(int prerender_id);
 
  private:
   typedef std::map<int, GURL> LinkIdToUrlMap;
   typedef std::multimap<GURL, int> UrlToLinkIdMap;
 
-  void OnNewLinkPrerender(
-      const IPC::Message& message,
-      const GURL& url,
-      const GURL& referrer,
-      WebKit::WebReferrerPolicy policy);
-  void OnRemovedLinkPrerender(const IPC::Message& message, int id);
-  void OnUnloadedLinkPrerender(const IPC::Message& message, int id);
-
-  Profile* profile_;
+  PrerenderManager* manager_;
   LinkIdToUrlMap id_map_;
   UrlToLinkIdMap url_map_;
 

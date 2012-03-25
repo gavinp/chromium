@@ -143,9 +143,9 @@ class TestPrerenderManager : public PrerenderManager {
 
   // Shorthand to add a simple preload with a reasonable source.
   bool AddSimplePrerender(const GURL& url) {
-    return AddPrerenderFromLinkRelPrerender(-1, -1,
-                                            url,
-                                            content::Referrer());
+    return AddPrerenderFromLinkRelPrerenderDepricated(-1, -1,
+                                                      url,
+                                                      content::Referrer());
   }
 
   void set_rate_limit_enabled(bool enabled) {
@@ -454,7 +454,7 @@ TEST_F(PrerenderManagerTest, PendingPrerenderTest) {
 
   GURL pending_url("http://news.google.com/");
 
-  EXPECT_TRUE(prerender_manager()->AddPrerenderFromLinkRelPrerender(
+  EXPECT_TRUE(prerender_manager()->AddPrerenderFromLinkRelPrerenderDepricated(
       child_id, route_id,
       pending_url, content::Referrer(url, WebKit::WebReferrerPolicyDefault)));
 
@@ -486,7 +486,7 @@ TEST_F(PrerenderManagerTest, SourceRenderViewClosed) {
   prerender_manager()->CreateNextPrerenderContents(
       url,
       FINAL_STATUS_MANAGER_SHUTDOWN);
-  EXPECT_FALSE(prerender_manager()->AddPrerenderFromLinkRelPrerender(
+  EXPECT_FALSE(prerender_manager()->AddPrerenderFromLinkRelPrerenderDepricated(
       100, 100, url, content::Referrer()));
 }
 

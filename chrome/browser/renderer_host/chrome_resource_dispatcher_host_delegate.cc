@@ -60,10 +60,8 @@ void AddPrerenderOnUI(
   if (!prerender_manager || !prerender_manager->is_enabled())
     return;
 
-  prerender_manager->AddPrerenderFromLinkRelPrerender(render_process_id,
-                                                      render_view_id,
-                                                      url,
-                                                      referrer);
+  prerender_manager->AddPrerenderFromLinkRelPrerenderDepricated(
+      render_process_id, render_view_id, url, referrer);
 }
 
 void NotifyDownloadInitiatedOnUI(int render_process_id, int render_view_id) {
