@@ -298,10 +298,9 @@ class PrerenderManager : public base::SupportsWeakPtr<PrerenderManager>,
   typedef std::list<PrerenderContentsData> PrerenderContentsDataList;
 
   // Adds a prerender for |url| from referrer |referrer| initiated from the
-  // renderer specified by |child_id|. The |origin| specifies
-  // how the prerender was added. If the |session_storage_namespace| is NULL,
-  // it is discovered using the RenderViewHost specified by
-  // |child_route_id_pair|.
+  // renderer specified by |child_id|. The |origin| specifies how the prerender
+  // was added.  If the |session_storage_namespace| is NULL, it is discovered
+  // using the RenderViewHost specified by |child_route_id_pair|.
   bool AddPrerender(
       Origin origin,
       int child_id,
