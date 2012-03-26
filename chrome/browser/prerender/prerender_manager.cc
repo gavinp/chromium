@@ -275,6 +275,7 @@ bool PrerenderManager::AddPrerenderFromLinkRelPrerender(
     const GURL& url,
     const content::Referrer& referrer,
     const gfx::Size& size) {
+
 #if defined(OS_ANDROID)
   // TODO(jcivelli): http://crbug.com/113322 We should have an option to disable
   //                link-prerender and enable omnibox-prerender only.

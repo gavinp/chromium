@@ -50,10 +50,11 @@ class CONTENT_EXPORT RendererWebKitPlatformSupportImpl
   // TODO(gavinp): Add OVERRIDE when the WebKit bug xxx is gardened.
   virtual void newLinkPrerender(
       int prerender_id,
+      WebKit::WebView* webView,
       const WebKit::WebURL& url,
       const WebKit::WebString& referrer,
       WebKit::WebReferrerPolicy policy,
-      WebKit::WebSize& size) OVERRIDE;
+      const WebKit::WebSize& size) OVERRIDE;
   virtual void removedLinkPrerender(int id) OVERRIDE;
   virtual void unloadedLinkPrerender(int id) OVERRIDE;
   virtual void cacheMetadata(

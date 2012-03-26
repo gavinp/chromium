@@ -15,13 +15,20 @@
 
 IPC_ENUM_TRAITS(WebKit::WebReferrerPolicy)
 
+IPC_STRUCT_TRAITS_BEGIN(content::Referrer)
+  IPC_STRUCT_TRAITS_MEMBER(url)
+  IPC_STRUCT_TRAITS_MEMBER(policy)
+IPC_STRUCT_TRAITS_END()
+
 // Prerender Link Manager Messages
-// These are messages sent in relation to <link rel=prerender> elements.
+// These are messages sent from the renderer to the browser in
+// relation to <link rel=prerender> elements.
 
 // Notifies of the insertion of a <link rel=prerender> element in the
 // document.
-IPC_MESSAGE_CONTROL4(PrerenderMsg_NewLinkPrerender,
-                     int /* id, assigned by the WebCore::PrerenderHandle */,
+IPC_MESSAGE_CONTROL5(PrerenderMsg_NewLinkPrerender,
+                     int /* prerender_id, assigned in WebCore */,
+                     int /* render_view_route_id of launcher */,
                      GURL /* href from the element */,
                      content::Referrer,
                      gfx::Size);

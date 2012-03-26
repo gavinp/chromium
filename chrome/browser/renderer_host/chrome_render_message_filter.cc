@@ -518,13 +518,15 @@ void ChromeRenderMessageFilter::OnSetCookie(const IPC::Message& message,
 
 void ChromeRenderMessageFilter::OnNewLinkPrerender(
     int prerender_id,
+    int render_view_route_id,
     const GURL& url,
     const content::Referrer& referrer,
     const gfx::Size& size) {
   if (prerender::PrerenderManager* prerender_manager =
       prerender::PrerenderManagerFactory::GetForProfile(profile_)) {
     prerender_manager->link_manager()->OnNewLinkPrerender(
-        render_process_id_, prerender_id, url, referrer, size);
+        render_process_id_, prerender_id, render_view_route_id, 
+        url, referrer, size);
   }
 }
 

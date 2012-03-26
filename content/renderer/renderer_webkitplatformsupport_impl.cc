@@ -4,6 +4,8 @@
 
 #include "content/renderer/renderer_webkitplatformsupport_impl.h"
 
+#include "chrome/common/prerender_messages.h"  // XYZZY
+
 #include "base/command_line.h"
 #include "base/file_path.h"
 #include "base/file_util.h"
@@ -259,24 +261,27 @@ void RendererWebKitPlatformSupportImpl::prefetchHostName(
 
 void RendererWebKitPlatformSupportImpl::newLinkPrerender(
     int prerender_id,
-    WebKit::WebURL& url,
+    WebKit::WebView* webView,
+    const WebKit::WebURL& url,
     const WebKit::WebString& referrer,
     WebKit::WebReferrerPolicy policy,
     const WebKit::WebSize& size) {
+  RenderViewImpl* render_view = RenderViewImpl::FromWebView(webView);
+  const int render_view_route_id = render_view->GetRoutingID();
   content::Referrer content_referrer(GURL(referrer),policy);
-  RenderThread::current()->Send(new PrerenderMsg_NewLinkPrerender(
-      MSG_ROUTING_NONE, prerender_id, url, referrer, policy, size));
+  RenderThreadImpl::current()->Send(new PrerenderMsg_NewLinkPrerender(
+      prerender_id, render_view_route_id, GURL(url), content_referrer, size));
 }
 
 void RendererWebKitPlatformSupportImpl::removedLinkPrerender(int prerender_id) {
-  RenderThread::current()->Send(new PrerenderMsg_RemovedLinkPrerender(
-      MSG_ROUTING_NONE, prerender_id));
+  RenderThreadImpl::current()->Send(new PrerenderMsg_RemovedLinkPrerender(
+      prerender_id));
 }
 
 void RendererWebKitPlatformSupportImpl::unloadedLinkPrerender(
     int prerender_id) {
-  RenderThread::current()->Send(new PrerenderMsg_UnloadedLinkPrerender(
-      MSG_ROUTING_NONE, prerender_id));
+  RenderThreadImpl::current()->Send(new PrerenderMsg_UnloadedLinkPrerender(
+      prerender_id));
 }
 
 bool
