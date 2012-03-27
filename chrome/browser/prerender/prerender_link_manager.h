@@ -39,12 +39,17 @@ class PrerenderLinkManager {
       const GURL& url,
       const content::Referrer& referrer,
       const gfx::Size& size);
-  static void OnRemovedLinkPrerender(Profile* profile, int prerender_id);
-  static void OnUnloadedLinkPrerender(Profile* profile, int prerender_id);
+  static void OnRemovedLinkPrerender(Profile* profile,
+                                     int prerender_id,
+                                     int child_id);
+  static void OnUnloadedLinkPrerender(Profile* profile,
+                                      int prerender_id,
+                                      int child_id);
 
  private:
-  typedef std::map<int, GURL> PrerenderIdToUrlMap;
-  typedef std::multimap<GURL, int> UrlToPrerenderIdMap;
+  typedef std::pair<int, int> ChildAndPrerenderIdPair;
+  typedef std::map<ChildAndPrerenderIdPair, GURL> PrerenderIdToUrlMap;
+  typedef std::multimap<GURL, ChildAndPrerenderIdPair> UrlToPrerenderIdMap;
 
   void OnNewLinkPrerenderImpl(
       int prerender_id,
@@ -53,8 +58,8 @@ class PrerenderLinkManager {
       const GURL& url,
       const content::Referrer& referrer,
       const gfx::Size& size);
-  void OnRemovedLinkPrerenderImpl(int prerender_id);
-  void OnUnloadedLinkPrerenderImpl(int prerender_id);
+  void OnRemovedLinkPrerenderImpl(int prerender_id, int child_id);
+  void OnUnloadedLinkPrerenderImpl(int prerender_id, int child_id);
 
   PrerenderManager* manager_;
   PrerenderIdToUrlMap id_map_;

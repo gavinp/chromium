@@ -29,28 +29,38 @@ void PrerenderLinkManager::OnNewLinkPrerenderImpl(
     const GURL& url,
     const content::Referrer& referrer,
     const gfx::Size& ALLOW_UNUSED size) {
-  VLOG(1) << "OnNewLinkPrerenderImpl";
+  VLOG(1) << "OnNewLinkPrerenderImpl("
+          << prerender_id << ", " << child_id << ", ..., "
+          << url.spec() << ", ...)";
+      
   manager_->AddPrerenderFromLinkRelPrerender(
       child_id, render_view_route_id, url, referrer);
-  DCHECK(id_map_.find(prerender_id) == id_map_.end());
-  id_map_.insert(std::make_pair(prerender_id, url));
-  url_map_.insert(std::make_pair(url, prerender_id));
+  const ChildAndPrerenderIdPair child_and_prerender_id(child_id, prerender_id);
+  DCHECK(id_map_.find(child_and_prerender_id) == id_map_.end());
+  id_map_.insert(std::make_pair(child_and_prerender_id, url));
+  url_map_.insert(std::make_pair(url, child_and_prerender_id));
 }
 
-void PrerenderLinkManager::OnRemovedLinkPrerenderImpl(const int prerender_id) {
-  VLOG(1) << "OnRemovedLinkPrerenderImpl";
+void PrerenderLinkManager::OnRemovedLinkPrerenderImpl(const int prerender_id,
+                                                      const int child_id) {
+  
+  VLOG(2) << "OnRemovedLinkPrerenderImpl(" 
+          << prerender_id << ", " << child_id << ")";
 
-  PrerenderIdToUrlMap::const_iterator id_url_iter = id_map_.find(prerender_id);
+  const ChildAndPrerenderIdPair child_and_prerender_id(child_id, prerender_id);
+
+  PrerenderIdToUrlMap::iterator id_url_iter =
+      id_map_.find(child_and_prerender_id);
   if (id_url_iter == id_map_.end())
     return;
-  
-  const GURL& url = id_url_iter->second;
+  const GURL url = id_url_iter->second;
+  id_map_.erase(id_url_iter);
 
   // Are any other link elements prerendering this URL?
   UrlToPrerenderIdMap::iterator url_id_iter = url_map_.find(url);
   int remaining_prerender_link_count = 0;
   while (url_id_iter != url_map_.end() && url_id_iter->first == url) {
-    if (url_id_iter->second == prerender_id) {
+    if (url_id_iter->second == child_and_prerender_id) {
       UrlToPrerenderIdMap::iterator to_erase = url_id_iter;
       ++url_id_iter;
       url_map_.erase(to_erase);
@@ -63,16 +73,27 @@ void PrerenderLinkManager::OnRemovedLinkPrerenderImpl(const int prerender_id) {
     return;
 
   // TODO(gavinp): Track down the correct prerender and stop it, rather than
-  // this nuclear option.
+  // this nuclear option, which assumes that only one prerender at a time
+  // runs.
   if (manager_->IsPrerendering(url))
     manager_->CancelAllPrerenders();
 }
   
 void PrerenderLinkManager::OnUnloadedLinkPrerenderImpl(
-    int ALLOW_UNUSED prerender_id) {
-  VLOG(1) << "OnUnloadedLinkPrerenderImpl";
+    int ALLOW_UNUSED prerender_id,
+    int ALLOW_UNUSED child_id) {
+  VLOG(2) << "OnUnloadedLinkPrerenderImpl("
+          << prerender_id << ", " << child_id << ")";
   // TODO(gavinp,cbentzel): Implement reasonable behaviour for
   // navigation away from launcher.
+  const ChildAndPrerenderIdPair child_and_prerender_id(child_id, prerender_id);
+  PrerenderIdToUrlMap::iterator id_url_iter =
+      id_map_.find(child_and_prerender_id);
+  if (id_url_iter == id_map_.end())
+    return;
+  const GURL& url = id_url_iter->second;
+  url_map_.erase(url);
+  id_map_.erase(id_url_iter);
 }
 
 // static
@@ -94,18 +115,22 @@ void PrerenderLinkManager::OnNewLinkPrerender(
 
 // static
 void PrerenderLinkManager::OnRemovedLinkPrerender(Profile* profile,
-                                                int prerender_id) {
+                                                  int prerender_id,
+                                                  int child_id) {
   if (prerender::PrerenderManager* prerender_manager =
       prerender::PrerenderManagerFactory::GetForProfile(profile))
-    prerender_manager->link_manager()->OnRemovedLinkPrerenderImpl(prerender_id);
+    prerender_manager->link_manager()->OnRemovedLinkPrerenderImpl(prerender_id,
+                                                                  child_id);
 }
 
 // static
 void PrerenderLinkManager::OnUnloadedLinkPrerender(Profile* profile,
-                                                 int prerender_id) {
+                                                   int prerender_id,
+                                                   int child_id) {
   if (prerender::PrerenderManager* prerender_manager =
       prerender::PrerenderManagerFactory::GetForProfile(profile))
-    prerender_manager->link_manager()->OnRemovedLinkPrerenderImpl(prerender_id);
+    prerender_manager->link_manager()->OnUnloadedLinkPrerenderImpl(prerender_id,
+                                                                   child_id);
 }
 
 }  // namespace prerender

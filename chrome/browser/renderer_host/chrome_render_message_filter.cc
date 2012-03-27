@@ -540,7 +540,7 @@ void ChromeRenderMessageFilter::OnRemovedLinkPrerender(
       BrowserThread::UI, FROM_HERE,
       base::Bind(
           &prerender::PrerenderLinkManager::OnRemovedLinkPrerender,
-          profile_, prerender_id));
+          profile_, prerender_id, render_process_id_));
 }
 void ChromeRenderMessageFilter::OnUnloadedLinkPrerender(
     int prerender_id) {
@@ -548,5 +548,5 @@ void ChromeRenderMessageFilter::OnUnloadedLinkPrerender(
       BrowserThread::UI, FROM_HERE,
       base::Bind(
           &prerender::PrerenderLinkManager::OnUnloadedLinkPrerender,
-          profile_, prerender_id));
+          profile_, prerender_id, render_process_id_));
 }
