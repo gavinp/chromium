@@ -92,7 +92,8 @@ void PrerenderLinkManager::OnUnloadedLinkPrerenderImpl(
   if (id_url_iter == id_map_.end())
     return;
   const GURL& url = id_url_iter->second;
-  url_map_.erase(url);
+  DCHECK(url_map_.find(url) != url_map_.end());
+  ignore_result(url_map_.erase(url));
   id_map_.erase(id_url_iter);
 }
 
