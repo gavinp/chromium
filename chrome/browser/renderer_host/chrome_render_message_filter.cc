@@ -525,7 +525,7 @@ void ChromeRenderMessageFilter::OnNewLinkPrerender(
   if (prerender::PrerenderManager* prerender_manager =
       prerender::PrerenderManagerFactory::GetForProfile(profile_)) {
     prerender_manager->link_manager()->OnNewLinkPrerender(
-        render_process_id_, prerender_id, render_view_route_id, 
+        prerender_id, render_process_id_, render_view_route_id, 
         url, referrer, size);
   }
 }

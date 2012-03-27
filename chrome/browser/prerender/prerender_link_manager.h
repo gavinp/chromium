@@ -8,14 +8,14 @@
 
 #include <map>
 
-#include "content/public/browser/render_view_host_observer.h"
-#include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebReferrerPolicy.h"
+#include "base/basictypes.h"
+#include "googleurl/src/gurl.h"
 
 namespace content {
 class Referrer;
 }
 
-namespace ui {
+namespace gfx {
 class Size;
 }
 
@@ -32,20 +32,20 @@ class PrerenderLinkManager {
   void OnNewLinkPrerender(
       int prerender_id,
       int child_id,
+      int render_view_route_id,
       const GURL& url,
       const content::Referrer& referrer,
-      WebKit::WebReferrerPolicy policy,
       const gfx::Size& size);
   void OnRemovedLinkPrerender(int prerender_id);
   void OnUnloadedLinkPrerender(int prerender_id);
 
  private:
-  typedef std::map<int, GURL> LinkIdToUrlMap;
-  typedef std::multimap<GURL, int> UrlToLinkIdMap;
+  typedef std::map<int, GURL> PrerenderIdToUrlMap;
+  typedef std::multimap<GURL, int> UrlToPrerenderIdMap;
 
   PrerenderManager* manager_;
-  LinkIdToUrlMap id_map_;
-  UrlToLinkIdMap url_map_;
+  PrerenderIdToUrlMap id_map_;
+  UrlToPrerenderIdMap url_map_;
 
   DISALLOW_COPY_AND_ASSIGN(PrerenderLinkManager);
 };

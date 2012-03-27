@@ -13,7 +13,6 @@
 #include "ipc/ipc_message.h"
 #include "content/public/common/content_client.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebPageVisibilityState.h"
-#include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebReferrerPolicy.h"
 
 class GURL;
 class SkBitmap;
@@ -40,6 +39,10 @@ class MediaLog;
 class MessageLoopFactory;
 }
 
+namespace gfx {
+class Size;
+}
+
 namespace webkit_media {
 class MediaStreamClient;
 class WebMediaPlayerDelegate;
@@ -53,6 +56,7 @@ template<class T> class Handle;
 
 namespace content {
 
+class Referrer;
 class RenderView;
 
 // Embedder API for participating in renderer logic.
@@ -155,6 +159,13 @@ class ContentRendererClient {
                                              size_t length) = 0;
   virtual bool IsLinkVisited(unsigned long long link_hash) = 0;
   virtual void PrefetchHostName(const char* hostname, size_t length) = 0;
+  virtual void NewLinkPrerender(int prerender_id,
+                                int render_view_route_id,
+                                const GURL& url,
+                                const content::Referrer& referrer,
+                                const gfx::Size& size) = 0;
+  virtual void RemovedLinkPrerender(int prerender_id) = 0;
+  virtual void UnloadedLinkPrerender(int prerender_id) = 0;
   virtual bool ShouldOverridePageVisibilityState(
       const RenderView* render_view,
       WebKit::WebPageVisibilityState* override_state) const = 0;

@@ -4,8 +4,6 @@
 
 #include "content/renderer/renderer_webkitplatformsupport_impl.h"
 
-#include "chrome/common/prerender_messages.h"  // XYZZY
-
 #include "base/command_line.h"
 #include "base/file_path.h"
 #include "base/file_util.h"
@@ -269,19 +267,17 @@ void RendererWebKitPlatformSupportImpl::newLinkPrerender(
   RenderViewImpl* render_view = RenderViewImpl::FromWebView(webView);
   const int render_view_route_id = render_view->GetRoutingID();
   content::Referrer content_referrer(GURL(referrer),policy);
-  RenderThreadImpl::current()->Send(new PrerenderMsg_NewLinkPrerender(
-      prerender_id, render_view_route_id, GURL(url), content_referrer, size));
+  content::GetContentClient()->renderer()->NewLinkPrerender(
+      prerender_id, render_view_route_id, GURL(url), content_referrer, size);
 }
 
 void RendererWebKitPlatformSupportImpl::removedLinkPrerender(int prerender_id) {
-  RenderThreadImpl::current()->Send(new PrerenderMsg_RemovedLinkPrerender(
-      prerender_id));
+  content::GetContentClient()->renderer()->RemovedLinkPrerender(prerender_id);
 }
 
 void RendererWebKitPlatformSupportImpl::unloadedLinkPrerender(
     int prerender_id) {
-  RenderThreadImpl::current()->Send(new PrerenderMsg_UnloadedLinkPrerender(
-      prerender_id));
+  content::GetContentClient()->renderer()->UnloadedLinkPrerender(prerender_id);
 }
 
 bool

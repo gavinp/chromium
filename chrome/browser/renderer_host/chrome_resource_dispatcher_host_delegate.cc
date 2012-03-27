@@ -60,7 +60,7 @@ void AddPrerenderOnUI(
   if (!prerender_manager || !prerender_manager->is_enabled())
     return;
 
-  prerender_manager->AddPrerenderFromLinkRelPrerenderDepricated(
+  prerender_manager->AddPrerenderFromLinkRelPrerender(
       render_process_id, render_view_id, url, referrer);
 }
 

@@ -25,8 +25,8 @@
 #include "chrome/browser/prerender/prerender_final_status.h"
 #include "chrome/browser/prerender/prerender_histograms.h"
 #include "chrome/browser/prerender/prerender_history.h"
-#include "chrome/browser/prerender/prerender_manager_factory.h"
 #include "chrome/browser/prerender/prerender_link_manager.h"
+#include "chrome/browser/prerender/prerender_manager_factory.h"
 #include "chrome/browser/prerender/prerender_tab_helper.h"
 #include "chrome/browser/prerender/prerender_tracker.h"
 #include "chrome/browser/prerender/prerender_util.h"
@@ -271,22 +271,6 @@ void PrerenderManager::Shutdown() {
 }
 
 bool PrerenderManager::AddPrerenderFromLinkRelPrerender(
-    int process_id,
-    const GURL& url,
-    const content::Referrer& referrer,
-    const gfx::Size& size) {
-
-#if defined(OS_ANDROID)
-  // TODO(jcivelli): http://crbug.com/113322 We should have an option to disable
-  //                link-prerender and enable omnibox-prerender only.
-  return false;
-#else
-  return AddPrerender(ORIGIN_LINK_REL_PRERENDER, child_route_id_pair,
-                      url, referrer, NULL);
-#endif  
-}
-
-bool PrerenderManager::AddPrerenderFromLinkRelPrerenderDeprecated(
     int process_id,
     int route_id,
     const GURL& url,

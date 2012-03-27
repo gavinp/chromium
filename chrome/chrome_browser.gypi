@@ -1694,6 +1694,8 @@
         'browser/prerender/prerender_histograms.h',
         'browser/prerender/prerender_history.cc',
         'browser/prerender/prerender_history.h',
+        'browser/prerender/prerender_link_manager.cc',
+        'browser/prerender/prerender_link_manager.h',
         'browser/prerender/prerender_manager.cc',
         'browser/prerender/prerender_manager.h',
         'browser/prerender/prerender_manager_factory.cc',

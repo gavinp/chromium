@@ -96,26 +96,15 @@ class PrerenderManager : public base::SupportsWeakPtr<PrerenderManager>,
 
   // Entry points for adding prerenders.
 
-  // Adds a prerender for |url| if valid. |process_id| identifies the Renderer
-  // that the prerender request came from, and is used to send prerender view
-  // host messages to the correct renderer.
+  // Adds a prerender for |url| if valid. |process_id| and |route_id| identify
+  // the RenderViewHost that the prerender request came from and are used to
+  // set the initial window size of the RenderViewHost used for prerendering.
   // Returns true if the URL was added, false if it was not.
   // If the RenderViewHost source is itself prerendering, the prerender is added
   // as a pending prerender.
-  bool AddPrerenderFromLinkRelPrerender(
-      int process_id,
-      const GURL& url,
-      const content::Referrer& referrer,
-      const gfx::Size& size);
-
-  // This depricated version uses the |process_id|, |route_id| pair to deduce
-  // the size of the renderer.
-  // TODO(gavinp): Remove this interface after WebKit bug xxx lands.
-  bool AddPrerenderFromLinkRelPrerenderDepricated(
-      int process_id,
-      int route_id,
-      const GURL& url,
-      const content::Referrer& referrer);
+  bool AddPrerenderFromLinkRelPrerender(int process_id, int route_id,
+                                        const GURL& url,
+                                        const content::Referrer& referrer);
 
   // Adds a prerender for |url| if valid. As the prerender request is coming
   // from a source without a RenderViewHost (i.e., the omnibox) we don't have a
@@ -250,7 +239,7 @@ class PrerenderManager : public base::SupportsWeakPtr<PrerenderManager>,
   // Returns true if |url| matches any URLs being prerendered.
   bool IsPrerendering(const GURL& url) const;
 
-  PrerenderLinkManager* link_manager();
+  PrerenderLinkManager* link_manager() { return link_manager_.get(); }
 
  protected:
   void SetPrerenderContentsFactory(
@@ -298,12 +287,13 @@ class PrerenderManager : public base::SupportsWeakPtr<PrerenderManager>,
   typedef std::list<PrerenderContentsData> PrerenderContentsDataList;
 
   // Adds a prerender for |url| from referrer |referrer| initiated from the
-  // renderer specified by |child_id|. The |origin| specifies how the prerender
-  // was added.  If the |session_storage_namespace| is NULL, it is discovered
-  // using the RenderViewHost specified by |child_route_id_pair|.
+  // RenderViewHost specified by |child_route_id_pair|. The |origin| specifies
+  // how the prerender was added. If the |session_storage_namespace| is NULL,
+  // it is discovered using the RenderViewHost specified by
+  // |child_route_id_pair|.
   bool AddPrerender(
       Origin origin,
-      int child_id,
+      const std::pair<int, int>& child_route_id_pair,
       const GURL& url,
       const content::Referrer& referrer,
       content::SessionStorageNamespace* session_storage_namespace);
