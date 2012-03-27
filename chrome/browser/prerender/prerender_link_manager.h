@@ -11,6 +11,8 @@
 #include "base/basictypes.h"
 #include "googleurl/src/gurl.h"
 
+class Profile;
+
 namespace content {
 class Referrer;
 }
@@ -29,19 +31,30 @@ class PrerenderLinkManager {
   PrerenderLinkManager(PrerenderManager* manager);
   virtual ~PrerenderLinkManager();
 
-  void OnNewLinkPrerender(
+  static void OnNewLinkPrerender(
+      Profile* profile,
       int prerender_id,
       int child_id,
       int render_view_route_id,
       const GURL& url,
       const content::Referrer& referrer,
       const gfx::Size& size);
-  void OnRemovedLinkPrerender(int prerender_id);
-  void OnUnloadedLinkPrerender(int prerender_id);
+  static void OnRemovedLinkPrerender(Profile* profile, int prerender_id);
+  static void OnUnloadedLinkPrerender(Profile* profile, int prerender_id);
 
  private:
   typedef std::map<int, GURL> PrerenderIdToUrlMap;
   typedef std::multimap<GURL, int> UrlToPrerenderIdMap;
+
+  void OnNewLinkPrerenderImpl(
+      int prerender_id,
+      int child_id,
+      int render_view_route_id,
+      const GURL& url,
+      const content::Referrer& referrer,
+      const gfx::Size& size);
+  void OnRemovedLinkPrerenderImpl(int prerender_id);
+  void OnUnloadedLinkPrerenderImpl(int prerender_id);
 
   PrerenderManager* manager_;
   PrerenderIdToUrlMap id_map_;
