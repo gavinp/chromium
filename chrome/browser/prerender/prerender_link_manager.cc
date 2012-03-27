@@ -29,6 +29,7 @@ void PrerenderLinkManager::OnNewLinkPrerenderImpl(
     const GURL& url,
     const content::Referrer& referrer,
     const gfx::Size& ALLOW_UNUSED size) {
+  VLOG(1) << "OnNewLinkPrerenderImpl";
   manager_->AddPrerenderFromLinkRelPrerender(
       child_id, render_view_route_id, url, referrer);
   DCHECK(id_map_.find(prerender_id) == id_map_.end());
@@ -37,6 +38,8 @@ void PrerenderLinkManager::OnNewLinkPrerenderImpl(
 }
 
 void PrerenderLinkManager::OnRemovedLinkPrerenderImpl(const int prerender_id) {
+  VLOG(1) << "OnRemovedLinkPrerenderImpl";
+
   PrerenderIdToUrlMap::const_iterator id_url_iter = id_map_.find(prerender_id);
   if (id_url_iter == id_map_.end())
     return;
@@ -67,6 +70,7 @@ void PrerenderLinkManager::OnRemovedLinkPrerenderImpl(const int prerender_id) {
   
 void PrerenderLinkManager::OnUnloadedLinkPrerenderImpl(
     int ALLOW_UNUSED prerender_id) {
+  VLOG(1) << "OnUnloadedLinkPrerenderImpl";
   // TODO(gavinp,cbentzel): Implement reasonable behaviour for
   // navigation away from launcher.
 }
@@ -103,6 +107,5 @@ void PrerenderLinkManager::OnUnloadedLinkPrerender(Profile* profile,
       prerender::PrerenderManagerFactory::GetForProfile(profile))
     prerender_manager->link_manager()->OnRemovedLinkPrerenderImpl(prerender_id);
 }
-
 
 }  // namespace prerender
