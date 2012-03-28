@@ -22,8 +22,6 @@
 #include "chrome/browser/net/chrome_url_request_context.h"
 #include "chrome/browser/net/predictor.h"
 #include "chrome/browser/prerender/prerender_link_manager.h"
-#include "chrome/browser/prerender/prerender_manager.h"
-#include "chrome/browser/prerender/prerender_manager_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/task_manager/task_manager.h"
 #include "chrome/common/chrome_notification_types.h"
@@ -113,8 +111,10 @@ bool ChromeRenderMessageFilter::OnMessageReceived(const IPC::Message& message,
     IPC_MESSAGE_HANDLER(ChromeViewHostMsg_CanTriggerClipboardWrite,
                         OnCanTriggerClipboardWrite)
     IPC_MESSAGE_HANDLER(PrerenderMsg_NewLinkPrerender, OnNewLinkPrerender)
-    IPC_MESSAGE_HANDLER(PrerenderMsg_RemovedLinkPrerender, OnRemovedLinkPrerender)
-    IPC_MESSAGE_HANDLER(PrerenderMsg_UnloadedLinkPrerender, OnUnloadedLinkPrerender)
+    IPC_MESSAGE_HANDLER(PrerenderMsg_RemovedLinkPrerender,
+                        OnRemovedLinkPrerender)
+    IPC_MESSAGE_HANDLER(PrerenderMsg_UnloadedLinkPrerender,
+                        OnUnloadedLinkPrerender)
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP()
 

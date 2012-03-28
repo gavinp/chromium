@@ -47,6 +47,7 @@
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebRuntimeFeatures.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebSerializedScriptValue.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebStorageEventDispatcher.h"
+#include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebReferrerPolicy.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebURL.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebVector.h"
 #include "webkit/glue/simple_webmimeregistry_impl.h"
@@ -266,7 +267,7 @@ void RendererWebKitPlatformSupportImpl::newLinkPrerender(
     const WebKit::WebSize& size) {
   RenderViewImpl* render_view = RenderViewImpl::FromWebView(webView);
   const int render_view_route_id = render_view->GetRoutingID();
-  content::Referrer content_referrer(GURL(referrer),policy);
+  content::Referrer content_referrer(GURL(referrer), policy);
   content::GetContentClient()->renderer()->NewLinkPrerender(
       prerender_id, render_view_route_id, GURL(url), content_referrer, size);
 }

@@ -760,7 +760,7 @@ void ChromeContentRendererClient::NewLinkPrerender(
     const content::Referrer& referrer,
     const gfx::Size& size) {
   RenderThread::Get()->Send(new PrerenderMsg_NewLinkPrerender(
-      prerender_id, render_view_route_id, GURL(url), referrer, size));  
+      prerender_id, render_view_route_id, GURL(url), referrer, size));
 }
 
 void ChromeContentRendererClient::RemovedLinkPrerender(int prerender_id) {

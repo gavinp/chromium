@@ -10,6 +10,8 @@
 #include "chrome/browser/prerender/prerender_manager.h"
 #include "chrome/browser/prerender/prerender_manager_factory.h"
 #include "content/public/common/referrer.h"
+#include "googleurl/src/gurl.h"
+#include "googleurl/src/url_canon.h"
 #include "ui/gfx/size.h"
 
 namespace prerender {
@@ -26,9 +28,14 @@ void PrerenderLinkManager::OnNewLinkPrerenderImpl(
     int prerender_id,
     int child_id,
     int render_view_route_id,
-    const GURL& url,
+    const GURL& orig_url,
     const content::Referrer& referrer,
     const gfx::Size& ALLOW_UNUSED size) {
+  // TODO(gavinp): Add tests to insure fragments work.
+  url_canon::Replacements<char> replacements;
+  replacements.ClearRef();
+  const GURL url = orig_url.ReplaceComponents(replacements);
+
   manager_->AddPrerenderFromLinkRelPrerender(
       child_id, render_view_route_id, url, referrer);
   const ChildAndPrerenderIdPair child_and_prerender_id(child_id, prerender_id);
@@ -70,7 +77,7 @@ void PrerenderLinkManager::OnRemovedLinkPrerenderImpl(const int prerender_id,
   if (manager_->IsPrerendering(url))
     manager_->CancelAllPrerenders();
 }
-  
+
 void PrerenderLinkManager::OnUnloadedLinkPrerenderImpl(
     int prerender_id,
     int child_id) {
@@ -99,7 +106,7 @@ void PrerenderLinkManager::OnNewLinkPrerender(
   if (prerender::PrerenderManager* prerender_manager =
       prerender::PrerenderManagerFactory::GetForProfile(profile)) {
     prerender_manager->link_manager()->OnNewLinkPrerenderImpl(
-        prerender_id, child_id, render_view_route_id, 
+        prerender_id, child_id, render_view_route_id,
         url, referrer, size);
   }
 }

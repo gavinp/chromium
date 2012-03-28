@@ -29,7 +29,7 @@ class PrerenderManager;
 // Launch and cancel prerenders based on the LinkPrerender element events.
 class PrerenderLinkManager {
  public:
-  PrerenderLinkManager(PrerenderManager* manager);
+  explicit PrerenderLinkManager(PrerenderManager* manager);
   virtual ~PrerenderLinkManager();
 
   static void OnNewLinkPrerender(
@@ -71,4 +71,4 @@ class PrerenderLinkManager {
 
 }  // namespace prerender
 
-#endif // CHROME_BROWSER_PRERENDER_PRERENDER_LINK_MANAGER_H_
+#endif  // CHROME_BROWSER_PRERENDER_PRERENDER_LINK_MANAGER_H_

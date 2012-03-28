@@ -17,6 +17,10 @@
 class GURL;
 class SkBitmap;
 
+namespace content {
+class Referrer;
+}
+
 namespace WebKit {
 class WebAudioSourceProvider;
 class WebFrame;
