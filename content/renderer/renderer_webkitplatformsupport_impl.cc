@@ -266,7 +266,7 @@ void RendererWebKitPlatformSupportImpl::newLinkPrerender(
     const WebKit::WebSize& size) {
   RenderViewImpl* render_view = RenderViewImpl::FromWebView(webView);
   const int render_view_route_id = render_view->GetRoutingID();
-  content::Referrer content_referrer(GURL(referrer),policy);
+  content::Referrer content_referrer(GURL(referrer), policy);
   content::GetContentClient()->renderer()->NewLinkPrerender(
       prerender_id, render_view_route_id, GURL(url), content_referrer, size);
 }
