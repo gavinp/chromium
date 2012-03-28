@@ -72,8 +72,8 @@ void PrerenderLinkManager::OnRemovedLinkPrerenderImpl(const int prerender_id,
 }
   
 void PrerenderLinkManager::OnUnloadedLinkPrerenderImpl(
-    int ALLOW_UNUSED prerender_id,
-    int ALLOW_UNUSED child_id) {
+    int prerender_id,
+    int child_id) {
   // TODO(gavinp,cbentzel): Implement reasonable behaviour for
   // navigation away from launcher.
   const ChildAndPrerenderIdPair child_and_prerender_id(child_id, prerender_id);

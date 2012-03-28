@@ -7,6 +7,7 @@
 #pragma once
 
 #include <map>
+#include <utility>
 
 #include "base/basictypes.h"
 #include "googleurl/src/gurl.h"
