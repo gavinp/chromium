@@ -29,10 +29,6 @@ void PrerenderLinkManager::OnNewLinkPrerenderImpl(
     const GURL& url,
     const content::Referrer& referrer,
     const gfx::Size& ALLOW_UNUSED size) {
-  VLOG(1) << "OnNewLinkPrerenderImpl("
-          << prerender_id << ", " << child_id << ", ..., "
-          << url.spec() << ", ...)";
-      
   manager_->AddPrerenderFromLinkRelPrerender(
       child_id, render_view_route_id, url, referrer);
   const ChildAndPrerenderIdPair child_and_prerender_id(child_id, prerender_id);
@@ -43,10 +39,6 @@ void PrerenderLinkManager::OnNewLinkPrerenderImpl(
 
 void PrerenderLinkManager::OnRemovedLinkPrerenderImpl(const int prerender_id,
                                                       const int child_id) {
-  
-  VLOG(2) << "OnRemovedLinkPrerenderImpl(" 
-          << prerender_id << ", " << child_id << ")";
-
   const ChildAndPrerenderIdPair child_and_prerender_id(child_id, prerender_id);
 
   PrerenderIdToUrlMap::iterator id_url_iter =
@@ -69,7 +61,7 @@ void PrerenderLinkManager::OnRemovedLinkPrerenderImpl(const int prerender_id,
     ++remaining_prerender_link_count;
     ++url_id_iter;
   }
-  if (!remaining_prerender_link_count)
+  if (remaining_prerender_link_count)
     return;
 
   // TODO(gavinp): Track down the correct prerender and stop it, rather than
@@ -82,8 +74,6 @@ void PrerenderLinkManager::OnRemovedLinkPrerenderImpl(const int prerender_id,
 void PrerenderLinkManager::OnUnloadedLinkPrerenderImpl(
     int ALLOW_UNUSED prerender_id,
     int ALLOW_UNUSED child_id) {
-  VLOG(2) << "OnUnloadedLinkPrerenderImpl("
-          << prerender_id << ", " << child_id << ")";
   // TODO(gavinp,cbentzel): Implement reasonable behaviour for
   // navigation away from launcher.
   const ChildAndPrerenderIdPair child_and_prerender_id(child_id, prerender_id);

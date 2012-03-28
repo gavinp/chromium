@@ -1,0 +1,20 @@
+<html>
+<head>
+<title>Preloader</title>
+
+<script>
+function RemoveLinkElementAndNavigate() {
+  var link = document.getElementById("prerender_element");
+  link.parentElement.removeChild(link);
+  document.location = "REPLACE_WITH_DESTINATION_URL";
+}
+</script>
+
+</head>
+<body>
+<script>
+  document.write('<link id="prerender_element" rel="prerender" href="REPLACE_WITH_PRERENDER_URL"/>');
+</script>
+<a href="REPLACE_WITH_DESTINATION_URL">Link To Click</a>
+</body>
+</html>
