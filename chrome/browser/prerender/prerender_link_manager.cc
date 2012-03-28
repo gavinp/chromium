@@ -70,7 +70,7 @@ void PrerenderLinkManager::OnRemovedLinkPrerenderImpl(const int prerender_id,
   if (manager_->IsPrerendering(url))
     manager_->CancelAllPrerenders();
 }
-  
+
 void PrerenderLinkManager::OnUnloadedLinkPrerenderImpl(
     int ALLOW_UNUSED prerender_id,
     int ALLOW_UNUSED child_id) {
@@ -99,7 +99,7 @@ void PrerenderLinkManager::OnNewLinkPrerender(
   if (prerender::PrerenderManager* prerender_manager =
       prerender::PrerenderManagerFactory::GetForProfile(profile)) {
     prerender_manager->link_manager()->OnNewLinkPrerenderImpl(
-        prerender_id, child_id, render_view_route_id, 
+        prerender_id, child_id, render_view_route_id,
         url, referrer, size);
   }
 }

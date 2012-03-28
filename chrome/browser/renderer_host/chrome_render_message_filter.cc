@@ -113,8 +113,10 @@ bool ChromeRenderMessageFilter::OnMessageReceived(const IPC::Message& message,
     IPC_MESSAGE_HANDLER(ChromeViewHostMsg_CanTriggerClipboardWrite,
                         OnCanTriggerClipboardWrite)
     IPC_MESSAGE_HANDLER(PrerenderMsg_NewLinkPrerender, OnNewLinkPrerender)
-    IPC_MESSAGE_HANDLER(PrerenderMsg_RemovedLinkPrerender, OnRemovedLinkPrerender)
-    IPC_MESSAGE_HANDLER(PrerenderMsg_UnloadedLinkPrerender, OnUnloadedLinkPrerender)
+    IPC_MESSAGE_HANDLER(PrerenderMsg_RemovedLinkPrerender,
+                        OnRemovedLinkPrerender)
+    IPC_MESSAGE_HANDLER(PrerenderMsg_UnloadedLinkPrerender,
+                        OnUnloadedLinkPrerender)
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP()
 
