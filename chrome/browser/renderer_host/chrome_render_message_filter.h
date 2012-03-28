@@ -34,10 +34,6 @@ namespace net {
 class URLRequestContextGetter;
 }
 
-namespace ui {
-class Size;
-}
-
 // This class filters out incoming Chrome-specific IPC messages for the renderer
 // process on the IPC thread.
 class ChromeRenderMessageFilter : public content::BrowserMessageFilter {

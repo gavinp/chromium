@@ -13,7 +13,6 @@
 #include "base/memory/scoped_ptr.h"
 #include "base/string16.h"
 #include "content/public/renderer/content_renderer_client.h"
-#include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebReferrerPolicy.h"
 
 class ChromeRenderProcessObserver;
 class Extension;
@@ -31,16 +30,16 @@ namespace content {
 class Referrer;
 }
 
+namespace gfx {
+class Size;
+}
+
 namespace prerender {
 class PrerenderDispatcher;
 }
 
 namespace safe_browsing {
 class PhishingClassifierFilter;
-}
-
-namespace ui {
-class Size;
 }
 
 namespace webkit {

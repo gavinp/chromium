@@ -10,9 +10,7 @@
 
 #include <math.h>
 
-#include <iostream>
 #include <vector>
-
 
 #include "base/bind.h"
 #include "base/debug/trace_event.h"
