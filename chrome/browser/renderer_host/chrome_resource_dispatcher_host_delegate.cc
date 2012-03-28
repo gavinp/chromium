@@ -15,7 +15,6 @@
 #include "chrome/browser/instant/instant_loader.h"
 #include "chrome/browser/net/load_timing_observer.h"
 #include "chrome/browser/prerender/prerender_manager.h"
-#include "chrome/browser/prerender/prerender_manager_factory.h"
 #include "chrome/browser/prerender/prerender_resource_throttle.h"
 #include "chrome/browser/prerender/prerender_tracker.h"
 #include "chrome/browser/profiles/profile_io_data.h"
@@ -50,19 +49,6 @@ using content::ResourceDispatcherHostLoginDelegate;
 using content::ResourceRequestInfo;
 
 namespace {
-
-void AddPrerenderOnUI(
-    int render_process_id, int render_view_id,
-    const GURL& url, const content::Referrer& referrer) {
-  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  prerender::PrerenderManager* prerender_manager =
-      prerender::FindPrerenderManagerUsingRenderProcessId(render_process_id);
-  if (!prerender_manager || !prerender_manager->is_enabled())
-    return;
-
-  prerender_manager->AddPrerenderFromLinkRelPrerender(
-      render_process_id, render_view_id, url, referrer);
-}
 
 void NotifyDownloadInitiatedOnUI(int render_process_id, int render_view_id) {
   RenderViewHost* rvh = RenderViewHost::FromID(render_process_id,
@@ -109,17 +95,6 @@ bool ChromeResourceDispatcherHostDelegate::ShouldBeginRequest(
     // If prefetch is disabled, kill the request.
     if (!prerender::PrerenderManager::IsPrefetchEnabled())
       return false;
-  }
-
-  // Handle a PRERENDER motivated request. Very similar to rel=prefetch, these
-  // rel=prerender requests instead launch an early render of the entire page.
-  if (resource_type == ResourceType::PRERENDER) {
-    if (prerender::PrerenderManager::IsPrerenderingPossible()) {
-      BrowserThread::PostTask(BrowserThread::UI, FROM_HERE,
-          base::Bind(&AddPrerenderOnUI, child_id, route_id, url, referrer));
-    }
-    // Prerendering or not, this request should be aborted.
-    return false;
   }
 
   // Abort any prerenders that spawn requests that use invalid HTTP methods.
