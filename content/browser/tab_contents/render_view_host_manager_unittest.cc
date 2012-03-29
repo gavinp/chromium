@@ -10,7 +10,7 @@
 #include "content/browser/tab_contents/navigation_controller_impl.h"
 #include "content/browser/tab_contents/navigation_entry_impl.h"
 #include "content/browser/tab_contents/render_view_host_manager.h"
-#include "content/browser/tab_contents/test_tab_contents.h"
+#include "content/browser/tab_contents/test_web_contents.h"
 #include "content/common/test_url_constants.h"
 #include "content/common/view_messages.h"
 #include "content/public/browser/notification_details.h"
@@ -41,6 +41,7 @@ using content::RenderViewHostImpl;
 using content::RenderViewHostImplTestHarness;
 using content::SiteInstance;
 using content::TestRenderViewHost;
+using content::TestWebContents;
 using content::WebContents;
 using content::WebUI;
 using content::WebUIController;
@@ -132,16 +133,16 @@ class RenderViewHostManagerTest
     : public RenderViewHostImplTestHarness {
  public:
   virtual void SetUp() OVERRIDE {
-    RenderViewHostTestHarness::SetUp();
+    RenderViewHostImplTestHarness::SetUp();
     old_client_ = content::GetContentClient();
-    content::SetContentClient(&client_);
     old_browser_client_ = content::GetContentClient()->browser();
+    content::SetContentClient(&client_);
     content::GetContentClient()->set_browser(&browser_client_);
     url_util::AddStandardScheme(chrome::kChromeUIScheme);
   }
 
   virtual void TearDown() OVERRIDE {
-    RenderViewHostTestHarness::TearDown();
+    RenderViewHostImplTestHarness::TearDown();
     content::GetContentClient()->set_browser(old_browser_client_);
     content::SetContentClient(old_client_);
   }
@@ -201,7 +202,7 @@ TEST_F(RenderViewHostManagerTest, NewTabPageProcesses) {
   NavigateActiveAndCommit(kDestUrl);
 
   // Make a second tab.
-  TestTabContents contents2(browser_context(), NULL);
+  TestWebContents contents2(browser_context(), NULL);
 
   // Load the two URLs in the second tab. Note that the first navigation creates
   // a RVH that's not pending (since there is no cross-site transition), so
@@ -269,7 +270,7 @@ TEST_F(RenderViewHostManagerTest, FilterMessagesWhileSwappedOut) {
   // Send an update title message and make sure it works.
   const string16 ntp_title = ASCIIToUTF16("NTP Title");
   WebKit::WebTextDirection direction = WebKit::WebTextDirectionLeftToRight;
-  EXPECT_TRUE(ntp_rvh->TestOnMessageReceived(
+  EXPECT_TRUE(ntp_rvh->OnMessageReceived(
       ViewHostMsg_UpdateTitle(rvh()->GetRoutingID(), 0, ntp_title, direction)));
   EXPECT_EQ(ntp_title, contents()->GetTitle());
 
@@ -291,7 +292,7 @@ TEST_F(RenderViewHostManagerTest, FilterMessagesWhileSwappedOut) {
 
   // The new RVH should be able to update its title.
   const string16 dest_title = ASCIIToUTF16("Google");
-  EXPECT_TRUE(dest_rvh->TestOnMessageReceived(
+  EXPECT_TRUE(dest_rvh->OnMessageReceived(
       ViewHostMsg_UpdateTitle(rvh()->GetRoutingID(), 101, dest_title,
                               direction)));
   EXPECT_EQ(dest_title, contents()->GetTitle());
@@ -299,7 +300,7 @@ TEST_F(RenderViewHostManagerTest, FilterMessagesWhileSwappedOut) {
   // The old renderer, being slow, now updates the title. It should be filtered
   // out and not take effect.
   EXPECT_TRUE(ntp_rvh->is_swapped_out());
-  EXPECT_TRUE(ntp_rvh->TestOnMessageReceived(
+  EXPECT_TRUE(ntp_rvh->OnMessageReceived(
       ViewHostMsg_UpdateTitle(rvh()->GetRoutingID(), 0, ntp_title, direction)));
   EXPECT_EQ(dest_title, contents()->GetTitle());
 
@@ -317,7 +318,7 @@ TEST_F(RenderViewHostManagerTest, FilterMessagesWhileSwappedOut) {
       rvh()->GetRoutingID(), kNtpUrl, msg, false, &result, &unused);
   // Enable pumping for check in BrowserMessageFilter::CheckCanDispatchOnUI.
   before_unload_msg.EnableMessagePumping();
-  EXPECT_TRUE(ntp_rvh->TestOnMessageReceived(before_unload_msg));
+  EXPECT_TRUE(ntp_rvh->OnMessageReceived(before_unload_msg));
   EXPECT_TRUE(ntp_process_host->sink().GetUniqueMessageMatching(IPC_REPLY_ID));
 
   // Also test RunJavaScriptMessage.
@@ -326,7 +327,7 @@ TEST_F(RenderViewHostManagerTest, FilterMessagesWhileSwappedOut) {
       rvh()->GetRoutingID(), msg, msg, kNtpUrl,
       ui::JAVASCRIPT_MESSAGE_TYPE_CONFIRM, &result, &unused);
   js_msg.EnableMessagePumping();
-  EXPECT_TRUE(ntp_rvh->TestOnMessageReceived(js_msg));
+  EXPECT_TRUE(ntp_rvh->OnMessageReceived(js_msg));
   EXPECT_TRUE(ntp_process_host->sink().GetUniqueMessageMatching(IPC_REPLY_ID));
 }
 
@@ -351,7 +352,7 @@ TEST_F(RenderViewHostManagerTest, AlwaysSendEnableViewSourceMode) {
   controller().LoadURL(
       kUrl, content::Referrer(), content::PAGE_TRANSITION_TYPED, std::string());
   // Simulate response from RenderView for FirePageBeforeUnload.
-  test_rvh()->TestOnMessageReceived(ViewHostMsg_ShouldClose_ACK(
+  test_rvh()->OnMessageReceived(ViewHostMsg_ShouldClose_ACK(
       rvh()->GetRoutingID(), true, base::TimeTicks(), base::TimeTicks()));
   ASSERT_TRUE(pending_rvh());  // New pending RenderViewHost will be created.
   RenderViewHost* last_rvh = pending_rvh();
@@ -362,7 +363,7 @@ TEST_F(RenderViewHostManagerTest, AlwaysSendEnableViewSourceMode) {
   ASSERT_TRUE(controller().GetLastCommittedEntry());
   EXPECT_TRUE(kUrl == controller().GetLastCommittedEntry()->GetURL());
   EXPECT_FALSE(controller().GetPendingEntry());
-  // Because we're using TestTabContents and TestRenderViewHost in this
+  // Because we're using TestWebContents and TestRenderViewHost in this
   // unittest, no one calls TabContents::RenderViewCreated(). So, we see no
   // EnableViewSourceMode message, here.
 
@@ -389,15 +390,15 @@ TEST_F(RenderViewHostManagerTest, Init) {
       static_cast<SiteInstanceImpl*>(SiteInstance::Create(browser_context()));
   EXPECT_FALSE(instance->HasSite());
 
-  TestTabContents tab_contents(browser_context(), instance);
-  RenderViewHostManager manager(&tab_contents, &tab_contents);
+  TestWebContents web_contents(browser_context(), instance);
+  RenderViewHostManager manager(&web_contents, &web_contents);
 
   manager.Init(browser_context(), instance, MSG_ROUTING_NONE);
 
   RenderViewHost* host = manager.current_host();
   ASSERT_TRUE(host);
   EXPECT_TRUE(instance == host->GetSiteInstance());
-  EXPECT_TRUE(&tab_contents == host->GetDelegate());
+  EXPECT_TRUE(&web_contents == host->GetDelegate());
   EXPECT_TRUE(manager.GetRenderWidgetHostView());
   EXPECT_FALSE(manager.pending_render_view_host());
 }
@@ -409,14 +410,14 @@ TEST_F(RenderViewHostManagerTest, Navigate) {
 
   SiteInstance* instance = SiteInstance::Create(browser_context());
 
-  TestTabContents tab_contents(browser_context(), instance);
+  TestWebContents web_contents(browser_context(), instance);
   notifications.ListenFor(
       content::NOTIFICATION_RENDER_VIEW_HOST_CHANGED,
       content::Source<NavigationController>(
-          &tab_contents.GetController()));
+          &web_contents.GetController()));
 
   // Create.
-  RenderViewHostManager manager(&tab_contents, &tab_contents);
+  RenderViewHostManager manager(&web_contents, &web_contents);
 
   manager.Init(browser_context(), instance, MSG_ROUTING_NONE);
 
@@ -501,14 +502,14 @@ TEST_F(RenderViewHostManagerTest, NavigateWithEarlyReNavigation) {
 
   SiteInstance* instance = SiteInstance::Create(browser_context());
 
-  TestTabContents tab_contents(browser_context(), instance);
+  TestWebContents web_contents(browser_context(), instance);
   notifications.ListenFor(
       content::NOTIFICATION_RENDER_VIEW_HOST_CHANGED,
       content::Source<NavigationController>(
-          &tab_contents.GetController()));
+          &web_contents.GetController()));
 
   // Create.
-  RenderViewHostManager manager(&tab_contents, &tab_contents);
+  RenderViewHostManager manager(&web_contents, &web_contents);
 
   manager.Init(browser_context(), instance, MSG_ROUTING_NONE);
 
@@ -652,8 +653,8 @@ TEST_F(RenderViewHostManagerTest, WebUI) {
   BrowserThreadImpl ui_thread(BrowserThread::UI, MessageLoop::current());
   SiteInstance* instance = SiteInstance::Create(browser_context());
 
-  TestTabContents tab_contents(browser_context(), instance);
-  RenderViewHostManager manager(&tab_contents, &tab_contents);
+  TestWebContents web_contents(browser_context(), instance);
+  RenderViewHostManager manager(&web_contents, &web_contents);
 
   manager.Init(browser_context(), instance, MSG_ROUTING_NONE);
 

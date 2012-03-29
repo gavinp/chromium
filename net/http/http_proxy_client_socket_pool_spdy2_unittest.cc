@@ -63,13 +63,14 @@ class HttpProxyClientSocketPoolSpdy2Test : public TestWithHttpParam {
             &tcp_histograms_,
             &socket_factory_),
         ssl_histograms_("MockSSL"),
+        cert_verifier_(CertVerifier::CreateDefault()),
         proxy_service_(ProxyService::CreateDirect()),
         ssl_config_service_(new SSLConfigServiceDefaults),
         ssl_socket_pool_(kMaxSockets, kMaxSocketsPerGroup,
                          &ssl_histograms_,
                          &host_resolver_,
-                         &cert_verifier_,
-                         NULL /* origin_bound_cert_store */,
+                         cert_verifier_.get(),
+                         NULL /* server_bound_cert_store */,
                          NULL /* transport_security_state */,
                          NULL /* ssl_host_info_factory */,
                          ""   /* ssl_session_cache_shard */,
@@ -174,14 +175,13 @@ class HttpProxyClientSocketPoolSpdy2Test : public TestWithHttpParam {
   }
 
   void InitializeSpdySsl() {
-    spdy::SpdyFramer::set_enable_compression_default(false);
     ssl_data_->SetNextProto(SSLClientSocket::kProtoSPDY2);
   }
 
   HttpNetworkSession* CreateNetworkSession() {
     HttpNetworkSession::Params params;
     params.host_resolver = &host_resolver_;
-    params.cert_verifier = &cert_verifier_;
+    params.cert_verifier = cert_verifier_.get();
     params.proxy_service = proxy_service_.get();
     params.client_socket_factory = &socket_factory_;
     params.ssl_config_service = ssl_config_service_;
@@ -200,7 +200,7 @@ class HttpProxyClientSocketPoolSpdy2Test : public TestWithHttpParam {
   MockTransportClientSocketPool transport_socket_pool_;
   ClientSocketPoolHistograms ssl_histograms_;
   MockHostResolver host_resolver_;
-  CertVerifier cert_verifier_;
+  scoped_ptr<CertVerifier> cert_verifier_;
   const scoped_ptr<ProxyService> proxy_service_;
   const scoped_refptr<SSLConfigService> ssl_config_service_;
   SSLClientSocketPool ssl_socket_pool_;
@@ -209,6 +209,7 @@ class HttpProxyClientSocketPoolSpdy2Test : public TestWithHttpParam {
   HttpServerPropertiesImpl http_server_properties_;
   const scoped_refptr<HttpNetworkSession> session_;
   ClientSocketPoolHistograms http_proxy_histograms_;
+  SpdyTestStateHelper spdy_state_;
 
  protected:
   scoped_ptr<SSLSocketDataProvider> ssl_data_;
@@ -251,8 +252,8 @@ TEST_P(HttpProxyClientSocketPoolSpdy2Test, NeedAuth) {
     MockRead(ASYNC, 3, "Content-Length: 10\r\n\r\n"),
     MockRead(ASYNC, 4, "0123456789"),
   };
-  scoped_ptr<spdy::SpdyFrame> req(ConstructSpdyConnect(NULL, 0, 1));
-  scoped_ptr<spdy::SpdyFrame> rst(ConstructSpdyRstStream(1, spdy::CANCEL));
+  scoped_ptr<SpdyFrame> req(ConstructSpdyConnect(NULL, 0, 1));
+  scoped_ptr<SpdyFrame> rst(ConstructSpdyRstStream(1, CANCEL));
   MockWrite spdy_writes[] = {
     CreateMockWrite(*req, 0, ASYNC),
     CreateMockWrite(*rst, 2, ASYNC),
@@ -262,15 +263,15 @@ TEST_P(HttpProxyClientSocketPoolSpdy2Test, NeedAuth) {
     "version", "HTTP/1.1",
     "proxy-authenticate", "Basic realm=\"MyRealm1\"",
   };
-  scoped_ptr<spdy::SpdyFrame> resp(
+  scoped_ptr<SpdyFrame> resp(
 
       ConstructSpdyControlFrame(NULL,
                                 0,
                                 false,
                                 1,
                                 LOWEST,
-                                spdy::SYN_REPLY,
-                                spdy::CONTROL_FLAG_NONE,
+                                SYN_REPLY,
+                                CONTROL_FLAG_NONE,
                                 kAuthChallenge,
                                 arraysize(kAuthChallenge)));
   MockRead spdy_reads[] = {
@@ -347,12 +348,12 @@ TEST_P(HttpProxyClientSocketPoolSpdy2Test, AsyncHaveAuth) {
     MockRead(SYNCHRONOUS, "HTTP/1.1 200 Connection Established\r\n\r\n"),
   };
 
-  scoped_ptr<spdy::SpdyFrame> req(ConstructSpdyConnect(kAuthHeaders,
+  scoped_ptr<SpdyFrame> req(ConstructSpdyConnect(kAuthHeaders,
                                                        kAuthHeadersSize, 1));
   MockWrite spdy_writes[] = {
     CreateMockWrite(*req, 0, ASYNC)
   };
-  scoped_ptr<spdy::SpdyFrame> resp(ConstructSpdyGetSynReply(NULL, 0, 1));
+  scoped_ptr<SpdyFrame> resp(ConstructSpdyGetSynReply(NULL, 0, 1));
   MockRead spdy_reads[] = {
     CreateMockRead(*resp, 1, ASYNC),
     MockRead(ASYNC, 0, 2)
@@ -459,7 +460,7 @@ TEST_P(HttpProxyClientSocketPoolSpdy2Test, TunnelUnexpectedClose) {
     MockRead(ASYNC, 1, "HTTP/1.1 200 Conn"),
     MockRead(ASYNC, ERR_CONNECTION_CLOSED, 2),
   };
-  scoped_ptr<spdy::SpdyFrame> req(ConstructSpdyConnect(kAuthHeaders,
+  scoped_ptr<SpdyFrame> req(ConstructSpdyConnect(kAuthHeaders,
                                                        kAuthHeadersSize, 1));
   MockWrite spdy_writes[] = {
     CreateMockWrite(*req, 0, ASYNC)
@@ -496,14 +497,14 @@ TEST_P(HttpProxyClientSocketPoolSpdy2Test, TunnelSetupError) {
   MockRead reads[] = {
     MockRead(ASYNC, 1, "HTTP/1.1 304 Not Modified\r\n\r\n"),
   };
-  scoped_ptr<spdy::SpdyFrame> req(ConstructSpdyConnect(kAuthHeaders,
+  scoped_ptr<SpdyFrame> req(ConstructSpdyConnect(kAuthHeaders,
                                                        kAuthHeadersSize, 1));
-  scoped_ptr<spdy::SpdyFrame> rst(ConstructSpdyRstStream(1, spdy::CANCEL));
+  scoped_ptr<SpdyFrame> rst(ConstructSpdyRstStream(1, CANCEL));
   MockWrite spdy_writes[] = {
     CreateMockWrite(*req, 0, ASYNC),
     CreateMockWrite(*rst, 2, ASYNC),
   };
-  scoped_ptr<spdy::SpdyFrame> resp(ConstructSpdySynReplyError(1));
+  scoped_ptr<SpdyFrame> resp(ConstructSpdySynReplyError(1));
   MockRead spdy_reads[] = {
     CreateMockRead(*resp, 1, ASYNC),
     MockRead(ASYNC, 0, 3),

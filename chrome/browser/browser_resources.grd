@@ -70,6 +70,9 @@
       <include name="IDR_HISTORY_HTML" file="resources\history\history.html" flattenhtml="true" allowexternalscript="true" type="BINDATA" />
       <include name="IDR_HISTORY_JS" file="resources\history\history.js" flattenhtml="true" type="BINDATA" />
       <include name="IDR_INCOGNITO_TAB_HTML" file="resources\incognito_tab.html" flattenhtml="true" type="BINDATA" />
+      <include name="IDR_INSPECT_CSS" file="resources\inspect\inspect.css" flattenhtml="true" type="BINDATA" />
+      <include name="IDR_INSPECT_HTML" file="resources\inspect\inspect.html" flattenhtml="true" allowexternalscript="true" type="BINDATA" />
+      <include name="IDR_INSPECT_JS" file="resources\inspect\inspect.js" flattenhtml="true" type="BINDATA" />
       <include name="IDR_KEYBOARD_MANIFEST" file="resources\keyboard\manifest.json" type="BINDATA" />
       <include name="IDR_MEDIA_INTERNALS_HTML" file="resources\media_internals.html" flattenhtml="true" allowexternalscript="true" type="BINDATA" />
       <include name="IDR_MEDIA_INTERNALS_JS" file="resources\media_internals\media_internals.js" flattenhtml="true" type="BINDATA" />
@@ -99,7 +102,6 @@
       <include name="IDR_POLICY_HTML" file="resources\policy.html" flattenhtml="true" allowexternalscript="true" type="BINDATA"/>
       <include name="IDR_POLICY_JS" file="resources\policy.js" type="BINDATA"/>
       <include name="IDR_PRINT_PREVIEW_DUMMY_HTML" file="resources\print_preview\print_preview_dummy.html" flattenhtml="true" allowexternalscript="true" type="BINDATA" />
-      <include name="IDR_PRINT_PREVIEW_DUMMY_JS" file="resources\print_preview\print_preview_dummy.js" flattenhtml="true" type="BINDATA" />
       <include name="IDR_PRINT_PREVIEW_HTML" file="resources\print_preview\print_preview.html" flattenhtml="true" allowexternalscript="true" type="BINDATA" />
       <include name="IDR_PRINT_PREVIEW_JS" file="resources\print_preview\print_preview.js" flattenhtml="true" type="BINDATA" />
       <include name="IDR_PROFILER_HTML" file="resources\profiler\profiler.html" flattenhtml="true" allowexternalscript="true" type="BINDATA" />
@@ -147,6 +149,7 @@
         <include name="IDR_ACTIVE_DOWNLOADS_JS" file="resources\chromeos\active_downloads.js" type="BINDATA" />
         <include name="IDR_CHOOSE_MOBILE_NETWORK_HTML" file="resources\chromeos\choose_mobile_network.html" flattenhtml="true" allowexternalscript="true" type="BINDATA" />
         <include name="IDR_CHOOSE_MOBILE_NETWORK_JS" file="resources\chromeos\choose_mobile_network.js" type="BINDATA" />
+        <include name="IDR_CROSH_BUILTIN_MANIFEST" file="resources\chromeos\crosh_builtin\manifest.json" type="BINDATA" />
         <!-- manifest file of ChromeVox accessibility extension -->
         <include name="IDR_CHROMEVOX_MANIFEST" file="resources\chromeos\access_chromevox\manifest.json" type="BINDATA" />
         <include name="IDR_GAIA_AUTH_MANIFEST" file="resources\chromeos\gaia_auth\manifest.json" type="BINDATA" />
@@ -166,6 +169,7 @@
         <include name="IDR_NETWORK_MENU_CSS" file="resources\chromeos\network_menu.css" flattenhtml="true" type="BINDATA" />
         <include name="IDR_NETWORK_MENU_JS" file="resources\chromeos\network_menu.js" flattenhtml="true" type="BINDATA" />
         <include name="IDR_NOTIFICATION_ICON_LINK_HTML" file="resources\chromeos\notification_icon_link.html" type="BINDATA" />
+        <include name="IDR_OFFERS_MANIFEST" file="resources\chromeos\offers\manifest.json" type="BINDATA" />
         <include name="IDR_OFFLINE_LOAD_HTML" file="resources\chromeos\offline_load.html" flattenhtml="true" type="BINDATA" />
         <include name="IDR_OOBE_HTML" file="resources\chromeos\login\oobe.html" flattenhtml="true" type="BINDATA" />
         <include name="IDR_OS_CREDITS_HTML" file="resources\chromeos\about_os_credits.html" flattenhtml="true" type="BINDATA" />

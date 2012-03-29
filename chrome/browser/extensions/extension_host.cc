@@ -217,19 +217,19 @@ void ExtensionHost::CreateRenderViewNow() {
 }
 
 void ExtensionHost::SendShouldClose() {
-  CHECK(!extension()->background_page_persists());
+  CHECK(extension()->has_lazy_background_page());
   render_view_host()->Send(new ExtensionMsg_ShouldClose(
       extension()->id(), ++close_sequence_id_));
   // TODO(mpcomplete): start timeout
 }
 
 void ExtensionHost::CancelShouldClose() {
-  CHECK(!extension()->background_page_persists());
+  CHECK(extension()->has_lazy_background_page());
   ++close_sequence_id_;
 }
 
 void ExtensionHost::OnShouldCloseAck(int sequence_id) {
-  CHECK(!extension()->background_page_persists());
+  CHECK(extension()->has_lazy_background_page());
   if (sequence_id != close_sequence_id_)
     return;
   Close();
@@ -293,10 +293,10 @@ void ExtensionHost::Observe(int type,
   }
 }
 
-void ExtensionHost::UpdatePreferredSize(WebContents* source,
-                                        const gfx::Size& pref_size) {
+void ExtensionHost::ResizeDueToAutoResize(WebContents* source,
+                                          const gfx::Size& new_size) {
   if (view_.get())
-    view_->UpdatePreferredSize(pref_size);
+    view_->ResizeDueToAutoResize(new_size);
 }
 
 void ExtensionHost::RenderViewGone(base::TerminationStatus status) {
@@ -332,11 +332,6 @@ void ExtensionHost::InsertInfobarCSS() {
       IDR_EXTENSIONS_INFOBAR_CSS));
 
   render_view_host()->InsertCSS(string16(), css.as_string());
-}
-
-void ExtensionHost::DisableScrollbarsForSmallWindows(
-    const gfx::Size& size_limit) {
-  render_view_host()->DisableScrollbarsForThreshold(size_limit);
 }
 
 void ExtensionHost::DidStopLoading() {
@@ -484,11 +479,6 @@ void ExtensionHost::RenderViewCreated(RenderViewHost* render_view_host) {
 
   if (view_.get())
     view_->RenderViewCreated();
-
-  if (extension_host_type_ == chrome::VIEW_TYPE_EXTENSION_POPUP ||
-      extension_host_type_ == chrome::VIEW_TYPE_EXTENSION_INFOBAR) {
-    render_view_host->EnablePreferredSizeMode();
-  }
 
   // If the host is bound to a browser, then extract its window id.
   // Extensions hosted in ExternalTabContainer objects may not have

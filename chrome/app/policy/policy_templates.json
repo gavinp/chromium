@@ -112,7 +112,7 @@
 #   persistent IDs for all fields (but not for groups!) are needed. These are
 #   specified by the 'id' keys of each policy. NEVER CHANGE EXISTING IDs,
 #   because doing so would break the deployed wire format!
-#   For your editing convenience: highest ID currently used: 138
+#   For your editing convenience: highest ID currently used: 141
 #
 # Placeholders:
 #   The following placeholder strings are automatically substituted:
@@ -688,9 +688,9 @@
       'type': 'int',
       'supported_on': ['chrome.*:17-'],
       'features': {'dynamic_refresh': False},
-      'example_value': 100,
+      'example_value': 104857600,
       'id': 110,
-      'caption': '''Set disk cache size in megabytes''',
+      'caption': '''Set disk cache size in bytes''',
       'desc': '''Configures the cache size that <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph> will use for storing cached files on the disk.
 
       If you set this policy, <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph> will use the provided cache size regardless whether the user has specified the '--disk-cache-size' flag or not.
@@ -705,9 +705,9 @@
       'type': 'int',
       'supported_on': ['chrome.*:17-'],
       'features': {'dynamic_refresh': False},
-      'example_value': 250,
+      'example_value': 104857600,
       'id': 111,
-      'caption': '''Set media disk cache size''',
+      'caption': '''Set media disk cache size in bytes''',
       'desc': '''Configures the chache size that <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph> will use for storing cached media files on the disk.
 
       If you set this policy, <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph> will use the provided cache size regardless whether the user has specified the '--media-cache-size' flag or not.
@@ -1093,9 +1093,13 @@
           'caption': '''Configure the list of force-installed extensions''',
           'desc': '''Allows you to specify a list of extensions that will be installed silently, without user interaction.
 
-          Each item of the list is a string, that contains an extension ID and an update URL delimited by a semicolon (<ph name="SEMICOLON">;</ph>). For example: <ph name="EXTENSION_POLICY_EXAMPLE">lcncmkcnkcdbbanbjakcencbaoegdjlp;https://clients2.google.com/service/update2/crx</ph>. For each item, <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph> will retrieve the extension specified by the ID from the specified URL and silently install it. The following pages explain how you can host extensions on your own server. About update URLs: <ph name="LINK_TO_EXTENSION_DOC1">http://code.google.com/chrome/extensions/autoupdate.html</ph> , about hosting extensions in general: <ph name="LINK_TO_EXTENSION_DOC2">http://code.google.com/chrome/extensions/hosting.html</ph>.
+          Each item of the list is a string that contains an extension ID and an update URL delimited by a semicolon (<ph name="SEMICOLON">;</ph>). The extension ID is the 32-letter string found e.g. on <ph name="CHROME_EXTENSIONS_LINK">chrome://extensions</ph> when in developer mode. The update URL should point to an Update Manifest XML document as described at <ph name="LINK_TO_EXTENSION_DOC1">http://code.google.com/chrome/extensions/autoupdate.html</ph>.
 
-          Users will be unable to uninstall extensions that are specified by this policy. If you remove an extension from this list, then it will be automatically uninstalled by <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph>. Extensions that are blacklisted in 'ExtensionInstallBlacklist' and not whitelisted, cannot be force-installed by this policy.
+          For each item, <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph> will retrieve the extension specified by the extension ID from the update service at the specified update URL and silently install it.
+
+          For example, <ph name="EXTENSION_POLICY_EXAMPLE">lcncmkcnkcdbbanbjakcencbaoegdjlp;https://clients2.google.com/service/update2/crx</ph> installs the <ph name="EXTENSION_POLICY_EXAMPLE_EXTENSION_NAME">Google SSL Web Search</ph> extension from the standard Chrome Web Store update URL. For more information about hosting extensions, see: <ph name="LINK_TO_EXTENSION_DOC2">http://code.google.com/chrome/extensions/hosting.html</ph>.
+
+          Users will be unable to uninstall extensions that are specified by this policy. If you remove an extension from this list, then it will be automatically uninstalled by <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph>.
 
           If this policy is left not set the user can uninstall any extension  in <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph>.''',
           'label': '''Extension IDs and update URLs to be silently installed''',
@@ -1791,6 +1795,18 @@
 
           For example patterns see http://www.chromium.org/developers/how-tos/chrome-frame-getting-started.''',
         },
+        {
+          'name': 'AdditionalLaunchParameters',
+          'type': 'string',
+          'supported_on': ['chrome_frame:19-'],
+          'features': {'dynamic_refresh': False},
+          'example_value': '--enable-media-stream --enable-media-source',
+          'id': 141,
+          'caption': '''Additional command line parameters for <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph>''',
+          'desc': '''Allows you to specify additional parameters that are used when <ph name="PRODUCT_FRAME_NAME">$3<ex>Google Chrome Frame</ex></ph> launches <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph>.
+
+          If this policy is not set the default command line will be used.''',
+        },
       ],
     },
     {
@@ -2217,10 +2233,10 @@
       'future': True,
       'example_value': True,
       'id': 114,
-      'caption': '''Enable TLS origin-bound certificates extension''',
-      'desc': '''Specifies whether the TLS origin-bound certificates extension should be enabled.
+      'caption': '''Enable TLS domain-bound certificates extension''',
+      'desc': '''Specifies whether the TLS domain-bound certificates extension should be enabled.
 
-      This setting is used to enable the TLS origin-bound certificates extension for testing.  This experimental setting will be removed in the future.''',
+      This setting is used to enable the TLS domain-bound certificates extension for testing.  This experimental setting will be removed in the future.''',
     },
     {
       'name': 'EnableMemoryInfo',
@@ -2551,6 +2567,42 @@
       If this policy is set to False, background mode is disabled and cannot be controlled by the user in the browser settings.
 
       If this policy is left unset, background mode is initially disabled and can be controlled by the user in the browser settings.''',
+    },
+    {
+      'name': 'GData',
+      'type': 'group',
+      'caption': '''Configure GData options''',
+      'desc': '''Configure GData in <ph name="PRODUCT_OS_NAME">$2<ex>Google Chrome OS</ex></ph>.''',
+      'policies': [
+        {
+          'name': 'GDataDisabled',
+          'type': 'main',
+          'supported_on': ['chrome_os:19-'],
+          'features': {'dynamic_refresh': True},
+          'example_value': True,
+          'id': 139,
+          'caption': '''Disables GData''',
+          'desc': '''Disables Google Docs syncing when set to True.
+
+          - i.e. no data is uploaded to Google Docs.
+
+          - if not set or false, users will be able to transfer files to Google Docs.''',
+        },
+        {
+          'name': 'GDataDisabledOverCellular',
+          'type': 'main',
+          'supported_on': ['chrome_os:19-'],
+          'features': {'dynamic_refresh': True},
+          'example_value': True,
+          'id': 140,
+          'caption': '''Disables GData over Cellular connections''',
+          'desc': '''Disables Google Docs syncing when using a cellular connection when set to True.
+
+          - i.e. data is only synced to Google Docs when connected via WiFi or Ethernet.
+
+          - if not set or false, users will be able to transfer files to Google Docs via cellular connections.''',
+        },
+      ],
     },
   ],
   'messages': {

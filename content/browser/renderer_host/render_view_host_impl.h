@@ -112,8 +112,6 @@ class ExecuteNotificationObserver : public NotificationObserver {
 // will not be able to traverse pages back and forward. We need to determine
 // if we want to bring that and other functionality down into this object so
 // it can be shared by others.
-//
-// TODO(joi): Move to content namespace.
 class CONTENT_EXPORT RenderViewHostImpl
     : public RenderViewHost,
       public RenderWidgetHostImpl {
@@ -211,7 +209,6 @@ class CONTENT_EXPORT RenderViewHostImpl
   virtual void NotifyMoveOrResizeStarted() OVERRIDE;
   virtual void ReloadFrame() OVERRIDE;
   virtual void SetAltErrorPageURL(const GURL& url) OVERRIDE;
-  void SetGuest(bool guest);
   virtual void SetWebUIProperty(const std::string& name,
                                 const std::string& value) OVERRIDE;
   virtual void SetZoomLevel(double level) OVERRIDE;
@@ -343,6 +340,8 @@ class CONTENT_EXPORT RenderViewHostImpl
     sudden_termination_allowed_ = enabled;
   }
 
+  void set_guest(bool guest) { guest_ = guest; }
+
   // RenderWidgetHost public overrides.
   virtual void Shutdown() OVERRIDE;
   virtual bool IsRenderView() const OVERRIDE;
@@ -356,6 +355,7 @@ class CONTENT_EXPORT RenderViewHostImpl
   virtual void ForwardKeyboardEvent(
       const NativeWebKeyboardEvent& key_event) OVERRIDE;
   virtual gfx::Rect GetRootWindowResizerRect() const OVERRIDE;
+  virtual void StopHangMonitorTimeout() OVERRIDE;
 
   // Creates a new RenderView with the given route id.
   void CreateNewWindow(int route_id,
@@ -390,10 +390,12 @@ class CONTENT_EXPORT RenderViewHostImpl
     return is_waiting_for_unload_ack_;
   }
 
-  // Checks that the given renderer can request |url|, if not it sets it to an
-  // empty url.
+  // Checks that the given renderer can request |url|, if not it sets it to
+  // about:blank.
+  // empty_allowed must be set to false for navigations for security reasons.
   static void FilterURL(ChildProcessSecurityPolicyImpl* policy,
                         int renderer_id,
+                        bool empty_allowed,
                         GURL* url);
 
   // NOTE: Do not add functions that just send an IPC message that are called in

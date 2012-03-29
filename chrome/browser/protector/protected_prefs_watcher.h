@@ -25,16 +25,25 @@ namespace protector {
 
 class ProtectedPrefsWatcher : public content::NotificationObserver {
  public:
+  // Current backup version.
+  static const int kCurrentVersionNumber;
+
   explicit ProtectedPrefsWatcher(Profile* profile);
   virtual ~ProtectedPrefsWatcher();
 
   // Registers prefs on a new Profile instance.
   static void RegisterUserPrefs(PrefService* prefs);
 
-  // Returns the backup value for pref named |path| or |NULL| if the pref is
-  // not protected or does not exist. The returned Value instance is owned by
-  // the PrefService.
+  // Returns true if pref named |path| has changed and the backup is valid.
+  bool DidPrefChange(const std::string& path) const;
+
+  // Returns the backup value for pref named |path| or |NULL| if the pref is not
+  // protected, does not exist or the backup is invalid. The returned Value
+  // instance is owned by the PrefService.
   const base::Value* GetBackupForPref(const std::string& path) const;
+
+  // Updates the backup signature.
+  void UpdateBackupSignature();
 
   // True if the backup was valid at the profile load time.
   bool is_backup_valid() { return is_backup_valid_; }
@@ -62,12 +71,12 @@ class ProtectedPrefsWatcher : public content::NotificationObserver {
   // Creates initial backup entries.
   void InitBackup();
 
+  // Migrates backup if it is an older version.
+  void MigrateOldBackupIfNeeded();
+
   // Updates the backup утекн for |pref_name| and кeturns |true| if the
   // backup has changed.
   bool UpdateBackupEntry(const std::string& pref_name);
-
-  // Updates the backup signature.
-  void UpdateBackupSignature();
 
   // Perform a check that backup is valid and settings have not been modified.
   void ValidateBackup();

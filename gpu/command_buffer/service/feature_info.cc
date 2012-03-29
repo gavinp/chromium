@@ -118,6 +118,7 @@ void FeatureInfo::AddFeatures(const char* desired_features) {
   AddExtensionString("GL_CHROMIUM_rate_limit_offscreen_context");
   AddExtensionString("GL_CHROMIUM_set_visibility");
   AddExtensionString("GL_CHROMIUM_gpu_memory_manager");
+  AddExtensionString("GL_CHROMIUM_discard_framebuffer");
   AddExtensionString("GL_CHROMIUM_command_buffer_query");
   AddExtensionString("GL_ANGLE_translated_shader_source");
 
@@ -389,10 +390,10 @@ void FeatureInfo::AddFeatures(const char* desired_features) {
   //     GL_OES_depth32
   //     GL_OES_element_index_uint
 
-  feature_flags_.enable_texture_float_linear = enable_texture_float_linear;
-  feature_flags_.enable_texture_half_float_linear =
+  feature_flags_.enable_texture_float_linear |= enable_texture_float_linear;
+  feature_flags_.enable_texture_half_float_linear |=
       enable_texture_half_float_linear;
-  feature_flags_.npot_ok = npot_ok;
+  feature_flags_.npot_ok |= npot_ok;
 
   if (ext.HaveAndDesire("GL_CHROMIUM_post_sub_buffer")) {
     AddExtensionString("GL_CHROMIUM_post_sub_buffer");

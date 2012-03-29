@@ -8,12 +8,14 @@
 #include "base/logging.h"
 #include "base/message_loop.h"
 #include "base/threading/thread.h"
-#include "net/base/default_origin_bound_cert_store.h"
+#include "net/base/cert_verifier.h"
+#include "net/base/default_server_bound_cert_store.h"
 #include "net/base/host_port_pair.h"
-#include "net/base/origin_bound_cert_service.h"
+#include "net/base/server_bound_cert_service.h"
 #include "net/http/http_network_session.h"
 #include "net/http/http_server_properties_impl.h"
 #include "net/url_request/url_request_job_factory.h"
+#include "testing/gtest/include/gtest/gtest.h"
 
 namespace {
 
@@ -110,7 +112,7 @@ void TestURLRequestContext::Init() {
   DCHECK(!initialized_);
   initialized_ = true;
   if (!cert_verifier())
-    context_storage_.set_cert_verifier(new net::CertVerifier);
+    context_storage_.set_cert_verifier(net::CertVerifier::CreateDefault());
   if (!ftp_transaction_factory()) {
     context_storage_.set_ftp_transaction_factory(
         new net::FtpNetworkLayer(host_resolver()));
@@ -143,10 +145,10 @@ void TestURLRequestContext::Init() {
   if (!cookie_store())
     context_storage_.set_cookie_store(new net::CookieMonster(NULL, NULL));
   // In-memory origin bound cert service.
-  if (!origin_bound_cert_service()) {
-    context_storage_.set_origin_bound_cert_service(
-        new net::OriginBoundCertService(
-            new net::DefaultOriginBoundCertStore(NULL)));
+  if (!server_bound_cert_service()) {
+    context_storage_.set_server_bound_cert_service(
+        new net::ServerBoundCertService(
+            new net::DefaultServerBoundCertStore(NULL)));
   }
   if (accept_language().empty())
     set_accept_language("en-us,fr");

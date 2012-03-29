@@ -4,6 +4,7 @@
 
 #include "base/bind.h"
 #include "base/callback.h"
+#include "base/callback_helpers.h"
 #include "base/threading/platform_thread.h"
 #include "media/base/buffers.h"
 #include "media/base/filter_host.h"
@@ -61,6 +62,11 @@ void VideoRendererBase::Flush(const base::Closure& callback) {
 }
 
 void VideoRendererBase::Stop(const base::Closure& callback) {
+  if (state_ == kStopped) {
+    callback.Run();
+    return;
+  }
+
   base::PlatformThreadHandle thread_to_join = base::kNullThreadHandle;
   {
     base::AutoLock auto_lock(lock_);
@@ -83,7 +89,7 @@ void VideoRendererBase::Stop(const base::Closure& callback) {
   if (thread_to_join != base::kNullThreadHandle)
     base::PlatformThread::Join(thread_to_join);
 
-  callback.Run();
+  decoder_->Stop(callback);
 }
 
 void VideoRendererBase::SetPlaybackRate(float playback_rate) {
@@ -103,7 +109,7 @@ void VideoRendererBase::Seek(base::TimeDelta time, const PipelineStatusCB& cb) {
   AttemptRead_Locked();
 }
 
-void VideoRendererBase::Initialize(VideoDecoder* decoder,
+void VideoRendererBase::Initialize(const scoped_refptr<VideoDecoder>& decoder,
                                    const PipelineStatusCB& status_cb,
                                    const StatisticsCB& statistics_cb,
                                    const TimeCB& time_cb) {
@@ -367,7 +373,7 @@ void VideoRendererBase::FrameReady(scoped_refptr<VideoFrame> frame) {
     // A new seek will be requested after this one completes so there is no
     // point trying to collect more frames.
     state_ = kPrerolled;
-    ResetAndRunCB(&seek_cb_, PIPELINE_OK);
+    base::ResetAndReturn(&seek_cb_).Run(PIPELINE_OK);
     return;
   }
 
@@ -426,7 +432,7 @@ void VideoRendererBase::FrameReady(scoped_refptr<VideoFrame> frame) {
 
     // ...and we're done seeking!
     DCHECK(!seek_cb_.is_null());
-    ResetAndRunCB(&seek_cb_, PIPELINE_OK);
+    base::ResetAndReturn(&seek_cb_).Run(PIPELINE_OK);
 
     base::AutoUnlock ul(lock_);
     paint_cb_.Run();
@@ -457,7 +463,10 @@ void VideoRendererBase::AttemptFlush_Locked() {
   if (!pending_paint_ && !pending_read_) {
     state_ = kFlushed;
     current_frame_ = NULL;
-    ResetAndRunCB(&flush_cb_);
+
+    base::Closure flush_cb = flush_cb_;
+    flush_cb_.Reset();
+    decoder_->Flush(flush_cb);
   }
 }
 

@@ -5,6 +5,7 @@
 #include "media/base/video_frame.h"
 
 #include "base/logging.h"
+#include "base/string_piece.h"
 #include "media/base/limits.h"
 #include "media/base/video_util.h"
 
@@ -153,9 +154,9 @@ VideoFrame::VideoFrame(VideoFrame::Format format,
       width_(width),
       height_(height),
       texture_id_(0),
-      texture_target_(0) {
-  SetTimestamp(timestamp);
-  SetDuration(duration);
+      texture_target_(0),
+      timestamp_(timestamp),
+      duration_(duration) {
   memset(&strides_, 0, sizeof(strides_));
   memset(&data_, 0, sizeof(data_));
 }
@@ -206,13 +207,21 @@ int VideoFrame::stride(size_t plane) const {
 int VideoFrame::row_bytes(size_t plane) const {
   DCHECK(IsValidPlane(plane));
   switch (format_) {
+    // 16bpp.
     case RGB555:
     case RGB565:
+      return width_ * 2;
+
+    // 24bpp.
     case RGB24:
+      return width_ * 3;
+
+    // 32bpp.
     case RGB32:
     case RGBA:
-      return width_;
+      return width_ * 4;
 
+    // Planar, 8bpp.
     case YV12:
     case YV16:
       if (plane == kYPlane)
@@ -270,6 +279,18 @@ uint32 VideoFrame::texture_target() const {
 
 bool VideoFrame::IsEndOfStream() const {
   return format_ == VideoFrame::EMPTY;
+}
+
+void VideoFrame::HashFrameForTesting(base::MD5Context* context) {
+  for(int plane = 0; plane < kMaxPlanes; plane++) {
+    if (!IsValidPlane(plane))
+      break;
+    for(int row = 0; row < rows(plane); row++) {
+      base::MD5Update(context, base::StringPiece(
+          reinterpret_cast<char*>(data(plane) + stride(plane) * row),
+          row_bytes(plane)));
+    }
+  }
 }
 
 }  // namespace media

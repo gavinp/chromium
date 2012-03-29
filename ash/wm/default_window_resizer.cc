@@ -12,6 +12,7 @@
 #include "ui/aura/window_delegate.h"
 #include "ui/base/hit_test.h"
 #include "ui/base/ui_base_types.h"
+#include "ui/gfx/compositor/layer.h"
 #include "ui/gfx/compositor/scoped_layer_animation_settings.h"
 #include "ui/gfx/screen.h"
 
@@ -43,7 +44,8 @@ void DefaultWindowResizer::Drag(const gfx::Point& location) {
 void DefaultWindowResizer::CompleteDrag() {
   if (details_.grid_size <= 1 || !did_move_or_resize_)
     return;
-  gfx::Rect new_bounds(AdjustBoundsToGrid(details_));
+  gfx::Rect new_bounds(
+      AdjustBoundsToGrid(details_.window->bounds(), details_.grid_size));
   if (new_bounds == details_.window->bounds())
     return;
 

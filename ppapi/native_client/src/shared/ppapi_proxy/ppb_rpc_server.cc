@@ -1330,6 +1330,96 @@ static void PPB_Graphics3DTrusted_GetTransferBufferDispatcher(
   );
 }
 
+static void PPB_HostResolver_Private_CreateDispatcher(
+    NaClSrpcRpc* rpc,
+    NaClSrpcArg** inputs,
+    NaClSrpcArg** outputs,
+    NaClSrpcClosure* done
+) {
+  PpbHostResolverPrivateRpcServer::PPB_HostResolver_Private_Create(
+      rpc,
+      done,
+      inputs[0]->u.ival,
+      &(outputs[0]->u.ival)
+  );
+}
+
+static void PPB_HostResolver_Private_IsHostResolverDispatcher(
+    NaClSrpcRpc* rpc,
+    NaClSrpcArg** inputs,
+    NaClSrpcArg** outputs,
+    NaClSrpcClosure* done
+) {
+  PpbHostResolverPrivateRpcServer::PPB_HostResolver_Private_IsHostResolver(
+      rpc,
+      done,
+      inputs[0]->u.ival,
+      &(outputs[0]->u.ival)
+  );
+}
+
+static void PPB_HostResolver_Private_ResolveDispatcher(
+    NaClSrpcRpc* rpc,
+    NaClSrpcArg** inputs,
+    NaClSrpcArg** outputs,
+    NaClSrpcClosure* done
+) {
+  PpbHostResolverPrivateRpcServer::PPB_HostResolver_Private_Resolve(
+      rpc,
+      done,
+      inputs[0]->u.ival,
+      inputs[1]->arrays.str,
+      inputs[2]->u.ival,
+      inputs[3]->u.count, inputs[3]->arrays.carr,
+      inputs[4]->u.ival,
+      &(outputs[0]->u.ival)
+  );
+}
+
+static void PPB_HostResolver_Private_GetCanonicalNameDispatcher(
+    NaClSrpcRpc* rpc,
+    NaClSrpcArg** inputs,
+    NaClSrpcArg** outputs,
+    NaClSrpcClosure* done
+) {
+  PpbHostResolverPrivateRpcServer::PPB_HostResolver_Private_GetCanonicalName(
+      rpc,
+      done,
+      inputs[0]->u.ival,
+      &(outputs[0]->u.count), outputs[0]->arrays.carr
+  );
+}
+
+static void PPB_HostResolver_Private_GetSizeDispatcher(
+    NaClSrpcRpc* rpc,
+    NaClSrpcArg** inputs,
+    NaClSrpcArg** outputs,
+    NaClSrpcClosure* done
+) {
+  PpbHostResolverPrivateRpcServer::PPB_HostResolver_Private_GetSize(
+      rpc,
+      done,
+      inputs[0]->u.ival,
+      &(outputs[0]->u.ival)
+  );
+}
+
+static void PPB_HostResolver_Private_GetNetAddressDispatcher(
+    NaClSrpcRpc* rpc,
+    NaClSrpcArg** inputs,
+    NaClSrpcArg** outputs,
+    NaClSrpcClosure* done
+) {
+  PpbHostResolverPrivateRpcServer::PPB_HostResolver_Private_GetNetAddress(
+      rpc,
+      done,
+      inputs[0]->u.ival,
+      inputs[1]->u.ival,
+      &(outputs[0]->u.count), outputs[0]->arrays.carr,
+      &(outputs[1]->u.ival)
+  );
+}
+
 static void PPB_ImageData_GetNativeImageDataFormatDispatcher(
     NaClSrpcRpc* rpc,
     NaClSrpcArg** inputs,
@@ -1689,6 +1779,51 @@ static void PPB_NetAddress_Private_GetAddressDispatcher(
       inputs[0]->u.count, inputs[0]->arrays.carr,
       &(outputs[0]->u.count), outputs[0]->arrays.carr,
       &(outputs[1]->u.ival)
+  );
+}
+
+static void PPB_NetAddress_Private_GetScopeIDDispatcher(
+    NaClSrpcRpc* rpc,
+    NaClSrpcArg** inputs,
+    NaClSrpcArg** outputs,
+    NaClSrpcClosure* done
+) {
+  PpbNetAddressPrivateRpcServer::PPB_NetAddress_Private_GetScopeID(
+      rpc,
+      done,
+      inputs[0]->u.count, inputs[0]->arrays.carr,
+      &(outputs[0]->u.ival)
+  );
+}
+
+static void PPB_NetAddress_Private_CreateFromIPv4AddressDispatcher(
+    NaClSrpcRpc* rpc,
+    NaClSrpcArg** inputs,
+    NaClSrpcArg** outputs,
+    NaClSrpcClosure* done
+) {
+  PpbNetAddressPrivateRpcServer::PPB_NetAddress_Private_CreateFromIPv4Address(
+      rpc,
+      done,
+      inputs[0]->u.count, inputs[0]->arrays.carr,
+      inputs[1]->u.ival,
+      &(outputs[0]->u.count), outputs[0]->arrays.carr
+  );
+}
+
+static void PPB_NetAddress_Private_CreateFromIPv6AddressDispatcher(
+    NaClSrpcRpc* rpc,
+    NaClSrpcArg** inputs,
+    NaClSrpcArg** outputs,
+    NaClSrpcClosure* done
+) {
+  PpbNetAddressPrivateRpcServer::PPB_NetAddress_Private_CreateFromIPv6Address(
+      rpc,
+      done,
+      inputs[0]->u.count, inputs[0]->arrays.carr,
+      inputs[1]->u.ival,
+      inputs[2]->u.ival,
+      &(outputs[0]->u.count), outputs[0]->arrays.carr
   );
 }
 
@@ -3118,6 +3253,12 @@ NaClSrpcHandlerDesc PpbRpcs::srpc_methods[] = {
   { "PPB_Graphics3DTrusted_CreateTransferBuffer:iii:i", PPB_Graphics3DTrusted_CreateTransferBufferDispatcher },
   { "PPB_Graphics3DTrusted_DestroyTransferBuffer:ii:", PPB_Graphics3DTrusted_DestroyTransferBufferDispatcher },
   { "PPB_Graphics3DTrusted_GetTransferBuffer:ii:hi", PPB_Graphics3DTrusted_GetTransferBufferDispatcher },
+  { "PPB_HostResolver_Private_Create:i:i", PPB_HostResolver_Private_CreateDispatcher },
+  { "PPB_HostResolver_Private_IsHostResolver:i:i", PPB_HostResolver_Private_IsHostResolverDispatcher },
+  { "PPB_HostResolver_Private_Resolve:isiCi:i", PPB_HostResolver_Private_ResolveDispatcher },
+  { "PPB_HostResolver_Private_GetCanonicalName:i:C", PPB_HostResolver_Private_GetCanonicalNameDispatcher },
+  { "PPB_HostResolver_Private_GetSize:i:i", PPB_HostResolver_Private_GetSizeDispatcher },
+  { "PPB_HostResolver_Private_GetNetAddress:ii:Ci", PPB_HostResolver_Private_GetNetAddressDispatcher },
   { "PPB_ImageData_GetNativeImageDataFormat::i", PPB_ImageData_GetNativeImageDataFormatDispatcher },
   { "PPB_ImageData_IsImageDataFormatSupported:i:i", PPB_ImageData_IsImageDataFormatSupportedDispatcher },
   { "PPB_ImageData_Create:iiCi:i", PPB_ImageData_CreateDispatcher },
@@ -3141,6 +3282,9 @@ NaClSrpcHandlerDesc PpbRpcs::srpc_methods[] = {
   { "PPB_NetAddress_Private_GetFamily:C:i", PPB_NetAddress_Private_GetFamilyDispatcher },
   { "PPB_NetAddress_Private_GetPort:C:i", PPB_NetAddress_Private_GetPortDispatcher },
   { "PPB_NetAddress_Private_GetAddress:C:Ci", PPB_NetAddress_Private_GetAddressDispatcher },
+  { "PPB_NetAddress_Private_GetScopeID:C:i", PPB_NetAddress_Private_GetScopeIDDispatcher },
+  { "PPB_NetAddress_Private_CreateFromIPv4Address:Ci:C", PPB_NetAddress_Private_CreateFromIPv4AddressDispatcher },
+  { "PPB_NetAddress_Private_CreateFromIPv6Address:Cii:C", PPB_NetAddress_Private_CreateFromIPv6AddressDispatcher },
   { "PPB_PDF_GetLocalizedString:ii:C", PPB_PDF_GetLocalizedStringDispatcher },
   { "PPB_PDF_GetResourceImage:ii:i", PPB_PDF_GetResourceImageDispatcher },
   { "PPB_PDF_GetFontFileWithFallback:iCCi:i", PPB_PDF_GetFontFileWithFallbackDispatcher },

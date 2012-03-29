@@ -177,6 +177,12 @@ body {
   display: none;
 }
 
+.track .art.error {
+  background-image: url(../images/media/error.png);
+  background-repeat: no-repeat;
+  background-position: center center;
+}
+
 .noart .track .art {
   display: none;
 }

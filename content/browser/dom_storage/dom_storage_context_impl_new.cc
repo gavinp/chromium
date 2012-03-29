@@ -21,6 +21,7 @@ using content::BrowserThread;
 using content::DOMStorageContext;
 using dom_storage::DomStorageArea;
 using dom_storage::DomStorageContext;
+using dom_storage::DomStorageTaskRunner;
 using dom_storage::DomStorageWorkerPoolTaskRunner;
 using webkit_database::DatabaseUtil;
 
@@ -44,8 +45,7 @@ FilePath OriginToFullFilePath(const FilePath& directory,
 
 GURL FilePathToOrigin(const FilePath& path) {
   DCHECK(path.MatchesExtension(DomStorageArea::kDatabaseFileExtension));
-  return OriginIdToGURL(
-      webkit_glue::FilePathToWebString(path.BaseName().RemoveExtension()));
+  return DomStorageArea::OriginFromDatabaseFileName(path);
 }
 
 void InvokeAllStorageFilesCallbackHelper(
@@ -59,7 +59,10 @@ void GetAllStorageFilesHelper(
       DomStorageContext* context,
       const DOMStorageContext::GetAllStorageFilesCallback& callback) {
   std::vector<DomStorageContext::UsageInfo> infos;
-  context->GetUsageInfo(&infos);
+  // TODO(michaeln): Actually include the file info too when the
+  // content layer api is fixed.
+  const bool kDontIncludeFileInfo = false;
+  context->GetUsageInfo(&infos, kDontIncludeFileInfo);
 
   std::vector<FilePath> paths;
   for (size_t i = 0; i < infos.size(); ++i) {
@@ -73,7 +76,7 @@ void GetAllStorageFilesHelper(
                  callback, paths));
 }
 
-}
+}  // namespace
 
 DOMStorageContextImpl::DOMStorageContextImpl(
     const FilePath& data_path,
@@ -85,7 +88,8 @@ DOMStorageContextImpl::DOMStorageContextImpl(
       special_storage_policy,
       new DomStorageWorkerPoolTaskRunner(
           worker_pool,
-          worker_pool->GetNamedSequenceToken("dom_storage"),
+          worker_pool->GetNamedSequenceToken("dom_storage_primary"),
+          worker_pool->GetNamedSequenceToken("dom_storage_commit"),
           BrowserThread::GetMessageLoopProxyForThread(BrowserThread::IO)));
 }
 
@@ -95,8 +99,9 @@ DOMStorageContextImpl::~DOMStorageContextImpl() {
 void DOMStorageContextImpl::GetAllStorageFiles(
       const GetAllStorageFilesCallback& callback) {
   DCHECK(context_);
-  context_->task_runner()->PostTask(
+  context_->task_runner()->PostShutdownBlockingTask(
       FROM_HERE,
+      DomStorageTaskRunner::PRIMARY_SEQUENCE,
       base::Bind(&GetAllStorageFilesHelper,
                  base::MessageLoopProxy::current(),
                  context_, callback));
@@ -109,54 +114,61 @@ FilePath DOMStorageContextImpl::GetFilePath(const string16& origin_id) const {
 
 void DOMStorageContextImpl::DeleteForOrigin(const string16& origin_id) {
   DCHECK(context_);
-  context_->task_runner()->PostTask(
+  context_->task_runner()->PostShutdownBlockingTask(
       FROM_HERE,
+      DomStorageTaskRunner::PRIMARY_SEQUENCE,
       base::Bind(&DomStorageContext::DeleteOrigin, context_,
                  OriginIdToGURL(origin_id)));
 }
 
 void DOMStorageContextImpl::DeleteLocalStorageFile(const FilePath& file_path) {
   DCHECK(context_);
-  context_->task_runner()->PostTask(
+  context_->task_runner()->PostShutdownBlockingTask(
       FROM_HERE,
+      DomStorageTaskRunner::PRIMARY_SEQUENCE,
       base::Bind(&DomStorageContext::DeleteOrigin, context_,
                  FilePathToOrigin(file_path)));
 }
 
 void DOMStorageContextImpl::DeleteDataModifiedSince(const base::Time& cutoff) {
   DCHECK(context_);
-  context_->task_runner()->PostTask(
+  context_->task_runner()->PostShutdownBlockingTask(
       FROM_HERE,
+      DomStorageTaskRunner::PRIMARY_SEQUENCE,
       base::Bind(&DomStorageContext::DeleteDataModifiedSince, context_,
                  cutoff));
 }
 
 void DOMStorageContextImpl::PurgeMemory() {
   DCHECK(context_);
-  context_->task_runner()->PostTask(
+  context_->task_runner()->PostShutdownBlockingTask(
       FROM_HERE,
+      DomStorageTaskRunner::PRIMARY_SEQUENCE,
       base::Bind(&DomStorageContext::PurgeMemory, context_));
 }
 
 void DOMStorageContextImpl::SetClearLocalState(bool clear_local_state) {
   DCHECK(context_);
-  context_->task_runner()->PostTask(
+  context_->task_runner()->PostShutdownBlockingTask(
       FROM_HERE,
+      DomStorageTaskRunner::PRIMARY_SEQUENCE,
       base::Bind(&DomStorageContext::SetClearLocalState, context_,
                  clear_local_state));
 }
 
 void DOMStorageContextImpl::SaveSessionState() {
   DCHECK(context_);
-  context_->task_runner()->PostTask(
+  context_->task_runner()->PostShutdownBlockingTask(
       FROM_HERE,
+      DomStorageTaskRunner::PRIMARY_SEQUENCE,
       base::Bind(&DomStorageContext::SaveSessionState, context_));
 }
 
 void DOMStorageContextImpl::Shutdown() {
   DCHECK(context_);
-  context_->task_runner()->PostTask(
+  context_->task_runner()->PostShutdownBlockingTask(
       FROM_HERE,
+      DomStorageTaskRunner::PRIMARY_SEQUENCE,
       base::Bind(&DomStorageContext::Shutdown, context_));
 }
 

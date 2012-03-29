@@ -10,13 +10,20 @@ typedef unsigned int SkColor;
 
 namespace ash {
 
-extern const int kTrayPaddingBetweenItems;
 extern const int kTrayPopupAutoCloseDelayInSeconds;
+extern const int kTrayPopupAutoCloseDelayForTextInSeconds;
 extern const int kTrayPopupPaddingHorizontal;
 extern const int kTrayPopupPaddingBetweenItems;
 
+extern const int kTrayPopupItemHeight;
+extern const int kTrayPopupDetailsIconWidth;
+extern const int kTrayRoundedBorderRadius;
+
 extern const SkColor kBackgroundColor;
 extern const SkColor kHoverBackgroundColor;
+
+extern const SkColor kBorderDarkColor;
+extern const SkColor kBorderLightColor;
 
 extern const int kTrayPopupWidth;
 

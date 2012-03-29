@@ -58,7 +58,7 @@ SocketStream::SocketStream(const GURL& url, Delegate* delegate)
       next_state_(STATE_NONE),
       host_resolver_(NULL),
       cert_verifier_(NULL),
-      origin_bound_cert_service_(NULL),
+      server_bound_cert_service_(NULL),
       http_auth_handler_factory_(NULL),
       factory_(ClientSocketFactory::GetDefaultFactory()),
       proxy_mode_(kDirectConnection),
@@ -126,7 +126,7 @@ void SocketStream::set_context(URLRequestContext* context) {
   if (context_) {
     host_resolver_ = context_->host_resolver();
     cert_verifier_ = context_->cert_verifier();
-    origin_bound_cert_service_ = context_->origin_bound_cert_service();
+    server_bound_cert_service_ = context_->server_bound_cert_service();
     http_auth_handler_factory_ = context_->http_auth_handler_factory();
   }
 }
@@ -255,14 +255,17 @@ void SocketStream::SetClientSocketFactory(
   factory_ = factory;
 }
 
-void SocketStream::CancelBecauseOfCertError(const SSLInfo& ssl_info) {
+void SocketStream::CancelWithError(int error) {
   MessageLoop::current()->PostTask(
       FROM_HERE,
-      base::Bind(&SocketStream::DoLoop, this,
-          MapCertStatusToNetError(ssl_info.cert_status)));
+      base::Bind(&SocketStream::DoLoop, this, error));
 }
 
-void SocketStream::ContinueDespiteCertError() {
+void SocketStream::CancelWithSSLError(const SSLInfo& ssl_info) {
+  CancelWithError(MapCertStatusToNetError(ssl_info.cert_status));
+}
+
+void SocketStream::ContinueDespiteError() {
   MessageLoop::current()->PostTask(
       FROM_HERE,
       base::Bind(&SocketStream::DoLoop, this, OK));
@@ -923,7 +926,7 @@ int SocketStream::DoSecureProxyConnect() {
   DCHECK(factory_);
   SSLClientSocketContext ssl_context;
   ssl_context.cert_verifier = cert_verifier_;
-  ssl_context.origin_bound_cert_service = origin_bound_cert_service_;
+  ssl_context.server_bound_cert_service = server_bound_cert_service_;
   // TODO(agl): look into plumbing SSLHostInfo here.
   socket_.reset(factory_->CreateSSLClientSocket(
       socket_.release(),
@@ -939,6 +942,8 @@ int SocketStream::DoSecureProxyConnect() {
 int SocketStream::DoSecureProxyConnectComplete(int result) {
   DCHECK_EQ(STATE_NONE, next_state_);
   result = DidEstablishSSL(result, &proxy_ssl_config_);
+  if (result == ERR_IO_PENDING)
+    next_state_ = STATE_SECURE_PROXY_CONNECT_COMPLETE;
   if (next_state_ != STATE_NONE)
     return result;
   if (result == ERR_SSL_CLIENT_AUTH_CERT_NEEDED)
@@ -954,7 +959,7 @@ int SocketStream::DoSSLConnect() {
   DCHECK(factory_);
   SSLClientSocketContext ssl_context;
   ssl_context.cert_verifier = cert_verifier_;
-  ssl_context.origin_bound_cert_service = origin_bound_cert_service_;
+  ssl_context.server_bound_cert_service = server_bound_cert_service_;
   // TODO(agl): look into plumbing SSLHostInfo here.
   socket_.reset(factory_->CreateSSLClientSocket(socket_.release(),
                                                 HostPortPair::FromURL(url_),
@@ -969,6 +974,8 @@ int SocketStream::DoSSLConnect() {
 int SocketStream::DoSSLConnectComplete(int result) {
   DCHECK_EQ(STATE_NONE, next_state_);
   result = DidEstablishSSL(result, &server_ssl_config_);
+  if (result == ERR_IO_PENDING)
+    next_state_ = STATE_SSL_CONNECT_COMPLETE;
   if (next_state_ != STATE_NONE)
     return result;
   // TODO(toyoshim): Upgrade to SPDY through TLS NPN extension if possible.

@@ -24,9 +24,18 @@ class Feature {
   // The JavaScript contexts the feature is supported in.
   enum Context {
     UNSPECIFIED_CONTEXT,
-    PRIVILEGED_CONTEXT,  // A context in a privileged extension process.
-    UNPRIVILEGED_CONTEXT,  // A context in a normal, unprivileged renderer.
-    CONTENT_SCRIPT_CONTEXT  // A context from a content script.
+
+    // A context in a privileged extension process.
+    BLESSED_EXTENSION_CONTEXT,
+
+    // A context in an unprivileged extension process.
+    UNBLESSED_EXTENSION_CONTEXT,
+
+    // A context from a content script.
+    CONTENT_SCRIPT_CONTEXT,
+
+    // A normal web page. This should have an associated URL matching pattern.
+    WEB_PAGE_CONTEXT,
   };
 
   // The location required of extensions the feature is supported in.

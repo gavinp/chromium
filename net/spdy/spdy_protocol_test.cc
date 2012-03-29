@@ -9,45 +9,16 @@
 #include "net/spdy/spdy_framer.h"
 #include "testing/platform_test.h"
 
-using spdy::CONTROL_FLAG_FIN;
-using spdy::CONTROL_FLAG_NONE;
-using spdy::FlagsAndLength;
-using spdy::GOAWAY;
-using spdy::HEADERS;
-using spdy::NOOP;
-using spdy::NUM_CONTROL_FRAME_TYPES;
-using spdy::PING;
-using spdy::RST_STREAM;
-using spdy::SETTINGS;
-using spdy::SYN_REPLY;
-using spdy::SYN_STREAM;
-using spdy::SettingsFlagsAndId;
-using spdy::SpdyControlFrame;
-using spdy::SpdyControlType;
-using spdy::SpdyDataFrame;
-using spdy::SpdyFrame;
-using spdy::SpdyFramer;
-using spdy::SpdyGoAwayControlFrame;
-using spdy::SpdyHeaderBlock;
-using spdy::SpdyHeadersControlFrame;
-using spdy::SpdyPingControlFrame;
-using spdy::SpdyRstStreamControlFrame;
-using spdy::SpdySettings;
-using spdy::SpdySettingsControlFrame;
-using spdy::SpdyStatusCodes;
-using spdy::SpdySynReplyControlFrame;
-using spdy::SpdySynStreamControlFrame;
-using spdy::SpdyWindowUpdateControlFrame;
-using spdy::WINDOW_UPDATE;
-using spdy::kLengthMask;
-using spdy::kStreamIdMask;
-
 namespace {
 
 enum SpdyProtocolTestTypes {
   SPDY2,
   SPDY3,
 };
+
+} // namespace
+
+namespace net {
 
 class SpdyProtocolTest
     : public ::testing::TestWithParam<SpdyProtocolTestTypes> {
@@ -80,7 +51,7 @@ TEST_P(SpdyProtocolTest, ProtocolConstants) {
   EXPECT_EQ(16u, SpdyRstStreamControlFrame::size());
   EXPECT_EQ(12u, SpdySettingsControlFrame::size());
   EXPECT_EQ(12u, SpdyPingControlFrame::size());
-  EXPECT_EQ(12u, SpdyGoAwayControlFrame::size());
+  EXPECT_EQ(16u, SpdyGoAwayControlFrame::size());
   EXPECT_EQ(12u, SpdyHeadersControlFrame::size());
   EXPECT_EQ(16u, SpdyWindowUpdateControlFrame::size());
   EXPECT_EQ(4u, sizeof(FlagsAndLength));
@@ -121,14 +92,17 @@ TEST_P(SpdyProtocolTest, ControlFrameStructs) {
   SpdyFramer framer(spdy_version_);
   SpdyHeaderBlock headers;
 
-  scoped_ptr<SpdySynStreamControlFrame> syn_frame(
-      framer.CreateSynStream(123, 456, 2, CONTROL_FLAG_FIN, false, &headers));
+  const uint8 credential_slot = (IsSpdy2()) ? 0 : 5;
+
+  scoped_ptr<SpdySynStreamControlFrame> syn_frame(framer.CreateSynStream(
+      123, 456, 2, credential_slot, CONTROL_FLAG_FIN, false, &headers));
   EXPECT_EQ(framer.protocol_version(), syn_frame->version());
   EXPECT_TRUE(syn_frame->is_control_frame());
   EXPECT_EQ(SYN_STREAM, syn_frame->type());
   EXPECT_EQ(123u, syn_frame->stream_id());
   EXPECT_EQ(456u, syn_frame->associated_stream_id());
   EXPECT_EQ(2u, syn_frame->priority());
+  EXPECT_EQ(credential_slot, syn_frame->credential_slot());
   EXPECT_EQ(IsSpdy2() ? 2 : 4, syn_frame->header_block_len());
   EXPECT_EQ(1u, syn_frame->flags());
   syn_frame->set_associated_stream_id(999u);
@@ -145,14 +119,14 @@ TEST_P(SpdyProtocolTest, ControlFrameStructs) {
   EXPECT_EQ(0, syn_reply->flags());
 
   scoped_ptr<SpdyRstStreamControlFrame> rst_frame(
-      framer.CreateRstStream(123, spdy::PROTOCOL_ERROR));
+      framer.CreateRstStream(123, PROTOCOL_ERROR));
   EXPECT_EQ(framer.protocol_version(), rst_frame->version());
   EXPECT_TRUE(rst_frame->is_control_frame());
   EXPECT_EQ(RST_STREAM, rst_frame->type());
   EXPECT_EQ(123u, rst_frame->stream_id());
-  EXPECT_EQ(spdy::PROTOCOL_ERROR, rst_frame->status());
-  rst_frame->set_status(spdy::INVALID_STREAM);
-  EXPECT_EQ(spdy::INVALID_STREAM, rst_frame->status());
+  EXPECT_EQ(PROTOCOL_ERROR, rst_frame->status());
+  rst_frame->set_status(INVALID_STREAM);
+  EXPECT_EQ(INVALID_STREAM, rst_frame->status());
   EXPECT_EQ(0, rst_frame->flags());
 
   const uint32 kUniqueId = 1234567u;
@@ -167,11 +141,14 @@ TEST_P(SpdyProtocolTest, ControlFrameStructs) {
   EXPECT_EQ(kUniqueId2, ping_frame->unique_id());
 
   scoped_ptr<SpdyGoAwayControlFrame> goaway_frame(
-      framer.CreateGoAway(123));
+      framer.CreateGoAway(123, GOAWAY_INTERNAL_ERROR));
   EXPECT_EQ(framer.protocol_version(), goaway_frame->version());
   EXPECT_TRUE(goaway_frame->is_control_frame());
   EXPECT_EQ(GOAWAY, goaway_frame->type());
   EXPECT_EQ(123u, goaway_frame->last_accepted_stream_id());
+  if (!IsSpdy2()) {
+    EXPECT_EQ(GOAWAY_INTERNAL_ERROR, goaway_frame->status());
+  }
 
   scoped_ptr<SpdyHeadersControlFrame> headers_frame(
       framer.CreateHeaders(123, CONTROL_FLAG_NONE, false, &headers));
@@ -378,10 +355,10 @@ TEST_P(SpdyProtocolDeathTest, TestSpdyControlFrameType) {
   frame.set_version(spdy_version_);
   uint16 version = frame.version();
 
-  for (int i = SYN_STREAM; i <= spdy::WINDOW_UPDATE; ++i) {
+  for (int i = SYN_STREAM; i <= WINDOW_UPDATE; ++i) {
     frame.set_type(static_cast<SpdyControlType>(i));
     EXPECT_EQ(i, static_cast<int>(frame.type()));
-    if (!IsSpdy2() && i == spdy::NOOP) {
+    if (!IsSpdy2() && i == NOOP) {
       // NOOP frames aren't 'valid'.
       EXPECT_FALSE(frame.AppearsToBeAValidControlFrame());
     } else {
@@ -397,18 +374,18 @@ TEST_P(SpdyProtocolDeathTest, TestRstStreamStatusBounds) {
   SpdyFramer framer(spdy_version_);
   scoped_ptr<SpdyRstStreamControlFrame> rst_frame;
 
-  rst_frame.reset(framer.CreateRstStream(123, spdy::PROTOCOL_ERROR));
-  EXPECT_EQ(spdy::PROTOCOL_ERROR, rst_frame->status());
+  rst_frame.reset(framer.CreateRstStream(123, PROTOCOL_ERROR));
+  EXPECT_EQ(PROTOCOL_ERROR, rst_frame->status());
 
-  rst_frame->set_status(spdy::INVALID);
-  EXPECT_EQ(spdy::INVALID, rst_frame->status());
+  rst_frame->set_status(INVALID);
+  EXPECT_EQ(INVALID, rst_frame->status());
 
   rst_frame->set_status(
-      static_cast<spdy::SpdyStatusCodes>(spdy::INVALID - 1));
-  EXPECT_EQ(spdy::INVALID, rst_frame->status());
+      static_cast<SpdyStatusCodes>(INVALID - 1));
+  EXPECT_EQ(INVALID, rst_frame->status());
 
-  rst_frame->set_status(spdy::NUM_STATUS_CODES);
-  EXPECT_EQ(spdy::INVALID, rst_frame->status());
+  rst_frame->set_status(NUM_STATUS_CODES);
+  EXPECT_EQ(INVALID, rst_frame->status());
 }
 
-}  // namespace
+}  // namespace net

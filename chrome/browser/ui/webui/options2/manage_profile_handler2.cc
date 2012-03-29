@@ -13,6 +13,7 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/prefs/pref_service.h"
 #include "chrome/browser/profiles/gaia_info_update_service.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_info_cache.h"
 #include "chrome/browser/profiles/profile_info_util.h"
 #include "chrome/browser/profiles/profile_manager.h"
@@ -107,7 +108,7 @@ void ManageProfileHandler::SendProfileIcons() {
         cache.GetGAIAPictureOfProfileAtIndex(profile_index);
     if (icon) {
       gfx::Image icon2 = profiles::GetAvatarIconForWebUI(*icon, true);
-      gaia_picture_url_ = web_ui_util::GetImageDataUrl(icon2);
+      gaia_picture_url_ = web_ui_util::GetImageDataUrl(*icon2.ToSkBitmap());
       image_url_list.Append(Value::CreateStringValue(gaia_picture_url_));
     }
   }
@@ -150,6 +151,11 @@ void ManageProfileHandler::SetProfileNameAndIcon(const ListValue* args) {
   if (profile_index == std::string::npos)
     return;
 
+  Profile* profile =
+      g_browser_process->profile_manager()->GetProfile(profile_file_path);
+  if (!profile)
+    return;
+
   string16 new_profile_name;
   if (!args->GetString(1, &new_profile_name))
     return;
@@ -164,7 +170,11 @@ void ManageProfileHandler::SetProfileNameAndIcon(const ListValue* args) {
     if (profile_index == std::string::npos)
       return;
   } else {
-    cache.SetNameOfProfileAtIndex(profile_index, new_profile_name);
+    PrefService* pref_service = profile->GetPrefs();
+    // Updating the profile preference will cause the cache to be updated for
+    // this preference.
+    pref_service->SetString(prefs::kProfileName, UTF16ToUTF8(new_profile_name));
+
     // Changing the profile name can invalidate the profile index.
     profile_index = cache.GetIndexOfProfileWithPath(profile_file_path);
     if (profile_index == std::string::npos)
@@ -197,7 +207,10 @@ void ManageProfileHandler::SetProfileNameAndIcon(const ListValue* args) {
     }
   } else if (cache.IsDefaultAvatarIconUrl(icon_url, &new_icon_index)) {
     ProfileMetrics::LogProfileAvatarSelection(new_icon_index);
-    cache.SetAvatarIconOfProfileAtIndex(profile_index, new_icon_index);
+    PrefService* pref_service = profile->GetPrefs();
+    // Updating the profile preference will cause the cache to be updated for
+    // this preference.
+    pref_service->SetInteger(prefs::kProfileAvatarIndex, new_icon_index);
     cache.SetIsUsingGAIAPictureOfProfileAtIndex(profile_index, false);
   }
 
@@ -254,7 +267,8 @@ void ManageProfileHandler::RequestProfileInfo(const ListValue* args) {
   if (is_gaia_picture) {
     gfx::Image icon = profiles::GetAvatarIconForWebUI(
         cache.GetAvatarIconOfProfileAtIndex(index), true);
-    profile_value.SetString("iconURL", web_ui_util::GetImageDataUrl(icon));
+    profile_value.SetString("iconURL",
+        web_ui_util::GetImageDataUrl(*icon.ToSkBitmap()));
   } else {
     size_t icon_index = cache.GetAvatarIconIndexOfProfileAtIndex(index);
     profile_value.SetString("iconURL",

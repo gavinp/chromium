@@ -29,7 +29,7 @@ class TestSpdyStreamDelegate : public SpdyStream::Delegate {
         buf_(buf),
         callback_(callback),
         send_headers_completed_(false),
-        response_(new spdy::SpdyHeaderBlock),
+        response_(new SpdyHeaderBlock),
         data_sent_(0),
         closed_(false) {}
   virtual ~TestSpdyStreamDelegate() {}
@@ -47,7 +47,7 @@ class TestSpdyStreamDelegate : public SpdyStream::Delegate {
     return ERR_UNEXPECTED;
   }
 
-  virtual int OnResponseReceived(const spdy::SpdyHeaderBlock& response,
+  virtual int OnResponseReceived(const SpdyHeaderBlock& response,
                                  base::Time response_time,
                                  int status) {
     EXPECT_TRUE(send_headers_completed_);
@@ -55,7 +55,7 @@ class TestSpdyStreamDelegate : public SpdyStream::Delegate {
     if (buf_) {
       EXPECT_EQ(ERR_IO_PENDING,
                 stream_->WriteStreamData(buf_.get(), buf_->size(),
-                                         spdy::DATA_FLAG_NONE));
+                                         DATA_FLAG_NONE));
     }
     return status;
   }
@@ -74,7 +74,7 @@ class TestSpdyStreamDelegate : public SpdyStream::Delegate {
   virtual void set_chunk_callback(net::ChunkCallback *) {}
 
   bool send_headers_completed() const { return send_headers_completed_; }
-  const linked_ptr<spdy::SpdyHeaderBlock>& response() const {
+  const linked_ptr<SpdyHeaderBlock>& response() const {
     return response_;
   }
   const std::string& received_data() const { return received_data_; }
@@ -86,15 +86,15 @@ class TestSpdyStreamDelegate : public SpdyStream::Delegate {
   scoped_refptr<IOBufferWithSize> buf_;
   CompletionCallback callback_;
   bool send_headers_completed_;
-  linked_ptr<spdy::SpdyHeaderBlock> response_;
+  linked_ptr<SpdyHeaderBlock> response_;
   std::string received_data_;
   int data_sent_;
   bool closed_;
 };
 
-spdy::SpdyFrame* ConstructSpdyBodyFrame(const char* data, int length) {
-  spdy::BufferedSpdyFramer framer(3);
-  return framer.CreateDataFrame(1, data, length, spdy::DATA_FLAG_NONE);
+SpdyFrame* ConstructSpdyBodyFrame(const char* data, int length) {
+  BufferedSpdyFramer framer(3);
+  return framer.CreateDataFrame(1, data, length, DATA_FLAG_NONE);
 }
 
 }  // anonymous namespace
@@ -105,7 +105,6 @@ class SpdyStreamSpdy3Test : public testing::Test {
   }
 
   scoped_refptr<SpdySession> CreateSpdySession() {
-    spdy::SpdyFramer::set_enable_compression_default(false);
     HostPortPair host_port_pair("www.google.com", 80);
     HostPortProxyPair pair(host_port_pair, ProxyServer::Direct());
     scoped_refptr<SpdySession> session(
@@ -122,6 +121,9 @@ class SpdyStreamSpdy3Test : public testing::Test {
   }
 
   scoped_refptr<HttpNetworkSession> session_;
+
+ private:
+  SpdyTestStateHelper spdy_state_;
 };
 
 TEST_F(SpdyStreamSpdy3Test, SendDataAfterOpen) {
@@ -131,16 +133,17 @@ TEST_F(SpdyStreamSpdy3Test, SendDataAfterOpen) {
   SpdySessionPoolPeer pool_peer_(session_->spdy_session_pool());
 
   const SpdyHeaderInfo kSynStartHeader = {
-    spdy::SYN_STREAM,
+    SYN_STREAM,
     1,
     0,
     net::ConvertRequestPriorityToSpdyPriority(LOWEST),
-    spdy::CONTROL_FLAG_NONE,
+    0,
+    CONTROL_FLAG_NONE,
     false,
-    spdy::INVALID,
+    INVALID,
     NULL,
     0,
-    spdy::DATA_FLAG_NONE
+    DATA_FLAG_NONE
   };
   static const char* const kGetHeaders[] = {
     ":method",
@@ -154,10 +157,10 @@ TEST_F(SpdyStreamSpdy3Test, SendDataAfterOpen) {
     ":version",
     "HTTP/1.1",
   };
-  scoped_ptr<spdy::SpdyFrame> req(
+  scoped_ptr<SpdyFrame> req(
       ConstructSpdyPacket(
           kSynStartHeader, NULL, 0, kGetHeaders, arraysize(kGetHeaders) / 2));
-  scoped_ptr<spdy::SpdyFrame> msg(
+  scoped_ptr<SpdyFrame> msg(
       ConstructSpdyBodyFrame("\0hello!\xff", 8));
   MockWrite writes[] = {
     CreateMockWrite(*req),
@@ -166,8 +169,8 @@ TEST_F(SpdyStreamSpdy3Test, SendDataAfterOpen) {
   writes[0].sequence_number = 0;
   writes[1].sequence_number = 2;
 
-  scoped_ptr<spdy::SpdyFrame> resp(ConstructSpdyGetSynReply(NULL, 0, 1));
-  scoped_ptr<spdy::SpdyFrame> echo(
+  scoped_ptr<SpdyFrame> resp(ConstructSpdyGetSynReply(NULL, 0, 1));
+  scoped_ptr<SpdyFrame> echo(
       ConstructSpdyBodyFrame("\0hello!\xff", 8));
   MockRead reads[] = {
     CreateMockRead(*resp),
@@ -217,7 +220,7 @@ TEST_F(SpdyStreamSpdy3Test, SendDataAfterOpen) {
 
   EXPECT_FALSE(stream->HasUrl());
 
-  linked_ptr<spdy::SpdyHeaderBlock> headers(new spdy::SpdyHeaderBlock);
+  linked_ptr<SpdyHeaderBlock> headers(new SpdyHeaderBlock);
   (*headers)[":method"] = "GET";
   (*headers)[":scheme"] = url.scheme();
   (*headers)[":host"] = url.host();
@@ -279,7 +282,7 @@ TEST_F(SpdyStreamSpdy3Test, PushedStream) {
   EXPECT_FALSE(stream->HasUrl());
 
   // Set a couple of headers.
-  spdy::SpdyHeaderBlock response;
+  SpdyHeaderBlock response;
   GURL url(kStreamUrl);
   response[":host"] = url.host();
   response[":scheme"] = url.scheme();
@@ -287,7 +290,7 @@ TEST_F(SpdyStreamSpdy3Test, PushedStream) {
   stream->OnResponseReceived(response);
 
   // Send some basic headers.
-  spdy::SpdyHeaderBlock headers;
+  SpdyHeaderBlock headers;
   response["status"] = "200";
   response["version"] = "OK";
   stream->OnHeaders(headers);
@@ -305,16 +308,17 @@ TEST_F(SpdyStreamSpdy3Test, StreamError) {
   SpdySessionPoolPeer pool_peer_(session_->spdy_session_pool());
 
   const SpdyHeaderInfo kSynStartHeader = {
-    spdy::SYN_STREAM,
+    SYN_STREAM,
     1,
     0,
     net::ConvertRequestPriorityToSpdyPriority(LOWEST),
-    spdy::CONTROL_FLAG_NONE,
+    0,
+    CONTROL_FLAG_NONE,
     false,
-    spdy::INVALID,
+    INVALID,
     NULL,
     0,
-    spdy::DATA_FLAG_NONE
+    DATA_FLAG_NONE
   };
   static const char* const kGetHeaders[] = {
     ":method",
@@ -328,10 +332,10 @@ TEST_F(SpdyStreamSpdy3Test, StreamError) {
     ":version",
     "HTTP/1.1",
   };
-  scoped_ptr<spdy::SpdyFrame> req(
+  scoped_ptr<SpdyFrame> req(
       ConstructSpdyPacket(
           kSynStartHeader, NULL, 0, kGetHeaders, arraysize(kGetHeaders) / 2));
-  scoped_ptr<spdy::SpdyFrame> msg(
+  scoped_ptr<SpdyFrame> msg(
       ConstructSpdyBodyFrame("\0hello!\xff", 8));
   MockWrite writes[] = {
     CreateMockWrite(*req),
@@ -340,8 +344,8 @@ TEST_F(SpdyStreamSpdy3Test, StreamError) {
   writes[0].sequence_number = 0;
   writes[1].sequence_number = 2;
 
-  scoped_ptr<spdy::SpdyFrame> resp(ConstructSpdyGetSynReply(NULL, 0, 1));
-  scoped_ptr<spdy::SpdyFrame> echo(
+  scoped_ptr<SpdyFrame> resp(ConstructSpdyGetSynReply(NULL, 0, 1));
+  scoped_ptr<SpdyFrame> echo(
       ConstructSpdyBodyFrame("\0hello!\xff", 8));
   MockRead reads[] = {
     CreateMockRead(*resp),
@@ -393,7 +397,7 @@ TEST_F(SpdyStreamSpdy3Test, StreamError) {
 
   EXPECT_FALSE(stream->HasUrl());
 
-  linked_ptr<spdy::SpdyHeaderBlock> headers(new spdy::SpdyHeaderBlock);
+  linked_ptr<SpdyHeaderBlock> headers(new SpdyHeaderBlock);
   (*headers)[":method"] = "GET";
   (*headers)[":scheme"] = url.scheme();
   (*headers)[":host"] = url.host();
@@ -405,7 +409,7 @@ TEST_F(SpdyStreamSpdy3Test, StreamError) {
 
   EXPECT_EQ(ERR_IO_PENDING, stream->SendRequest(true));
 
-  const spdy::SpdyStreamId stream_id = stream->stream_id();
+  const SpdyStreamId stream_id = stream->stream_id();
 
   EXPECT_EQ(OK, callback.WaitForResult());
 

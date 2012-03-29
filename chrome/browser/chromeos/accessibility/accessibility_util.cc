@@ -11,14 +11,13 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/extensions/component_loader.h"
 #include "chrome/browser/extensions/extension_service.h"
-#include "chrome/browser/extensions/extension_tts_api_platform.h"
 #include "chrome/browser/extensions/file_reader.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/speech/extension_api/tts_extension_api_platform.h"
 #include "chrome/common/extensions/extension_messages.h"
 #include "chrome/common/extensions/extension_resource.h"
 #include "chrome/common/pref_names.h"
-#include "content/public/browser/browser_accessibility_state.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
@@ -100,7 +99,6 @@ void EnableSpokenFeedback(bool enabled, content::WebUI* login_web_ui) {
   g_browser_process->local_state()->CommitPendingWrite();
   ExtensionAccessibilityEventRouter::GetInstance()->
       SetAccessibilityEnabled(enabled);
-  BrowserAccessibilityState::GetInstance()->OnAccessibilityEnabledManually();
 
   Speak(l10n_util::GetStringUTF8(
       enabled ? IDS_CHROMEOS_ACC_SPOKEN_FEEDBACK_ENABLED :

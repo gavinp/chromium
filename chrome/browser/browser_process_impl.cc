@@ -715,8 +715,10 @@ void BrowserProcessImpl::CreateLocalState() {
                                     net::kDefaultMaxSocketsPerProxyServer);
   int max_per_proxy = local_state_->GetInteger(prefs::kMaxConnectionsPerProxy);
   net::ClientSocketPoolManager::set_max_sockets_per_proxy_server(
+      net::HttpNetworkSession::NORMAL_SOCKET_POOL,
       std::max(std::min(max_per_proxy, 99),
-               net::ClientSocketPoolManager::max_sockets_per_group()));
+               net::ClientSocketPoolManager::max_sockets_per_group(
+                   net::HttpNetworkSession::NORMAL_SOCKET_POOL)));
 
   // This is observed by ChildProcessSecurityPolicy, which lives in content/
   // though, so it can't register itself.
@@ -766,7 +768,8 @@ void BrowserProcessImpl::CreateIconManager() {
 
 void BrowserProcessImpl::CreateGoogleURLTracker() {
   DCHECK(google_url_tracker_.get() == NULL);
-  scoped_ptr<GoogleURLTracker> google_url_tracker(new GoogleURLTracker);
+  scoped_ptr<GoogleURLTracker> google_url_tracker(
+      new GoogleURLTracker(GoogleURLTracker::NORMAL_MODE));
   google_url_tracker_.swap(google_url_tracker);
 }
 

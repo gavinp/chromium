@@ -148,6 +148,9 @@ class URLMatcherConditionFactory {
   void ForgetUnusedPatterns(
       const std::set<SubstringPattern::ID>& used_patterns);
 
+  // Returns true if this object retains no allocated data. Only for debugging.
+  bool IsEmpty() const;
+
  private:
   // Creates a URLMatcherCondition according to the parameters passed.
   // The URLMatcherCondition will refer to a SubstringPattern that is
@@ -221,6 +224,9 @@ class URLMatcher {
   void RemoveConditionSets(
       const std::vector<URLMatcherConditionSet::ID>& condition_set_ids);
 
+  // Removes all unused condition sets from the ConditionFactory.
+  void ClearUnusedConditionSets();
+
   // Returns the IDs of all URLMatcherConditionSet that match to this |url|.
   std::set<URLMatcherConditionSet::ID> MatchURL(const GURL& url);
 
@@ -229,6 +235,9 @@ class URLMatcher {
   URLMatcherConditionFactory* condition_factory() {
     return &condition_factory_;
   }
+
+  // Returns true if this object retains no allocated data. Only for debugging.
+  bool IsEmpty() const;
 
  private:
   void UpdateSubstringSetMatcher(bool full_url_conditions);

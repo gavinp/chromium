@@ -59,33 +59,6 @@ class ExtensionManagementTest : public ExtensionBrowserTest {
       return false;
     return true;
   }
-
-  // Helper method that installs a low permission extension then updates
-  // to the second version requiring increased permissions. Returns whether
-  // the operation was completed successfully.
-  bool InstallAndUpdateIncreasingPermissionsExtension() {
-    ExtensionService* service = browser()->profile()->GetExtensionService();
-    size_t size_before = service->extensions()->size();
-
-    // Install the initial version, which should happen just fine.
-    const Extension* extension = InstallExtension(
-        test_data_dir_.AppendASCII("permissions-low-v1.crx"), 1);
-    if (!extension)
-      return false;
-    if (service->extensions()->size() != size_before + 1)
-      return false;
-
-    // Upgrade to a version that wants more permissions. We should disable the
-    // extension and prompt the user to reenable.
-    if (UpdateExtension(
-            extension->id(),
-            test_data_dir_.AppendASCII("permissions-high-v2.crx"), -1))
-      return false;
-    EXPECT_EQ(size_before, service->extensions()->size());
-    if (service->disabled_extensions()->size() != 1u)
-      return false;
-    return true;
-  }
 };
 
 #if defined(OS_LINUX)
@@ -146,58 +119,6 @@ IN_PROC_BROWSER_TEST_F(ExtensionManagementTest, InstallRequiresConfirm) {
   ASSERT_TRUE(InstallExtensionWithUIAutoConfirm(
       test_data_dir_.AppendASCII("good.crx"), 1, browser()->profile()));
   UninstallExtension(id);
-}
-
-// Tests the process of updating an extension to one that requires higher
-// permissions.
-IN_PROC_BROWSER_TEST_F(ExtensionManagementTest, UpdatePermissions) {
-  ExtensionService* service = browser()->profile()->GetExtensionService();
-  ASSERT_TRUE(InstallAndUpdateIncreasingPermissionsExtension());
-  const size_t size_before = service->extensions()->size();
-
-  // Now try reenabling it.
-  const std::string id = (*service->disabled_extensions()->begin())->id();
-  service->EnableExtension(id);
-  EXPECT_EQ(size_before + 1, service->extensions()->size());
-  EXPECT_EQ(0u, service->disabled_extensions()->size());
-}
-
-// Tests uninstalling an extension that was disabled due to higher permissions.
-IN_PROC_BROWSER_TEST_F(ExtensionManagementTest, UpdatePermissionsAndUninstall) {
-  ASSERT_TRUE(InstallAndUpdateIncreasingPermissionsExtension());
-
-  // Make sure the "disable extension" infobar is present.
-  ASSERT_EQ(0, browser()->active_index());
-  InfoBarTabHelper* infobar_helper = browser()->GetTabContentsWrapperAt(0)->
-      infobar_tab_helper();
-  ASSERT_EQ(1U, infobar_helper->infobar_count());
-
-  // Uninstall, and check that the infobar went away.
-  ExtensionService* service = browser()->profile()->GetExtensionService();
-  std::string id = (*service->disabled_extensions()->begin())->id();
-  UninstallExtension(id);
-  ASSERT_EQ(0U, infobar_helper->infobar_count());
-
-  // Now select a new tab, and switch back to the first tab which had the
-  // infobar. We should not crash.
-  ASSERT_EQ(1, browser()->tab_count());
-  ASSERT_EQ(0, browser()->active_index());
-  browser()->NewTab();
-  ASSERT_EQ(2, browser()->tab_count());
-  ASSERT_EQ(1, browser()->active_index());
-  browser()->ActivateTabAt(0, true);
-}
-
-// Tests that we can uninstall a disabled extension.
-IN_PROC_BROWSER_TEST_F(ExtensionManagementTest, UninstallDisabled) {
-  ExtensionService* service = browser()->profile()->GetExtensionService();
-  ASSERT_TRUE(InstallAndUpdateIncreasingPermissionsExtension());
-  const size_t size_before = service->extensions()->size();
-
-  // Now try uninstalling it.
-  UninstallExtension((*service->disabled_extensions()->begin())->id());
-  EXPECT_EQ(size_before, service->extensions()->size());
-  EXPECT_EQ(0u, service->disabled_extensions()->size());
 }
 
 // Tests that disabling and re-enabling an extension works.
@@ -264,12 +185,12 @@ class NotificationListener : public content::NotificationObserver {
                        const content::NotificationDetails& details) {
     switch (type) {
       case chrome::NOTIFICATION_EXTENSION_UPDATING_STARTED: {
-        DCHECK(!started_);
+        EXPECT_FALSE(started_);
         started_ = true;
         break;
       }
       case chrome::NOTIFICATION_EXTENSION_UPDATING_FINISHED: {
-        DCHECK(!finished_);
+        EXPECT_FALSE(finished_);
         finished_ = true;
         break;
       }
@@ -297,8 +218,15 @@ class NotificationListener : public content::NotificationObserver {
   std::set<std::string> updates_;
 };
 
+#if defined(OS_WIN)
+// Fails consistently on Windows XP, see: http://crbug.com/120640.
+#define MAYBE_AutoUpdate DISABLED_AutoUpdate
+#else
+#define MAYBE_AutoUpdate AutoUpdate
+#endif
+
 // Tests extension autoupdate.
-IN_PROC_BROWSER_TEST_F(ExtensionManagementTest, AutoUpdate) {
+IN_PROC_BROWSER_TEST_F(ExtensionManagementTest, MAYBE_AutoUpdate) {
   NotificationListener notification_listener;
   FilePath basedir = test_data_dir_.AppendASCII("autoupdate");
   // Note: This interceptor gets requests on the IO thread.
@@ -362,6 +290,71 @@ IN_PROC_BROWSER_TEST_F(ExtensionManagementTest, AutoUpdate) {
       "ogjcoiohnmldgjemafoockdghcjciccf", false);
   ASSERT_TRUE(extension);
   ASSERT_EQ("2.0", extension->VersionString());
+}
+
+#if defined(OS_WIN)
+// Fails consistently on Windows XP, see: http://crbug.com/120640.
+#define MAYBE_AutoUpdateDisabledExtensions DISABLED_AutoUpdateDisabledExtensions
+#else
+#define MAYBE_AutoUpdateDisabledExtensions AutoUpdateDisabledExtensions
+#endif
+
+// Tests extension autoupdate.
+IN_PROC_BROWSER_TEST_F(ExtensionManagementTest,
+                       MAYBE_AutoUpdateDisabledExtensions) {
+  NotificationListener notification_listener;
+  FilePath basedir = test_data_dir_.AppendASCII("autoupdate");
+  // Note: This interceptor gets requests on the IO thread.
+  scoped_refptr<AutoUpdateInterceptor> interceptor(new AutoUpdateInterceptor());
+  content::URLFetcher::SetEnableInterceptionForTests(true);
+
+  interceptor->SetResponseOnIOThread("http://localhost/autoupdate/manifest",
+                                     basedir.AppendASCII("manifest_v2.xml"));
+  interceptor->SetResponseOnIOThread("http://localhost/autoupdate/v2.crx",
+                                     basedir.AppendASCII("v2.crx"));
+
+  // Install version 1 of the extension.
+  ExtensionTestMessageListener listener1("v1 installed", false);
+  ExtensionService* service = browser()->profile()->GetExtensionService();
+  const size_t enabled_size_before = service->extensions()->size();
+  const size_t disabled_size_before = service->disabled_extensions()->size();
+  const Extension* extension =
+      InstallExtension(basedir.AppendASCII("v1.crx"), 1);
+  ASSERT_TRUE(extension);
+  listener1.WaitUntilSatisfied();
+  service->DisableExtension(extension->id());
+  ASSERT_EQ(disabled_size_before + 1, service->disabled_extensions()->size());
+  ASSERT_EQ(enabled_size_before, service->extensions()->size());
+  ASSERT_EQ("ogjcoiohnmldgjemafoockdghcjciccf", extension->id());
+  ASSERT_EQ("1.0", extension->VersionString());
+
+  // We don't want autoupdate blacklist checks.
+  service->updater()->set_blacklist_checks_enabled(false);
+
+  ExtensionTestMessageListener listener2("v2 installed", false);
+  // Run autoupdate and make sure version 2 of the extension was installed but
+  // is still disabled.
+  service->updater()->CheckNow();
+  ASSERT_TRUE(WaitForExtensionInstall());
+  ASSERT_EQ(disabled_size_before + 1, service->disabled_extensions()->size());
+  ASSERT_EQ(enabled_size_before, service->extensions()->size());
+  extension = service->GetExtensionById(
+      "ogjcoiohnmldgjemafoockdghcjciccf", true);
+  ASSERT_TRUE(extension);
+  ASSERT_FALSE(service->GetExtensionById(
+      "ogjcoiohnmldgjemafoockdghcjciccf", false));
+  ASSERT_EQ("2.0", extension->VersionString());
+
+  // The extension should have not made the callback because it is disabled.
+  // When we enabled it, it should then make the callback.
+  ASSERT_FALSE(listener2.was_satisfied());
+  service->EnableExtension(extension->id());
+  listener2.WaitUntilSatisfied();
+  ASSERT_TRUE(notification_listener.started());
+  ASSERT_TRUE(notification_listener.finished());
+  ASSERT_TRUE(ContainsKey(notification_listener.updates(),
+                          "ogjcoiohnmldgjemafoockdghcjciccf"));
+  notification_listener.Reset();
 }
 
 IN_PROC_BROWSER_TEST_F(ExtensionManagementTest, ExternalUrlUpdate) {

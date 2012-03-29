@@ -15,28 +15,36 @@
 #include "ash/focus_cycler.h"
 #include "ash/ime/input_method_event_filter.h"
 #include "ash/launcher/launcher.h"
+#include "ash/monitor/multi_monitor_manager.h"
+#include "ash/monitor/monitor_controller.h"
 #include "ash/screen_ash.h"
 #include "ash/shell_delegate.h"
 #include "ash/shell_factory.h"
 #include "ash/shell_window_ids.h"
 #include "ash/system/audio/tray_volume.h"
+#include "ash/system/bluetooth/tray_bluetooth.h"
 #include "ash/system/brightness/tray_brightness.h"
+#include "ash/system/date/tray_date.h"
+#include "ash/system/ime/tray_ime.h"
 #include "ash/system/network/tray_network.h"
 #include "ash/system/power/power_status_observer.h"
 #include "ash/system/power/power_supply_status.h"
-#include "ash/system/power/tray_power_date.h"
+#include "ash/system/power/tray_power.h"
 #include "ash/system/settings/tray_settings.h"
 #include "ash/system/tray/system_tray_delegate.h"
 #include "ash/system/tray/system_tray.h"
 #include "ash/system/tray/tray_empty.h"
 #include "ash/system/tray_accessibility.h"
 #include "ash/system/tray_caps_lock.h"
+#include "ash/system/tray_update.h"
 #include "ash/system/user/tray_user.h"
 #include "ash/tooltips/tooltip_controller.h"
 #include "ash/wm/activation_controller.h"
 #include "ash/wm/base_layout_manager.h"
 #include "ash/wm/custom_frame_view_ash.h"
 #include "ash/wm/dialog_frame_view.h"
+#include "ash/wm/event_client_impl.h"
+#include "ash/wm/key_rewriter_event_filter.h"
 #include "ash/wm/panel_window_event_filter.h"
 #include "ash/wm/panel_layout_manager.h"
 #include "ash/wm/partial_screenshot_event_filter.h"
@@ -55,6 +63,7 @@
 #include "ash/wm/window_cycle_controller.h"
 #include "ash/wm/window_modality_controller.h"
 #include "ash/wm/window_util.h"
+#include "ash/wm/workspace/always_on_top_layout_manager.h"
 #include "ash/wm/workspace_controller.h"
 #include "ash/wm/workspace/workspace_event_filter.h"
 #include "ash/wm/workspace/workspace_layout_manager.h"
@@ -99,7 +108,7 @@ aura::Window* CreateContainer(int window_id,
   aura::Window* container = new aura::Window(NULL);
   container->set_id(window_id);
   container->SetName(name);
-  container->Init(ui::Layer::LAYER_NOT_DRAWN);
+  container->Init(ui::LAYER_NOT_DRAWN);
   parent->AddChild(container);
   if (window_id != internal::kShellWindowId_UnparentedControlContainer)
     container->Show();
@@ -163,6 +172,10 @@ void CreateSpecialContainers(aura::RootWindow* root_window) {
     panel_container->SetLayoutManager(layout_manager);
   }
 
+  CreateContainer(internal::kShellWindowId_AppListContainer,
+                  "AppListContainer",
+                  non_lock_screen_containers);
+
   CreateContainer(internal::kShellWindowId_LauncherContainer,
                   "LauncherContainer",
                   non_lock_screen_containers);
@@ -185,7 +198,7 @@ void CreateSpecialContainers(aura::RootWindow* root_window) {
       lock_screen_containers);
   lock_container->SetLayoutManager(
       new internal::BaseLayoutManager(root_window));
-  lock_container->set_stops_event_propagation(true);
+  // TODO(beng): stopsevents
 
   aura::Window* lock_modal_container = CreateContainer(
       internal::kShellWindowId_LockSystemModalContainer,
@@ -224,18 +237,40 @@ void CreateSpecialContainers(aura::RootWindow* root_window) {
                   lock_screen_related_containers);
 }
 
+// This dummy class is used for shell unit tests. We dont have chrome delegate
+// in these tests.
+class DummyUserWallpaperDelegate : public UserWallpaperDelegate {
+ public:
+  DummyUserWallpaperDelegate() {}
+
+  virtual ~DummyUserWallpaperDelegate() {}
+
+  virtual const int GetUserWallpaperIndex() OVERRIDE {
+    return 0;
+  }
+
+  virtual void OpenSetWallpaperPage() OVERRIDE {
+  }
+
+ private:
+   DISALLOW_COPY_AND_ASSIGN(DummyUserWallpaperDelegate);
+};
+
 class DummySystemTrayDelegate : public SystemTrayDelegate {
  public:
   DummySystemTrayDelegate()
       : muted_(false),
         wifi_enabled_(true),
         cellular_enabled_(true),
+        bluetooth_enabled_(true),
         volume_(0.5) {
   }
 
   virtual ~DummySystemTrayDelegate() {}
 
  private:
+
+  virtual bool GetTrayVisibilityOnStartup() OVERRIDE { return true; }
 
   // Overridden from SystemTrayDelegate:
   virtual const std::string GetUserDisplayName() const OVERRIDE {
@@ -279,6 +314,12 @@ class DummySystemTrayDelegate : public SystemTrayDelegate {
   virtual void ShowNetworkSettings() OVERRIDE {
   }
 
+  virtual void ShowBluetoothSettings() OVERRIDE {
+  }
+
+  virtual void ShowIMESettings() OVERRIDE {
+  }
+
   virtual void ShowHelp() OVERRIDE {
   }
 
@@ -314,8 +355,32 @@ class DummySystemTrayDelegate : public SystemTrayDelegate {
 
   virtual void RequestLockScreen() OVERRIDE {}
 
-  virtual NetworkIconInfo GetMostRelevantNetworkIcon(bool large) OVERRIDE {
-    return NetworkIconInfo();
+  virtual void RequestRestart() OVERRIDE {}
+
+  virtual void GetAvailableBluetoothDevices(
+      BluetoothDeviceList* list) OVERRIDE {
+  }
+
+  virtual void ToggleBluetoothConnection(const std::string& address) OVERRIDE {
+  }
+
+  virtual void GetCurrentIME(IMEInfo* info) OVERRIDE {
+  }
+
+  virtual void GetAvailableIMEList(IMEInfoList* list) OVERRIDE {
+  }
+
+  virtual void GetCurrentIMEProperties(IMEPropertyInfoList* list) OVERRIDE {
+  }
+
+  virtual void SwitchIME(const std::string& ime_id) OVERRIDE {
+  }
+
+  virtual void ActivateIMEProperty(const std::string& key) OVERRIDE {
+  }
+
+  virtual void GetMostRelevantNetworkIcon(NetworkIconInfo* info,
+                                          bool large) OVERRIDE {
   }
 
   virtual void GetAvailableNetworks(
@@ -323,6 +388,17 @@ class DummySystemTrayDelegate : public SystemTrayDelegate {
   }
 
   virtual void ConnectToNetwork(const std::string& network_id) OVERRIDE {
+  }
+
+  virtual void GetNetworkAddresses(std::string* ip_address,
+                                   std::string* ethernet_mac_address,
+                                   std::string* wifi_mac_address) OVERRIDE {
+    *ip_address = "127.0.0.1";
+    *ethernet_mac_address = "00:11:22:33:44:55";
+    *wifi_mac_address = "66:77:88:99:00:11";
+  }
+
+  virtual void AddBluetoothDevice() OVERRIDE {
   }
 
   virtual void ToggleAirplaneMode() OVERRIDE {
@@ -348,11 +424,29 @@ class DummySystemTrayDelegate : public SystemTrayDelegate {
     }
   }
 
+  virtual void ToggleBluetooth() OVERRIDE {
+    bluetooth_enabled_ = !bluetooth_enabled_;
+    ash::BluetoothObserver* observer =
+        ash::Shell::GetInstance()->tray()->bluetooth_observer();
+    if (observer)
+      observer->OnBluetoothRefresh();
+  }
+
+  virtual void ShowOtherWifi() OVERRIDE {
+  }
+
+  virtual void ShowOtherCellular() OVERRIDE {
+  }
+
   virtual bool GetWifiAvailable() OVERRIDE {
     return true;
   }
 
   virtual bool GetCellularAvailable() OVERRIDE {
+    return true;
+  }
+
+  virtual bool GetBluetoothAvailable() OVERRIDE {
     return true;
   }
 
@@ -364,12 +458,29 @@ class DummySystemTrayDelegate : public SystemTrayDelegate {
     return cellular_enabled_;
   }
 
+  virtual bool GetBluetoothEnabled() OVERRIDE {
+    return bluetooth_enabled_;
+  }
+
+  virtual bool GetCellularScanSupported() OVERRIDE {
+    return true;
+  }
+
+  virtual bool GetCellularCarrierInfo(std::string* carrier_id,
+                                      std::string* toup_url) OVERRIDE {
+    return false;
+  }
+
+  virtual void ShowCellularTopupURL(const std::string& topup_url) OVERRIDE {
+  }
+
   virtual void ChangeProxySettings() OVERRIDE {
   }
 
   bool muted_;
   bool wifi_enabled_;
   bool cellular_enabled_;
+  bool bluetooth_enabled_;
   float volume_;
   SkBitmap null_image_;
 
@@ -404,8 +515,7 @@ internal::WorkspaceController* Shell::TestApi::workspace_controller() {
 // Shell, public:
 
 Shell::Shell(ShellDelegate* delegate)
-    : root_window_(aura::Env::GetInstance()->monitor_manager()->
-                   CreateRootWindowForPrimaryMonitor()),
+    : root_window_(aura::MonitorManager::CreateRootWindowForPrimaryMonitor()),
       screen_(new ScreenAsh(root_window_.get())),
       root_filter_(NULL),
       delegate_(delegate),
@@ -414,11 +524,10 @@ Shell::Shell(ShellDelegate* delegate)
       status_widget_(NULL) {
   gfx::Screen::SetInstance(screen_);
   ui_controls::InstallUIControlsAura(CreateUIControlsAura(root_window_.get()));
-  aura::Env::GetInstance()->monitor_manager()->AddObserver(this);
 }
 
 Shell::~Shell() {
-  aura::Env::GetInstance()->monitor_manager()->RemoveObserver(this);
+  RemoveRootWindowEventFilter(key_rewriter_filter_.get());
   RemoveRootWindowEventFilter(partial_screenshot_filter_.get());
   RemoveRootWindowEventFilter(input_method_filter_.get());
   RemoveRootWindowEventFilter(window_modality_controller_.get());
@@ -441,6 +550,9 @@ Shell::~Shell() {
   // The system tray needs to be reset before all the windows are destroyed.
   tray_.reset();
 
+  // Desroy secondary monitor's widgets before all the windows are destroyed.
+  monitor_controller_.reset();
+
   // Delete containers now so that child windows does not access
   // observers when they are destructed.
   aura::RootWindow* root_window = GetRootWindow();
@@ -457,6 +569,8 @@ Shell::~Shell() {
   resize_shadow_controller_.reset();
   shadow_controller_.reset();
   window_cycle_controller_.reset();
+  event_client_.reset();
+  monitor_controller_.reset();
 
   // Launcher widget has a InputMethodBridge that references to
   // input_method_filter_'s input_method_. So explicitly release launcher_
@@ -472,6 +586,8 @@ Shell::~Shell() {
 // static
 Shell* Shell::CreateInstance(ShellDelegate* delegate) {
   CHECK(!instance_);
+  aura::Env::GetInstance()->SetMonitorManager(
+      new internal::MultiMonitorManager());
   instance_ = new Shell(delegate);
   instance_->Init();
   return instance_;
@@ -509,20 +625,24 @@ void Shell::Init() {
   // Pass ownership of the filter to the root window.
   GetRootWindow()->SetEventFilter(root_filter_);
 
+  // KeyRewriterEventFilter must be the first one.
   DCHECK(!GetRootWindowEventFilterCount());
+  key_rewriter_filter_.reset(new internal::KeyRewriterEventFilter);
+  AddRootWindowEventFilter(key_rewriter_filter_.get());
 
-  // PartialScreenshotEventFilter must be the first one to capture key
+  // PartialScreenshotEventFilter must be the second one to capture key
   // events when the taking partial screenshot UI is there.
+  DCHECK_EQ(1U, GetRootWindowEventFilterCount());
   partial_screenshot_filter_.reset(new internal::PartialScreenshotEventFilter);
   AddRootWindowEventFilter(partial_screenshot_filter_.get());
 
   // Then AcceleratorFilter and InputMethodEventFilter must be added (in this
   // order) since they have the second highest priority.
-  DCHECK_EQ(1U, GetRootWindowEventFilterCount());
+  DCHECK_EQ(2U, GetRootWindowEventFilterCount());
 #if !defined(OS_MACOSX)
   accelerator_filter_.reset(new internal::AcceleratorFilter);
   AddRootWindowEventFilter(accelerator_filter_.get());
-  DCHECK_EQ(2U, GetRootWindowEventFilterCount());
+  DCHECK_EQ(3U, GetRootWindowEventFilterCount());
 #endif
   input_method_filter_.reset(new internal::InputMethodEventFilter);
   AddRootWindowEventFilter(input_method_filter_.get());
@@ -539,6 +659,8 @@ void Shell::Init() {
 
   root_window_layout_ = new internal::RootWindowLayoutManager(root_window);
   root_window->SetLayoutManager(root_window_layout_);
+
+  event_client_.reset(new internal::EventClientImpl(root_window));
 
   if (delegate_.get())
     status_widget_ = delegate_->CreateStatusArea();
@@ -561,42 +683,55 @@ void Shell::Init() {
       tray_delegate_.reset(new DummySystemTrayDelegate());
 
     internal::TrayVolume* tray_volume = new internal::TrayVolume();
+    internal::TrayBluetooth* tray_bluetooth = new internal::TrayBluetooth();
     internal::TrayBrightness* tray_brightness = new internal::TrayBrightness();
-    internal::TrayPowerDate* tray_power_date = new internal::TrayPowerDate();
+    internal::TrayDate* tray_date = new internal::TrayDate();
+    internal::TrayPower* tray_power = new internal::TrayPower();
     internal::TrayNetwork* tray_network = new internal::TrayNetwork;
     internal::TrayUser* tray_user = new internal::TrayUser;
     internal::TrayAccessibility* tray_accessibility =
         new internal::TrayAccessibility;
     internal::TrayCapsLock* tray_caps_lock = new internal::TrayCapsLock;
+    internal::TrayIME* tray_ime = new internal::TrayIME;
+    internal::TrayUpdate* tray_update = new internal::TrayUpdate;
 
     tray_->accessibility_observer_ = tray_accessibility;
     tray_->audio_observer_ = tray_volume;
+    tray_->bluetooth_observer_ = tray_bluetooth;
     tray_->brightness_observer_ = tray_brightness;
     tray_->caps_lock_observer_ = tray_caps_lock;
-    tray_->clock_observer_ = tray_power_date;
+    tray_->clock_observer_ = tray_date;
+    tray_->ime_observer_ = tray_ime;
     tray_->network_observer_ = tray_network;
-    tray_->power_status_observer_ = tray_power_date;
-    tray_->update_observer_ = tray_user;
+    tray_->power_status_observer_ = tray_power;
+    tray_->update_observer_ = tray_update;
+    tray_->user_observer_ = tray_user;
 
     tray_->AddTrayItem(tray_user);
     tray_->AddTrayItem(new internal::TrayEmpty());
-    tray_->AddTrayItem(tray_power_date);
+    tray_->AddTrayItem(tray_power);
     tray_->AddTrayItem(tray_network);
+    tray_->AddTrayItem(tray_bluetooth);
+    tray_->AddTrayItem(tray_ime);
     tray_->AddTrayItem(tray_volume);
     tray_->AddTrayItem(tray_brightness);
+    tray_->AddTrayItem(tray_update);
     tray_->AddTrayItem(new internal::TraySettings());
     tray_->AddTrayItem(tray_accessibility);
     tray_->AddTrayItem(tray_caps_lock);
+    tray_->AddTrayItem(tray_date);
+
+    tray_->SetVisible(tray_delegate_->GetTrayVisibilityOnStartup());
   }
   if (!status_widget_)
     status_widget_ = internal::CreateStatusArea(tray_.get());
 
-  aura::Window* default_container =
-      GetContainer(internal::kShellWindowId_DefaultContainer);
-  launcher_.reset(new Launcher(default_container));
-
   // This controller needs to be set before SetupManagedWindowMode.
   desktop_background_controller_.reset(new DesktopBackgroundController);
+  if (delegate_.get())
+    user_wallpaper_delegate_.reset(delegate_->CreateUserWallpaperDelegate());
+  if (!user_wallpaper_delegate_.get())
+    user_wallpaper_delegate_.reset(new DummyUserWallpaperDelegate());
 
   InitLayoutManagers();
 
@@ -607,8 +742,9 @@ void Shell::Init() {
 
   focus_cycler_.reset(new internal::FocusCycler());
   focus_cycler_->AddWidget(status_widget_);
-  focus_cycler_->AddWidget(launcher_->widget());
-  launcher_->SetFocusCycler(focus_cycler_.get());
+
+  if (!delegate_.get() || delegate_->IsUserLoggedIn())
+    CreateLauncher();
 
   // Force a layout.
   root_window->layout_manager()->OnWindowResized();
@@ -625,6 +761,7 @@ void Shell::Init() {
   power_button_controller_.reset(new PowerButtonController);
   video_detector_.reset(new VideoDetector);
   window_cycle_controller_.reset(new WindowCycleController);
+  monitor_controller_.reset(new internal::MonitorController);
 }
 
 aura::Window* Shell::GetContainer(int container_id) {
@@ -664,9 +801,7 @@ void Shell::ToggleAppList() {
 }
 
 bool Shell::IsScreenLocked() const {
-  const aura::Window* lock_screen_container = GetContainer(
-      internal::kShellWindowId_LockScreenContainer);
-  return lock_screen_container->StopsEventPropagation();
+  return !delegate_.get() || delegate_->IsScreenLocked();
 }
 
 bool Shell::IsModalWindowOpen() const {
@@ -704,6 +839,20 @@ void Shell::SetMonitorWorkAreaInsets(Window* contains,
                     OnMonitorWorkAreaInsetsChanged());
 }
 
+void Shell::CreateLauncher() {
+  if (launcher_.get())
+    return;
+
+  aura::Window* default_container =
+      GetContainer(internal::kShellWindowId_DefaultContainer);
+  launcher_.reset(new Launcher(default_container));
+
+  launcher_->SetFocusCycler(focus_cycler_.get());
+  shelf_->SetLauncher(launcher_.get());
+
+  launcher_->widget()->Show();
+}
+
 void Shell::AddShellObserver(ShellObserver* observer) {
   observers_.AddObserver(observer);
 }
@@ -712,16 +861,20 @@ void Shell::RemoveShellObserver(ShellObserver* observer) {
   observers_.RemoveObserver(observer);
 }
 
-int Shell::GetGridSize() const {
-  return workspace_controller_->workspace_manager()->grid_size();
+void Shell::UpdateShelfVisibility() {
+  shelf_->UpdateVisibilityState();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Shell, aura::MonitorObserver implementation:
+void Shell::SetShelfAutoHideBehavior(ShelfAutoHideBehavior behavior) {
+  shelf_->SetAutoHideBehavior(behavior);
+}
 
-void Shell::OnMonitorBoundsChanged(const aura::Monitor* monitor) {
-  if (aura::RootWindow::use_fullscreen_host_window())
-    root_window_->SetHostSize(monitor->size());
+ShelfAutoHideBehavior Shell::GetShelfAutoHideBehavior() const {
+  return shelf_->auto_hide_behavior();
+}
+
+int Shell::GetGridSize() const {
+  return workspace_controller_->workspace_manager()->grid_size();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -732,7 +885,7 @@ void Shell::InitLayoutManagers() {
   DCHECK(status_widget_);
 
   internal::ShelfLayoutManager* shelf_layout_manager =
-      new internal::ShelfLayoutManager(launcher_->widget(), status_widget_);
+      new internal::ShelfLayoutManager(status_widget_);
   GetContainer(internal::kShellWindowId_LauncherContainer)->
       SetLayoutManager(shelf_layout_manager);
   shelf_ = shelf_layout_manager;
@@ -748,12 +901,21 @@ void Shell::InitLayoutManagers() {
   workspace_controller_.reset(
       new internal::WorkspaceController(default_container));
   workspace_controller_->workspace_manager()->set_shelf(shelf_layout_manager);
+  shelf_layout_manager->set_workspace_manager(
+      workspace_controller_->workspace_manager());
 
-  // Ensure launcher is visible.
-  launcher_->widget()->Show();
+  aura::Window* always_on_top_container =
+      GetContainer(internal::kShellWindowId_AlwaysOnTopContainer);
+  always_on_top_container->SetLayoutManager(
+      new internal::AlwaysOnTopLayoutManager(
+          always_on_top_container->GetRootWindow()));
 
-  // Create the desktop background image.
-  desktop_background_controller_->SetDefaultDesktopBackgroundImage();
+  // Create desktop background widget.
+  // TODO(bshe): We should be able to use OnDesktopBackgroundChanged function
+  // here after issue 117244 got fixed.
+  int index = user_wallpaper_delegate_->GetUserWallpaperIndex();
+  desktop_background_controller_->SetDesktopBackgroundImageMode(
+      GetWallpaper(index), GetWallpaperInfo(index).layout);
 }
 
 void Shell::DisableWorkspaceGridLayout() {

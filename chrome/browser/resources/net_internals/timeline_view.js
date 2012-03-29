@@ -62,8 +62,8 @@ var TimelineView = (function() {
   TimelineView.GRAPH_DIV_ID = 'timeline-view-graph-div';
   TimelineView.GRAPH_CANVAS_ID = 'timeline-view-graph-canvas';
   TimelineView.SELECTION_DIV_ID = 'timeline-view-selection-div';
-  TimelineView.SELECTION_TOGGLE_ID = 'timeline-view-selection-toggle'
-  TimelineView.SELECTION_UL_ID = 'timeline-view-selection-ul'
+  TimelineView.SELECTION_TOGGLE_ID = 'timeline-view-selection-toggle';
+  TimelineView.SELECTION_UL_ID = 'timeline-view-selection-ul';
   TimelineView.SCROLLBAR_DIV_ID = 'timeline-view-scrollbar-div';
   TimelineView.SCROLLBAR_INNER_DIV_ID = 'timeline-view-scrollbar-inner-div';
 
@@ -150,7 +150,10 @@ var TimelineView = (function() {
      */
     updateDataSeriesVisibility_: function(dataSeries, listItem, checkBox) {
       dataSeries.show(checkBox.checked);
-      changeClassName(listItem, TimelineView.HIDDEN_CLASS, !checkBox.checked);
+      if (checkBox.checked)
+        listItem.classList.remove(TimelineView.HIDDEN_CLASS);
+      else
+        listItem.classList.add(TimelineView.HIDDEN_CLASS);
     },
 
     dataSeriesClicked_: function(dataSeries, listItem, checkBox) {
@@ -170,7 +173,7 @@ var TimelineView = (function() {
 
       // Make sure |listItem| is visible, and then use its color for the
       // DataSource.
-      changeClassName(listItem, TimelineView.HIDDEN_CLASS, false);
+      listItem.classList.remove(TimelineView.HIDDEN_CLASS);
       dataSeries.setColor(getComputedStyle(listItem).color);
 
       this.updateDataSeriesVisibility_(dataSeries, listItem, checkBox);

@@ -14,6 +14,7 @@ found in the LICENSE file.
     <link rel="stylesheet" href="connection_stats.css">
     <link rel="stylesheet" href="connection_history.css">
     <link rel="stylesheet" href="main.css">
+    <link rel="stylesheet" href="menu_button.css">
     <link rel="stylesheet" href="toolbar.css">
     <script src="ask_pin_dialog.js"></script>
     <script src="client_plugin_async.js"></script>
@@ -32,6 +33,7 @@ found in the LICENSE file.
     <script src="host_table_entry.js"></script>
     <script src="l10n.js"></script>
     <script src="log_to_server.js"></script>
+    <script src="menu_button.js"></script>
     <script src="oauth2.js"></script>
     <script src="plugin_settings.js"></script>
     <script src="remoting.js"></script>
@@ -309,6 +311,10 @@ found in the LICENSE file.
                       type="submit"
                       i18n-content="CONNECT_BUTTON">
               </button>
+              <button id="cancel-pin-entry-button"
+                      type="button"
+                      i18n-content="CANCEL">
+              </button>
             </form>
           </div>
         </div> <!-- client.pin-prompt -->
@@ -333,14 +339,14 @@ found in the LICENSE file.
 
         <div data-ui-mode="home.client.connect-failed.me2me home.client.session-finished.me2me"
              class="centered">
-          <button id="client-finished-me2me-button"
-                  type="button"
-                  i18n-content="OK"
-                  autofocus="autofocus">
-          </button>
           <button id="client-reconnect-button"
                   type="button"
-                  i18n-content="RECONNECT">
+                  i18n-content="RETRY"
+                  autofocus="autofocus">
+          </button>
+          <button id="client-finished-me2me-button"
+                  type="button"
+                  i18n-content="CANCEL">
           </button>
         </div> <!-- connect-failed.me2me session-finished.me2me -->
 
@@ -397,11 +403,11 @@ found in the LICENSE file.
         </p>
         <div class="centered">
           <button id="confirm-host-delete"
-                  i18n-content="YES"
+                  i18n-content="DISABLE_HOST"
                   type="button">
           </button>
           <button id="cancel-host-delete"
-                  i18n-content="NO"
+                  i18n-content="CANCEL"
                   type="button">
           </button>
         </div>
@@ -424,10 +430,19 @@ found in the LICENSE file.
                   type="button"
                   i18n-content="DISCONNECT_MYSELF_BUTTON">
           </button>
-          <span class="end-align">
-            <button id="toggle-scaling">
-              <img src="scale-to-fit.png">
+          <div class="box-spacer"></div>
+          <span class="menu-button" id="screen-options-menu">
+            <button>
+              <span i18n-content="SCREEN_OPTIONS"></span>
+              <img src="disclosure_arrow_down.png"
+                   class="kd-disclosureindicator">
             </button>
+            <ul>
+              <li id="enable-shrink-to-fit" i18n-content="SHRINK_TO_FIT"></li>
+              <li id="disable-shrink-to-fit" i18n-content="ORIGINAL_SIZE"></li>
+              <li class="menu-separator"></li>
+              <li id="toggle-full-screen" i18n-content="FULL_SCREEN"></li>
+            </ul>
           </span>
         </div>
         <div class="toolbar-stub" id="toolbar-stub">

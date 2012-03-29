@@ -299,7 +299,7 @@ MessageType GetStatusInfo(ProfileSyncService* service,
     // Either show auth error information with a link to re-login, auth in prog,
     // or provide a link to continue with setup.
     result_type = PRE_SYNCED;
-    if (service->SetupInProgress()) {
+    if (service->FirstSetupInProgress()) {
       ProfileSyncService::Status status(service->QueryDetailedSyncStatus());
       const AuthError& auth_error = service->GetAuthError();
       if (status_label) {
@@ -501,15 +501,13 @@ void ConstructAboutInformation(ProfileSyncService* service,
                                DictionaryValue* strings) {
   CHECK(strings);
   if (!service) {
-    strings->SetString("summary", "SYNC DISABLED");
+    strings->SetString("summary", "Sync service does not exist");
   } else {
     sync_api::SyncManager::Status full_status(
         service->QueryDetailedSyncStatus());
 
     strings->SetString("service_url", service->sync_service_url().spec());
-    strings->SetString("summary",
-                       ProfileSyncService::BuildSyncStatusSummaryText(
-                       full_status.summary));
+    strings->SetString("summary", service->QuerySyncStatusSummary());
 
     strings->SetString("version", GetVersionString());
     strings->SetString("auth_problem",
@@ -571,6 +569,9 @@ void ConstructAboutInformation(ProfileSyncService* service,
     sync_ui_util::AddIntSyncDetail(details,
                                    "Updates Downloaded (Tombstones)",
                                    full_status.tombstone_updates_received);
+    sync_ui_util::AddIntSyncDetail(details,
+                                   "Updates Downloaded (Reflections)",
+                                   full_status.reflected_updates_received);
     sync_ui_util::AddIntSyncDetail(details,
                                    "Empty GetUpdates",
                                    full_status.empty_get_updates);

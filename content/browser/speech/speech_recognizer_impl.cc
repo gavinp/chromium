@@ -8,17 +8,21 @@
 #include "base/time.h"
 #include "content/browser/browser_main_loop.h"
 #include "content/browser/speech/audio_buffer.h"
-#include "content/public/browser/speech_recognition_event_listener.h"
+#include "content/browser/speech/google_one_shot_remote_engine.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/speech_recognition_event_listener.h"
+#include "content/public/browser/speech_recognizer.h"
+#include "content/public/common/speech_recognition_error.h"
 #include "content/public/common/speech_recognition_result.h"
 #include "net/url_request/url_request_context_getter.h"
 
 using content::BrowserMainLoop;
 using content::BrowserThread;
+using content::SpeechRecognitionError;
 using content::SpeechRecognitionEventListener;
+using content::SpeechRecognitionResult;
 using content::SpeechRecognizer;
 using media::AudioInputController;
-using std::string;
 
 namespace {
 
@@ -64,18 +68,22 @@ SpeechRecognizer* SpeechRecognizer::Create(
     bool filter_profanities,
     const std::string& hardware_info,
     const std::string& origin_url) {
-  return new speech::SpeechRecognizerImpl(
-      listener, caller_id, language, grammar, context_getter,
-      filter_profanities, hardware_info, origin_url);
+  return new speech::SpeechRecognizerImpl(listener,
+                                          caller_id,
+                                          language,
+                                          grammar,
+                                          context_getter,
+                                          filter_profanities,
+                                          hardware_info,
+                                          origin_url);
 }
 
 namespace speech {
 
 const int SpeechRecognizerImpl::kAudioSampleRate = 16000;
-const int SpeechRecognizerImpl::kAudioPacketIntervalMs = 100;
 const ChannelLayout SpeechRecognizerImpl::kChannelLayout = CHANNEL_LAYOUT_MONO;
 const int SpeechRecognizerImpl::kNumBitsPerAudioSample = 16;
-const int SpeechRecognizerImpl::kNoSpeechTimeoutSec = 8;
+const int SpeechRecognizerImpl::kNoSpeechTimeoutMs = 8000;
 const int SpeechRecognizerImpl::kEndpointerEstimationTimeMs = 300;
 
 SpeechRecognizerImpl::SpeechRecognizerImpl(
@@ -88,19 +96,18 @@ SpeechRecognizerImpl::SpeechRecognizerImpl(
     const std::string& hardware_info,
     const std::string& origin_url)
     : listener_(listener),
+      testing_audio_manager_(NULL),
+      endpointer_(kAudioSampleRate),
+      context_getter_(context_getter),
       caller_id_(caller_id),
       language_(language),
       grammar_(grammar),
       filter_profanities_(filter_profanities),
       hardware_info_(hardware_info),
       origin_url_(origin_url),
-      context_getter_(context_getter),
-      codec_(AudioEncoder::CODEC_FLAC),
-      encoder_(NULL),
-      endpointer_(kAudioSampleRate),
       num_samples_recorded_(0),
-      audio_level_(0.0f),
-      audio_manager_(NULL) {
+      audio_level_(0.0f) {
+  DCHECK(listener_ != NULL);
   endpointer_.set_speech_input_complete_silence_length(
       base::Time::kMicrosecondsPerSecond / 2);
   endpointer_.set_long_speech_input_complete_silence_length(
@@ -113,51 +120,48 @@ SpeechRecognizerImpl::~SpeechRecognizerImpl() {
   // Recording should have stopped earlier due to the endpointer or
   // |StopRecording| being called.
   DCHECK(!audio_controller_.get());
-  DCHECK(!request_.get() || !request_->HasPendingRequest());
-  DCHECK(!encoder_.get());
+  DCHECK(!recognition_engine_.get() ||
+         !recognition_engine_->IsRecognitionPending());
   endpointer_.EndSession();
 }
 
-bool SpeechRecognizerImpl::StartRecognition() {
+void SpeechRecognizerImpl::StartRecognition() {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
   DCHECK(!audio_controller_.get());
-  DCHECK(!request_.get() || !request_->HasPendingRequest());
-  DCHECK(!encoder_.get());
+  DCHECK(!recognition_engine_.get() ||
+         !recognition_engine_->IsRecognitionPending());
 
   // The endpointer needs to estimate the environment/background noise before
   // starting to treat the audio as user input. In |HandleOnData| we wait until
   // such time has passed before switching to user input mode.
   endpointer_.SetEnvironmentEstimationMode();
 
-  encoder_.reset(AudioEncoder::Create(codec_, kAudioSampleRate,
-                                      kNumBitsPerAudioSample));
-  int samples_per_packet = (kAudioSampleRate * kAudioPacketIntervalMs) / 1000;
+  AudioManager* audio_manager = (testing_audio_manager_ != NULL) ?
+                                 testing_audio_manager_ :
+                                 BrowserMainLoop::GetAudioManager();
+  const int samples_per_packet = kAudioSampleRate *
+      GoogleOneShotRemoteEngine::kAudioPacketIntervalMs / 1000;
   AudioParameters params(AudioParameters::AUDIO_PCM_LINEAR, kChannelLayout,
                          kAudioSampleRate, kNumBitsPerAudioSample,
                          samples_per_packet);
-  audio_controller_ = AudioInputController::Create(
-      audio_manager_ ? audio_manager_ : BrowserMainLoop::GetAudioManager(),
-      this, params);
+  audio_controller_ = AudioInputController::Create(audio_manager, this, params);
   DCHECK(audio_controller_.get());
   VLOG(1) << "SpeechRecognizer starting record.";
   num_samples_recorded_ = 0;
   audio_controller_->Record();
-
-  return true;
 }
 
 void SpeechRecognizerImpl::AbortRecognition() {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
-  DCHECK(audio_controller_.get() || request_.get());
+  DCHECK(audio_controller_.get() || recognition_engine_.get());
 
   // Stop recording if required.
   if (audio_controller_.get()) {
-    CloseAudioControllerSynchronously();
+    CloseAudioControllerAsynchronously();
   }
 
   VLOG(1) << "SpeechRecognizer canceling recognition.";
-  encoder_.reset();
-  request_.reset();
+  recognition_engine_.reset();
 }
 
 void SpeechRecognizerImpl::StopAudioCapture() {
@@ -168,31 +172,17 @@ void SpeechRecognizerImpl::StopAudioCapture() {
   if (!audio_controller_.get())
     return;
 
-  CloseAudioControllerSynchronously();
-
+  CloseAudioControllerAsynchronously();
   listener_->OnSoundEnd(caller_id_);
   listener_->OnAudioEnd(caller_id_);
 
-  // UploadAudioChunk requires a non-empty final buffer. So we encode a packet
-  // of silence in case encoder had no data already.
-  std::vector<short> samples((kAudioSampleRate * kAudioPacketIntervalMs) /
-                             1000);
-  AudioChunk dummy_chunk(reinterpret_cast<uint8*>(&samples[0]),
-                         samples.size() * sizeof(short),
-                         encoder_->bits_per_sample() / 8);
-  encoder_->Encode(dummy_chunk);
-  encoder_->Flush();
-  scoped_ptr<AudioChunk> encoded_data(encoder_->GetEncodedDataAndClear());
-  DCHECK(!encoded_data->IsEmpty());
-  encoder_.reset();
-
   // If we haven't got any audio yet end the recognition sequence here.
-  if (request_ == NULL) {
+  if (recognition_engine_ == NULL) {
     // Guard against the listener freeing us until we finish our job.
     scoped_refptr<SpeechRecognizerImpl> me(this);
     listener_->OnRecognitionEnd(caller_id_);
   } else {
-    request_->UploadAudioChunk(*encoded_data, true /* is_last_chunk */);
+    recognition_engine_->AudioChunksEnded();
   }
 }
 
@@ -220,15 +210,16 @@ void SpeechRecognizerImpl::OnData(AudioInputController* controller,
                                   const uint8* data, uint32 size) {
   if (size == 0)  // This could happen when recording stops and is normal.
     return;
-  AudioChunk* raw_audio = new AudioChunk(data, static_cast<size_t>(size),
-                                         kNumBitsPerAudioSample / 8);
+  scoped_refptr<AudioChunk> raw_audio(
+      new AudioChunk(data,
+                     static_cast<size_t>(size),
+                     kNumBitsPerAudioSample / 8));
   BrowserThread::PostTask(BrowserThread::IO, FROM_HERE,
                           base::Bind(&SpeechRecognizerImpl::HandleOnData,
                                      this, raw_audio));
 }
 
-void SpeechRecognizerImpl::HandleOnData(AudioChunk* raw_audio) {
-  scoped_ptr<AudioChunk> free_raw_audio_on_return(raw_audio);
+void SpeechRecognizerImpl::HandleOnData(scoped_refptr<AudioChunk> raw_audio) {
   // Check if we are still recording and if not discard this buffer, as
   // recording might have been stopped after this buffer was posted to the queue
   // by |OnData|.
@@ -237,24 +228,32 @@ void SpeechRecognizerImpl::HandleOnData(AudioChunk* raw_audio) {
 
   bool speech_was_heard_before_packet = endpointer_.DidStartReceivingSpeech();
 
-  encoder_->Encode(*raw_audio);
   float rms;
   endpointer_.ProcessAudio(*raw_audio, &rms);
   bool did_clip = DetectClipping(*raw_audio);
   num_samples_recorded_ += raw_audio->NumSamples();
 
-  if (request_ == NULL) {
+  if (recognition_engine_ == NULL) {
     // This was the first audio packet recorded, so start a request to the
     // server to send the data and inform the listener.
     listener_->OnAudioStart(caller_id_);
-    request_.reset(new SpeechRecognitionRequest(context_getter_.get(), this));
-    request_->Start(language_, grammar_, filter_profanities_,
-                    hardware_info_, origin_url_, encoder_->mime_type());
+    GoogleOneShotRemoteEngineConfig google_sr_config;
+    google_sr_config.language = language_;
+    google_sr_config.grammar = grammar_;
+    google_sr_config.audio_sample_rate = kAudioSampleRate;
+    google_sr_config.audio_num_bits_per_sample = kNumBitsPerAudioSample;
+    google_sr_config.filter_profanities = filter_profanities_;
+    google_sr_config.hardware_info = hardware_info_;
+    google_sr_config.origin_url = origin_url_;
+    GoogleOneShotRemoteEngine* google_sr_engine =
+        new GoogleOneShotRemoteEngine(context_getter_.get());
+    google_sr_engine->SetConfig(google_sr_config);
+    recognition_engine_.reset(google_sr_engine);
+    recognition_engine_->set_delegate(this);
+    recognition_engine_->StartRecognition();
   }
 
-  scoped_ptr<AudioChunk> encoded_data(encoder_->GetEncodedDataAndClear());
-  DCHECK(!encoded_data->IsEmpty());
-  request_->UploadAudioChunk(*encoded_data, false /* is_last_chunk */);
+  recognition_engine_->TakeAudioChunk(*raw_audio);
 
   if (endpointer_.IsEstimatingEnvironment()) {
     // Check if we have gathered enough audio for the endpointer to do
@@ -270,7 +269,7 @@ void SpeechRecognizerImpl::HandleOnData(AudioChunk* raw_audio) {
   // Check if we have waited too long without hearing any speech.
   bool speech_was_heard_after_packet = endpointer_.DidStartReceivingSpeech();
   if (!speech_was_heard_after_packet &&
-      num_samples_recorded_ >= kNoSpeechTimeoutSec * kAudioSampleRate) {
+      num_samples_recorded_ >= (kNoSpeechTimeoutMs / 1000) * kAudioSampleRate) {
     InformErrorAndAbortRecognition(
         content::SPEECH_RECOGNITION_ERROR_NO_SPEECH);
     return;
@@ -302,17 +301,19 @@ void SpeechRecognizerImpl::HandleOnData(AudioChunk* raw_audio) {
     StopAudioCapture();
 }
 
-void SpeechRecognizerImpl::SetRecognitionResult(
-    const content::SpeechRecognitionResult& result) {
-  if (result.error != content::SPEECH_RECOGNITION_ERROR_NONE) {
-    InformErrorAndAbortRecognition(result.error);
-    return;
-  }
+void SpeechRecognizerImpl::OnAudioClosed(AudioInputController*) {}
 
+void SpeechRecognizerImpl::OnSpeechRecognitionEngineResult(
+    const content::SpeechRecognitionResult& result) {
   // Guard against the listener freeing us until we finish our job.
   scoped_refptr<SpeechRecognizerImpl> me(this);
   listener_->OnRecognitionResult(caller_id_, result);
   listener_->OnRecognitionEnd(caller_id_);
+}
+
+void SpeechRecognizerImpl::OnSpeechRecognitionEngineError(
+    const content::SpeechRecognitionError& error) {
+  InformErrorAndAbortRecognition(error.code);
 }
 
 void SpeechRecognizerImpl::InformErrorAndAbortRecognition(
@@ -325,30 +326,34 @@ void SpeechRecognizerImpl::InformErrorAndAbortRecognition(
   listener_->OnRecognitionError(caller_id_, error);
 }
 
-void SpeechRecognizerImpl::CloseAudioControllerSynchronously() {
+void SpeechRecognizerImpl::CloseAudioControllerAsynchronously() {
   VLOG(1) << "SpeechRecognizer stopping record.";
-
-  // TODO(satish): investigate the possibility to utilize the closure
-  // and switch to async. version of this method. Compare with how
-  // it's done in e.g. the AudioRendererHost.
-  base::WaitableEvent closed_event(true, false);
-  audio_controller_->Close(base::Bind(&base::WaitableEvent::Signal,
-                           base::Unretained(&closed_event)));
-  closed_event.Wait();
-  audio_controller_ = NULL;  // Releases the ref ptr.
-}
-
-void SpeechRecognizerImpl::SetAudioManagerForTesting(
-    AudioManager* audio_manager) {
-  audio_manager_ = audio_manager;
+  // Issues a Close on the audio controller, passing an empty callback. The only
+  // purpose of such callback is to keep the audio controller refcounted until
+  // Close has completed (in the audio thread) and automatically destroy it
+  // afterwards (upon return from OnAudioClosed).
+  audio_controller_->Close(base::Bind(&SpeechRecognizerImpl::OnAudioClosed,
+                                      this, audio_controller_));
+  audio_controller_ = NULL;  // The controller is still refcounted by Bind.
 }
 
 bool SpeechRecognizerImpl::IsActive() const {
-  return (request_.get() != NULL);
+  return (recognition_engine_.get() != NULL);
 }
 
 bool SpeechRecognizerImpl::IsCapturingAudio() const {
   return (audio_controller_.get() != NULL);
 }
+
+const SpeechRecognitionEngine&
+    SpeechRecognizerImpl::recognition_engine() const {
+  return *(recognition_engine_.get());
+}
+
+void SpeechRecognizerImpl::SetAudioManagerForTesting(
+    AudioManager* audio_manager) {
+  testing_audio_manager_ = audio_manager;
+}
+
 
 }  // namespace speech

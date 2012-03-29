@@ -298,34 +298,38 @@ void CollectPipeliningCapabilityStatsOnIOThread(
   }
 
   const base::FieldTrial::Probability kDivisor = 100;
-  base::FieldTrial::Probability probability_per_group = 0;
+  base::FieldTrial::Probability probability_to_run_test = 0;
 
   const char* kTrialName = "HttpPipeliningCompatibility";
   base::FieldTrial* trial = base::FieldTrialList::Find(kTrialName);
   if (trial) {
     return;
   }
-  // After October 30, 2012 builds, it will always be in default group
-  // (disable_network_stats).
+  // After April 1, 2012, the trial will disable itself.
   trial = new base::FieldTrial(kTrialName, kDivisor,
-                               "disable_test", 2012, 10, 30);
+                               "disable_test", 2012, 4, 1);
 
   chrome::VersionInfo::Channel channel = chrome::VersionInfo::GetChannel();
   if (channel == chrome::VersionInfo::CHANNEL_CANARY) {
-    // TODO(simonjam): Enable this: probability_per_group = 1;
+    probability_to_run_test = 20;
   }
 
   int collect_stats_group = trial->AppendGroup("enable_test",
-                                               probability_per_group);
+                                               probability_to_run_test);
   if (trial->group() != collect_stats_group) {
     return;
   }
 
   std::vector<HttpPipeliningCompatibilityClient::RequestInfo> requests;
 
+  HttpPipeliningCompatibilityClient::RequestInfo info0;
+  info0.filename = "alphabet.txt";
+  info0.expected_response = "abcdefghijklmnopqrstuvwxyz";
+  requests.push_back(info0);
+
   HttpPipeliningCompatibilityClient::RequestInfo info1;
-  info1.filename = "alphabet.txt";
-  info1.expected_response = "abcdefghijklmnopqrstuvwxyz";
+  info1.filename = "cached.txt";
+  info1.expected_response = "azbycxdwevfugthsirjqkplomn";
   requests.push_back(info1);
 
   HttpPipeliningCompatibilityClient::RequestInfo info2;
@@ -334,19 +338,14 @@ void CollectPipeliningCapabilityStatsOnIOThread(
   requests.push_back(info2);
 
   HttpPipeliningCompatibilityClient::RequestInfo info3;
-  info3.filename = "cached.txt";
-  info3.expected_response = "azbycxdwevfugthsirjqkplomn";
+  info3.filename = "chunked.txt";
+  info3.expected_response = "chunkedencodingisfun";
   requests.push_back(info3);
 
   HttpPipeliningCompatibilityClient::RequestInfo info4;
-  info4.filename = "chunked.txt";
-  info4.expected_response = "chunkedencodingisfun";
+  info4.filename = "cached.txt";
+  info4.expected_response = "azbycxdwevfugthsirjqkplomn";
   requests.push_back(info4);
-
-  HttpPipeliningCompatibilityClient::RequestInfo info5;
-  info5.filename = "cached.txt";
-  info5.expected_response = "azbycxdwevfugthsirjqkplomn";
-  requests.push_back(info5);
 
   HttpPipeliningCompatibilityClient* client =
       new HttpPipeliningCompatibilityClient;

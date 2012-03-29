@@ -20,11 +20,11 @@
 #include "ppapi/proxy/ppb_file_system_proxy.h"
 #include "ppapi/proxy/ppb_flash_menu_proxy.h"
 #include "ppapi/proxy/ppb_flash_message_loop_proxy.h"
-#include "ppapi/proxy/ppb_flash_net_connector_proxy.h"
 #include "ppapi/proxy/ppb_graphics_2d_proxy.h"
 #include "ppapi/proxy/ppb_graphics_3d_proxy.h"
 #include "ppapi/proxy/ppb_host_resolver_private_proxy.h"
 #include "ppapi/proxy/ppb_image_data_proxy.h"
+#include "ppapi/proxy/ppb_network_monitor_private_proxy.h"
 #include "ppapi/proxy/ppb_talk_private_proxy.h"
 #include "ppapi/proxy/ppb_tcp_server_socket_private_proxy.h"
 #include "ppapi/proxy/ppb_tcp_socket_private_proxy.h"
@@ -161,11 +161,6 @@ PP_Resource ResourceCreationProxy::CreateFlashMessageLoop(
     PP_Instance instance) {
   return PPB_Flash_MessageLoop_Proxy::CreateProxyResource(instance);
 }
-
-PP_Resource ResourceCreationProxy::CreateFlashNetConnector(
-    PP_Instance instance) {
-  return PPB_Flash_NetConnector_Proxy::CreateProxyResource(instance);
-}
 #endif  // !defined(OS_NACL)
 
 PP_Resource ResourceCreationProxy::CreateGraphics2D(PP_Instance instance,
@@ -249,8 +244,8 @@ PP_Resource ResourceCreationProxy::CreateNetworkMonitor(
       PP_Instance instance,
       PPB_NetworkMonitor_Callback callback,
       void* user_data) {
-  NOTIMPLEMENTED();  // Not proxied yet.
-  return 0;
+  return PPB_NetworkMonitor_Private_Proxy::CreateProxyResource(
+      instance, callback, user_data);
 }
 
 PP_Resource ResourceCreationProxy::CreateGraphics3D(

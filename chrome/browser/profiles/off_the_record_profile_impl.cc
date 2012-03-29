@@ -87,8 +87,6 @@ OffTheRecordProfileImpl::OffTheRecordProfileImpl(Profile* real_profile)
 void OffTheRecordProfileImpl::Init() {
   extension_process_manager_.reset(ExtensionProcessManager::Create(this));
 
-  BrowserList::AddObserver(this);
-
   ProfileDependencyManager::GetInstance()->CreateProfileServices(this, false);
 
   DCHECK_NE(IncognitoModePrefs::DISABLED,
@@ -130,8 +128,6 @@ OffTheRecordProfileImpl::~OffTheRecordProfileImpl() {
       BrowserThread::IO, FROM_HERE,
       base::Bind(&NotifyOTRProfileDestroyedOnIOThread, profile_, this));
 
-  BrowserList::RemoveObserver(this);
-
   if (host_content_settings_map_)
     host_content_settings_map_->ShutdownOnUIThread();
 
@@ -139,7 +135,7 @@ OffTheRecordProfileImpl::~OffTheRecordProfileImpl() {
     pref_proxy_config_tracker_->DetachFromPrefService();
 
   ExtensionService* extension_service = GetExtensionService();
-  if (extension_service) {
+  if (extension_service && extension_service->extensions_enabled()) {
     ExtensionPrefs* extension_prefs = extension_service->extension_prefs();
     extension_prefs->ClearIncognitoSessionOnlyContentSettings();
   }
@@ -442,12 +438,6 @@ void OffTheRecordProfileImpl::InitChromeOSPreferences() {
   // The preferences are associated with the regular user profile.
 }
 #endif  // defined(OS_CHROMEOS)
-
-void OffTheRecordProfileImpl::OnBrowserAdded(const Browser* browser) {
-}
-
-void OffTheRecordProfileImpl::OnBrowserRemoved(const Browser* browser) {
-}
 
 ExtensionInfoMap* OffTheRecordProfileImpl::GetExtensionInfoMap() {
   return profile_->GetExtensionInfoMap();

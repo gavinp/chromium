@@ -10,6 +10,7 @@
 #include "chrome/browser/extensions/api/web_request/web_request_api.h"
 #include "chrome/browser/extensions/extension_devtools_manager.h"
 #include "chrome/browser/extensions/extension_host.h"
+#include "chrome/browser/extensions/extension_module.h"
 #include "chrome/browser/extensions/extension_process_manager.h"
 #include "chrome/browser/extensions/extension_processes_api.h"
 #include "chrome/browser/extensions/extension_processes_api_constants.h"
@@ -33,7 +34,6 @@ using extensions::ExtensionAPI;
 namespace {
 
 const char kDispatchEvent[] = "Event.dispatchJSON";
-const char kOnInstalledEvent[] = "experimental.extension.onInstalled";
 
 void NotifyEventListenerRemovedOnIOThread(
     void* profile,
@@ -403,8 +403,7 @@ void ExtensionEventRouter::MaybeLoadLazyBackgroundPage(
 bool ExtensionEventRouter::CanDispatchEventNow(
      Profile* profile, const Extension* extension) {
   DCHECK(extension);
-  if (extension->has_background_page() &&
-      !extension->background_page_persists()) {
+  if (extension->has_lazy_background_page()) {
     ExtensionProcessManager* pm = profile->GetExtensionProcessManager();
     ExtensionHost* background_host =
         pm->GetBackgroundHostForExtension(extension->id());
@@ -417,7 +416,7 @@ bool ExtensionEventRouter::CanDispatchEventNow(
 
 void ExtensionEventRouter::IncrementInFlightEvents(
     Profile* profile, const Extension* extension) {
-  if (!extension->background_page_persists()) {
+  if (extension->has_lazy_background_page()) {
     profile->GetExtensionProcessManager()->IncrementLazyKeepaliveCount(
         extension);
   }
@@ -427,7 +426,7 @@ void ExtensionEventRouter::OnExtensionEventAck(
     Profile* profile, const std::string& extension_id) {
   const Extension* extension =
       profile->GetExtensionService()->extensions()->GetByID(extension_id);
-  if (extension && !extension->background_page_persists()) {
+  if (extension && extension->has_lazy_background_page()) {
     profile->GetExtensionProcessManager()->DecrementLazyKeepaliveCount(
         extension);
   }
@@ -496,9 +495,7 @@ void ExtensionEventRouter::Observe(
       // Dispatch the onInstalled event.
       const Extension* extension =
           content::Details<const Extension>(details).ptr();
-      AddLazyEventListener(kOnInstalledEvent, extension->id());
-      DispatchEventToExtension(
-          extension->id(), kOnInstalledEvent, "[]", NULL, GURL());
+      ExtensionModuleEventRouter::DispatchOnInstalledEvent(profile_, extension);
       break;
     }
 

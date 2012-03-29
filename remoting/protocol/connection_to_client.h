@@ -38,14 +38,16 @@ class ConnectionToClient : public base::NonThreadSafe {
    public:
     virtual ~EventHandler() {}
 
-    // Called when the network connection is opened.
-    virtual void OnConnectionOpened(ConnectionToClient* connection) = 0;
+    // Called when the network connection is authenticated.
+    virtual void OnConnectionAuthenticated(ConnectionToClient* connection) = 0;
 
-    // Called when the network connection is closed.
-    virtual void OnConnectionClosed(ConnectionToClient* connection) = 0;
+    // Called when the network connection is authenticated and all
+    // channels are connected.
+    virtual void OnConnectionChannelsConnected(
+        ConnectionToClient* connection) = 0;
 
-    // Called when the network connection has failed.
-    virtual void OnConnectionFailed(ConnectionToClient* connection,
+    // Called when the network connection is closed or failed.
+    virtual void OnConnectionClosed(ConnectionToClient* connection,
                                     ErrorCode error) = 0;
 
     // Called when sequence number is updated.
@@ -56,8 +58,7 @@ class ConnectionToClient : public base::NonThreadSafe {
     // channel is connected.
     virtual void OnRouteChange(ConnectionToClient* connection,
                                const std::string& channel_name,
-                               const net::IPEndPoint& remote_end_point,
-                               const net::IPEndPoint& local_end_point) = 0;
+                               const TransportRoute& route) = 0;
   };
 
   // Constructs a ConnectionToClient object for the |session|. Takes
@@ -95,15 +96,14 @@ class ConnectionToClient : public base::NonThreadSafe {
   void OnSessionStateChange(Session::State state);
 
   void OnSessionRouteChange(const std::string& channel_name,
-                            const net::IPEndPoint& remote_end_point,
-                            const net::IPEndPoint& local_end_point);
+                            const TransportRoute& route);
 
   // Callback for channel initialization.
   void OnChannelInitialized(bool successful);
 
   void NotifyIfChannelsReady();
 
-  void CloseOnError();
+  void Close(ErrorCode error);
 
   // Stops writing in the channels.
   void CloseChannels();

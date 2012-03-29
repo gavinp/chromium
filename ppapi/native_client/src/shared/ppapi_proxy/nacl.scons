@@ -26,6 +26,7 @@ command_buffer_common_srcs = [
     ]
 
 command_buffer_client_srcs = [
+    'command_buffer/client/atomicops.cc',
     'command_buffer/client/cmd_buffer_helper.cc',
     'command_buffer/client/fenced_allocator.cc',
     'command_buffer/client/gles2_c_lib.cc',
@@ -36,6 +37,7 @@ command_buffer_client_srcs = [
     'command_buffer/client/mapped_memory.cc',
     'command_buffer/client/query_tracker.cc',
     'command_buffer/client/ring_buffer.cc',
+    'command_buffer/client/share_group.cc',
     'command_buffer/client/transfer_buffer.cc',
     'command_buffer/common/id_allocator.cc',
     ]
@@ -68,6 +70,7 @@ libppruntime = env.NaClSdkLibrary(
     'plugin_ppb_gamepad.cc',
     'plugin_ppb_graphics_2d.cc',
     'plugin_ppb_graphics_3d.cc',
+    'plugin_ppb_host_resolver_private.cc',
     'plugin_ppb_image_data.cc',
     'plugin_ppb_input_event.cc',
     'plugin_ppb_instance.cc',

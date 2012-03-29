@@ -72,7 +72,8 @@ input[type='submit'][disabled]:hover {
 .butter-bar {
   -webkit-box-align: end;
   -webkit-box-orient: horizontal;
-  -webkit-transition-property: opacity, top;
+  -webkit-transform: translate3d(0, 1px, 0);
+  -webkit-transition-property: opacity, -webkit-transform;
   -webkit-transition-duration: 300ms;
   background-color: rgba(95, 95, 95, 0.17);
   color: #222;
@@ -81,16 +82,16 @@ input[type='submit'][disabled]:hover {
   padding-right: 1em;
   padding-top: 2px;
   position: absolute;
-  top: 1px;
+  top: 0;
 }
 
 .butter-bar.before-show {
-  top: -30px;
+  -webkit-transform: translate3d(0, -30px, 0);
   opacity: 0;
 }
 
 .butter-bar.after-show {
-  top: 50px;
+  -webkit-transform: translate3d(0, 50px, 0);
   opacity: 0;
 }
 
@@ -168,6 +169,7 @@ input[type='submit'][disabled]:hover {
 
 /* Main part of the dialog between header and footer. */
 .dialog-container {
+  position: relative;
   display: -webkit-box;
   -webkit-box-orient: horizontal;
   -webkit-box-align: stretch;
@@ -187,8 +189,8 @@ input[type='submit'][disabled]:hover {
 .dialog-sidebar {
   position: relative;
   -webkit-box-flex: 0;
-  width: 169px;
-  margin-left: -169px;
+  width: 168px;
+  margin-left: -168px;
   background-color: #e6e6e6;
   -webkit-transition: margin-left 180ms ease;
   overflow: hidden;
@@ -228,7 +230,7 @@ list.roots-list > [lead][selected]:hover,
 list.roots-list > [selected]:hover,
 list.roots-list > [anchor]:hover {
   height: 37px !important;
-  background-color: rgb(0, 0, 0, 0.5) !important;
+  background-color: #c1d3ec !important;
   border-top: 1px solid transparent !important;
   border-bottom: 1px solid transparent !important;
 }
@@ -247,7 +249,7 @@ li.root-item > * {
 }
 
 li.root-item > .root-label {
-  max-width: 81px;
+  max-width: 90px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -260,7 +262,7 @@ li.root-item > .spacer {
 .root-label {
   -webkit-padding-start: 38px;
   background-repeat: no-repeat;
-  background-position: 0 2px;
+  background-position: left center;
 }
 
 .breadcrumbs .root-label {
@@ -270,7 +272,6 @@ li.root-item > .spacer {
 
 .root-label[icon=downloads] {
   background-image: url('../images/downloads_28x28.png');
-  background-position: 0 -2px;
 }
 
 .breadcrumbs .root-label[icon=downloads] {
@@ -279,36 +280,28 @@ li.root-item > .spacer {
 
 .root-label[icon=gdata] {
   background-image: url('../images/gdata_28x28.png');
-  background-position: 0 -2px;
 }
 
 .breadcrumbs .root-label[icon=gdata] {
   background-image: url('../images/gdata_24x24.png');
-  background-position: 0 -2px;
 }
 
 .root-label[icon=archive] {
   background-image: url('../images/archive_28x28.png');
-  background-position: 0 -2px;
 }
 
 .breadcrumbs .root-label[icon=archive] {
   background-image: url('../images/archive_24x24.png');
 }
 
-.root-label[icon=removable] {
+.root-label[icon=removable],
+.root-label[icon=unreadable] {
   background-image: url('../images/usb_source_28x28.png');
   background-position: 0 -3px;
 }
 
 .breadcrumbs .root-label[icon=removable] {
   background-image: url('../images/usb_source_24x24.png');
-  background-position: 0 0;
-}
-
-.root-label[icon=unreadable] {
-  background-image: url('../images/usb_source_28x28.png');
-  background-position: 0 0;
 }
 
 .dialog-container[sidebar] .breadcrumbs .root-label {
@@ -415,9 +408,26 @@ div.open-sidebar:hover {
 /* Container for the ok/cancel buttons. */
 .dialog-footer {
   -webkit-box-orient: horizontal;
+  -webkit-box-align: center;
   display: -webkit-box;
   margin: 15px;
   margin-top: 0;
+}
+
+.dialog-footer:not([progress]) .progress-bar,
+.dialog-footer:not([progress]) .preparing-label {
+  display: none;
+}
+
+.dialog-footer[progress] .ok,
+.dialog-footer[progress] .filename-label,
+.dialog-footer[progress] .filename-input {
+  display: none;
+}
+
+.dialog-footer .progress-bar {
+  -webkit-margin-start: 20px;
+  -webkit-margin-end: 20px;
 }
 
 /* The container for breadcrumb elements. */
@@ -588,6 +598,7 @@ div.img-container {
 
 div.img-container > img {
   position: absolute;
+  -webkit-user-drag: none;
 }
 
 .list-container list > *,
@@ -660,6 +671,11 @@ input.rename {
   width: 114px;
   height: 20px;
   -webkit-box-sizing: border-box;
+}
+
+.thumbnail-grid li,
+.detail-table list li {
+  -webkit-user-drag: element;
 }
 
 /* The cr.ui.Table representing the detailed file list. */
@@ -836,7 +852,6 @@ li.thumbnail-item .file-checkbox {
   -webkit-margin-start: 7px;
   margin-top: 6px;
   opacity: 0;
-  background-color: green;
 }
 
 li.table-row:hover .file-checkbox,
@@ -1046,6 +1061,7 @@ li.table-row {
 
 .dialog-footer .filename-label {
   -webkit-box-orient: horizontal;
+  background-color: white;
   color: #666;
   display: -webkit-box;
   font-weight: bold;
@@ -1078,6 +1094,13 @@ li.table-row {
   display: -webkit-box;
 }
 
+/* GData-specfic styles */
+
+[gdata][offline] .table-row-cell > :not(.gdata-present),
+[gdata][offline] .thumbnail-item > :not(.gdata-present) {
+  color: #808080;
+}
+
 /* Overlay pane covering the entire file manager window (e.g. image editor)*/
 .overlay-pane {
   position: absolute;
@@ -1089,11 +1112,43 @@ li.table-row {
   z-index: 100;
 }
 
+/* Invisible container for elements representing files while dragging. */
+#drag-image-container {
+  position: fixed;
+  /* Only nodes in visible viewport will be rendered. */
+  top: 0;
+  left: 0;
+  display: -webkit-box;
+  -webkit-box-orient: horizontal;
+  padding-left: 100px;
+  z-index: -1;  /* below .dialog-container */
+}
+
+#drag-image-container > * {
+  display: inline-block;
+  background-color: #CBDBF1;
+  border-color: #E0E9F7;
+  border: 1px solid white; /* transparent white */
+  cursor: default;
+  line-height: 20px;
+  margin: 0 0 0 -100px;
+  overflow: hidden;
+  padding: 0 3px;
+  position: relative; /* to allow overlap */
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+#drag-image-container > li input[type=checkbox] {
+  display: none;
+}
+
 menu.file-context-menu {
   z-index: 4;
 }
 
 input.common.pin[type="checkbox"]:checked::after {
+  position: relative;
   content: url('../images/pin.png');
   left: 3px;
   top: -4px;
@@ -1107,4 +1162,61 @@ div.offline {
 div.offline > * {
   -webkit-box-align: center;
   display: -webkit-box;
+}
+
+div.shade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.8);
+  opacity: 0;
+  webkit-transition: opacity 1000ms linear;
+}
+
+div.shade[fadein] {
+  opacity: 1;
+}
+
+/* Message panel for unmounted GData */
+.dialog-container:not([unmounted]) .dialog-body > div.unmounted-panel,
+.dialog-container[unmounted] .dialog-body > div:not(.unmounted-panel) {
+  display: none;
+}
+
+div.unmounted-panel {
+  padding-top: 20px;
+  padding-left: 50px;
+}
+
+div.unmounted-panel > * {
+  height: 22px;
+  margin-bottom: 10px;
+}
+
+div.unmounted-panel > div {
+  display: -webkit-box;
+  -webkit-box-orient: horizontal;
+  -webkit-box-pack: start;
+  -webkit-box-align: center;
+}
+
+.unmounted-panel > .gdata.loading,
+.unmounted-panel > .gdata.error {
+  margin-left: -30px;  /* Room for the spinner.*/
+  padding-left: 30px;
+}
+
+.unmounted-panel > .gdata.loading {
+  background-image: url(../images/spinner.svg);
+  background-repeat: no-repeat;
+  background-position: 0 center;
+}
+
+.unmounted-panel:not([loading]) > .gdata.loading,
+.unmounted-panel:not([error]) > .gdata.error,
+.unmounted-panel:not([retry]) > .gdata.retry,
+.unmounted-panel:not([retry]) > .gdata.learn-more {
+  display: none;
 }

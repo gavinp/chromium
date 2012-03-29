@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "base/basictypes.h"
+#include "base/callback.h"
 #include "base/file_path.h"
 #include "base/memory/ref_counted.h"
 #include "chrome/browser/chromeos/gdata/gdata_errorcode.h"
@@ -22,6 +23,8 @@ class DownloadItem;
 }
 
 namespace gdata {
+
+class DocumentEntry;
 
 // Structure containing current upload information of file, passed between
 // DocumentsService methods and callbacks.
@@ -64,11 +67,19 @@ struct UploadFileInfo {
   int64 start_range;  // Start of range of contents currently stored in |buf|.
   int64 end_range;  // End of range of contents currently stored in |buf|.
 
-  bool download_complete;  // Whether this file has finished downloading.
+  bool all_bytes_present;  // Whether all bytes of this file are present.
   bool upload_paused;  // Whether this file's upload has been paused.
 
   bool should_retry_file_open;  // Whether we should retry opening this file.
   int num_file_open_tries;  // Number of times we've tried to open this file.
+
+  // Will be set once the upload is complete.
+  scoped_ptr<DocumentEntry> entry;
+
+  // Callback to be invoked once the upload has completed.
+  typedef base::Callback<void(base::PlatformFileError error,
+      UploadFileInfo* upload_file_info)> UploadCompletionCallback;
+  UploadCompletionCallback completion_callback;
 };
 
 }  // namespace gdata

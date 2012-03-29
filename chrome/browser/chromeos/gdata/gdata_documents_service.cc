@@ -67,10 +67,14 @@ DocumentsService::DocumentsService()
 }
 
 DocumentsService::~DocumentsService() {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+
   gdata_auth_service_->RemoveObserver(this);
 }
 
 void DocumentsService::Initialize(Profile* profile) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+
   profile_ = profile;
   // AddObserver() should be called before Initialize() as it could change
   // the refresh token.
@@ -110,11 +114,13 @@ void DocumentsService::GetAccountMetadata(const GetDataCallback& callback) {
 
 void DocumentsService::DownloadDocument(
     const FilePath& virtual_path,
+    const FilePath& local_cache_path,
     const GURL& document_url,
     DocumentExportFormat format,
     const DownloadActionCallback& callback) {
   DownloadFile(
       virtual_path,
+      local_cache_path,
       chrome_browser_net::AppendQueryParameter(document_url,
                                                "exportFormat",
                                                GetExportFormatParam(format)),
@@ -122,11 +128,12 @@ void DocumentsService::DownloadDocument(
 }
 
 void DocumentsService::DownloadFile(const FilePath& virtual_path,
+                                    const FilePath& local_cache_path,
                                     const GURL& document_url,
                                     const DownloadActionCallback& callback) {
   StartOperationOnUIThread(
       new DownloadFileOperation(operation_registry_.get(), profile_, callback,
-                                document_url, virtual_path));
+                                document_url, virtual_path, local_cache_path));
 }
 
 void DocumentsService::DeleteDocument(const GURL& document_url,
@@ -146,12 +153,12 @@ void DocumentsService::CreateDirectory(
                                    directory_name));
 }
 
-void DocumentsService::CopyDocument(const GURL& document_url,
+void DocumentsService::CopyDocument(const std::string& resource_id,
                                     const FilePath::StringType& new_name,
                                     const GetDataCallback& callback) {
   StartOperationOnUIThread(
       new CopyDocumentOperation(operation_registry_.get(), profile_, callback,
-                                document_url, new_name));
+                                resource_id, new_name));
 }
 
 void DocumentsService::RenameResource(const GURL& resource_url,
@@ -215,9 +222,10 @@ void DocumentsService::OnOAuth2RefreshTokenChanged() {
 
 void DocumentsService::StartOperationOnUIThread(
     GDataOperationInterface* operation) {
+  // The re-authenticatation callback will run on UI thread.
   operation->SetReAuthenticateCallback(
       base::Bind(&DocumentsService::RetryOperation,
-                 weak_ptr_factory_.GetWeakPtr()));
+                 weak_ptr_bound_to_ui_thread_));
   BrowserThread::PostTask(
       BrowserThread::UI,
       FROM_HERE,
@@ -234,7 +242,7 @@ void DocumentsService::StartOperation(GDataOperationInterface* operation) {
     gdata_auth_service_->StartAuthentication(
         operation_registry_.get(),
         base::Bind(&DocumentsService::OnOperationAuthRefresh,
-                   weak_ptr_factory_.GetWeakPtr(),
+                   weak_ptr_bound_to_ui_thread_,
                    operation));
     return;
   }

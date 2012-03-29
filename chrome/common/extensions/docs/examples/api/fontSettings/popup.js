@@ -13,6 +13,8 @@ var genericFamilies = [
   { fontList: 'fixedFontList', name: 'fixed' }
 ];
 
+var DEFAULT_SCRIPT = 'Qaaa';
+
 function getSelectedScript() {
   return scriptList.options[scriptList.selectedIndex].value;
 }
@@ -53,11 +55,13 @@ function getFontChangeHandler(fontList, genericFamily) {
     var script = getSelectedScript();
     var font = getSelectedFont(fontList);
 
-    chrome.experimental.fontSettings.setFontName({
-      script: script,
-      genericFamily: genericFamily,
-      fontName: font
-    });
+    var details = {};
+    details.genericFamily = genericFamily;
+    details.fontName = font;
+    if (script != DEFAULT_SCRIPT)
+      details.script = script;
+
+    chrome.experimental.fontSettings.setFontName(details);
   };
 }
 
@@ -93,10 +97,23 @@ function updateListSelections() {
     var list = document.getElementById(genericFamilies[i].fontList);
     var family = genericFamilies[i].name;
 
-    chrome.experimental.fontSettings.getFontName({
-      genericFamily: family,
-      script: script
-    }, getFontNameHandler(list));
+    var details = {};
+    details.genericFamily = family;
+    if (script != DEFAULT_SCRIPT)
+      details.script = script;
+
+    chrome.experimental.fontSettings.getFontName(details,
+                                                 getFontNameHandler(list));
+  }
+}
+
+function defaultFontSizeChanged() {
+  var defaultFontSizeInput = document.getElementById('defaultFontSize');
+  var pixelSize = parseInt(defaultFontSizeInput.value);
+  if (!isNaN(pixelSize)) {
+    chrome.experimental.fontSettings.setDefaultFontSize({
+      pixelSize: pixelSize
+    });
   }
 }
 
@@ -113,6 +130,12 @@ function init() {
     var handler = getFontChangeHandler(list, genericFamilies[i].name);
     list.addEventListener('change', handler);
   }
+
+  var defaultFontSizeInput = document.getElementById('defaultFontSize');
+  chrome.experimental.fontSettings.getDefaultFontSize({}, function(details) {
+    defaultFontSizeInput.value = details.pixelSize;
+  });
+  defaultFontSizeInput.addEventListener('change', defaultFontSizeChanged);
 }
 
 document.addEventListener('DOMContentLoaded', init);

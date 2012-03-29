@@ -142,7 +142,7 @@
 //  +----------------------------------+ <+
 //
 
-namespace spdy {
+namespace net {
 
 // Initial window size for a Spdy stream
 const int32 kSpdyStreamInitialWindowSize = 64 * 1024;  // 64 KBytes
@@ -401,6 +401,7 @@ enum SpdySettingsControlFlags {
 
 // Flags for settings within a SETTINGS frame.
 enum SpdySettingsFlags {
+  SETTINGS_FLAG_NONE = 0x0,
   SETTINGS_FLAG_PLEASE_PERSIST = 0x1,
   SETTINGS_FLAG_PERSISTED = 0x2
 };
@@ -432,6 +433,14 @@ enum SpdyStatusCodes {
   FLOW_CONTROL_ERROR = 7,
   INVALID_ASSOCIATED_STREAM = 8,
   NUM_STATUS_CODES = 9
+};
+
+enum SpdyGoAwayStatus {
+  GOAWAY_INVALID = -1,
+  GOAWAY_OK = 0,
+  GOAWAY_PROTOCOL_ERROR = 1,
+  GOAWAY_INTERNAL_ERROR = 2,
+  GOAWAY_NUM_STATUS_CODES = 3
 };
 
 // A SPDY stream id is a 31 bit entity.
@@ -479,7 +488,7 @@ struct SpdySynStreamControlFrameBlock : SpdyFrameBlock {
   SpdyStreamId stream_id_;
   SpdyStreamId associated_stream_id_;
   SpdyPriority priority_;
-  uint8 unused_;
+  uint8 credential_slot_;
 };
 
 // A SYN_REPLY Control Frame structure.
@@ -517,6 +526,7 @@ struct SpdyCredentialControlFrameBlock : SpdyFrameBlock {
 // A GOAWAY Control Frame structure.
 struct SpdyGoAwayControlFrameBlock : SpdyFrameBlock {
   SpdyStreamId last_accepted_stream_id_;
+  SpdyGoAwayStatus status_;
 };
 
 // A HEADERS Control Frame structure.
@@ -722,6 +732,19 @@ class SpdySynStreamControlFrame : public SpdyControlFrame {
     }
   }
 
+  uint8 credential_slot() const {
+    if (version() < 3) {
+      return 0;
+    } else {
+      return block()->credential_slot_;
+    }
+  }
+
+  void set_credential_slot(uint8 credential_slot) {
+    DCHECK(version() >= 3);
+    mutable_block()->credential_slot_ = credential_slot;
+  }
+
   // The number of bytes in the header block beyond the frame header length.
   int header_block_len() const {
     return length() - (size() - SpdyFrame::kHeaderSize);
@@ -923,6 +946,20 @@ class SpdyGoAwayControlFrame : public SpdyControlFrame {
     return ntohl(block()->last_accepted_stream_id_) & kStreamIdMask;
   }
 
+  SpdyGoAwayStatus status() const {
+    if (version() < 2) {
+      LOG(DFATAL) << "Attempted to access status of SPDY 2 GOAWAY.";
+      return GOAWAY_INVALID;
+    } else {
+      uint32 status = ntohl(block()->status_);
+      if (status >= GOAWAY_NUM_STATUS_CODES) {
+        return GOAWAY_INVALID;
+      } else {
+        return static_cast<SpdyGoAwayStatus>(status);
+      }
+    }
+  }
+
   void set_last_accepted_stream_id(SpdyStreamId id) {
     mutable_block()->last_accepted_stream_id_ = htonl(id & kStreamIdMask);
   }
@@ -1025,6 +1062,6 @@ class SpdyWindowUpdateControlFrame : public SpdyControlFrame {
   DISALLOW_COPY_AND_ASSIGN(SpdyWindowUpdateControlFrame);
 };
 
-}  // namespace spdy
+}  // namespace net
 
 #endif  // NET_SPDY_SPDY_PROTOCOL_H_

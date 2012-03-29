@@ -6,7 +6,7 @@
 #include "content/browser/renderer_host/test_render_view_host.h"
 #include "content/browser/site_instance_impl.h"
 #include "content/browser/tab_contents/navigation_controller_impl.h"
-#include "content/browser/tab_contents/test_tab_contents.h"
+#include "content/browser/tab_contents/test_web_contents.h"
 #include "content/common/dom_storage_common.h"
 #include "content/common/view_messages.h"
 #include "content/public/browser/navigation_controller.h"
@@ -136,7 +136,7 @@ gfx::PluginWindowHandle
 TestRenderWidgetHostView::AllocateFakePluginWindowHandle(
     bool opaque,
     bool root) {
-  return NULL;
+  return gfx::kNullPluginWindow;
 }
 
 void TestRenderWidgetHostView::DestroyFakePluginWindowHandle(
@@ -287,10 +287,6 @@ void TestRenderViewHost::SimulateWasRestored() {
   WasRestored();
 }
 
-bool TestRenderViewHost::TestOnMessageReceived(const IPC::Message& msg) {
-  return OnMessageReceived(msg);
-}
-
 void TestRenderViewHost::TestOnMsgStartDragging(
     const WebDropData& drop_data) {
   WebKit::WebDragOperationsMask drag_operation = WebKit::WebDragOperationEvery;
@@ -317,6 +313,10 @@ TestRenderViewHost* RenderViewHostImplTestHarness::pending_test_rvh() {
 
 TestRenderViewHost* RenderViewHostImplTestHarness::active_test_rvh() {
   return static_cast<TestRenderViewHost*>(active_rvh());
+}
+
+TestWebContents* RenderViewHostImplTestHarness::contents() {
+  return static_cast<TestWebContents*>(web_contents());
 }
 
 }  // namespace content

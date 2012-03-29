@@ -29,8 +29,6 @@
 #include "chrome/browser/prefs/pref_service.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
-#include "chrome/browser/ui/browser.h"
-#include "chrome/browser/ui/browser_list.h"
 #include "chrome/common/chrome_notification_types.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/extensions/user_script.h"
@@ -42,8 +40,15 @@
 #include "grit/generated_resources.h"
 #include "ui/base/l10n/l10n_util.h"
 
+#if !defined(OS_ANDROID)
+#include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/browser_list.h"
+#endif
+
 #if defined(OS_CHROMEOS)
+#include "chrome/browser/chromeos/gdata/gdata_download_observer.h"
 #include "chrome/browser/download/download_file_picker_chromeos.h"
+#include "chrome/browser/download/save_package_file_picker_chromeos.h"
 #endif
 
 using content::BrowserThread;
@@ -159,10 +164,16 @@ FilePath ChromeDownloadManagerDelegate::GetIntermediatePath(
 
 WebContents* ChromeDownloadManagerDelegate::
     GetAlternativeWebContentsToNotifyForDownload() {
+#if defined(OS_ANDROID)
+  // Android does not implement BrowserList or any other way to get an
+  // alternate web contents.
+  return NULL;
+#else
   // Start the download in the last active browser. This is not ideal but better
   // than fully hiding the download from the user.
   Browser* last_active = BrowserList::GetLastActiveWithProfile(profile_);
   return last_active ? last_active->GetSelectedWebContents() : NULL;
+#endif
 }
 
 
@@ -204,6 +215,12 @@ bool ChromeDownloadManagerDelegate::ShouldCompleteDownload(DownloadItem* item) {
             item->GetId()));
     return false;
   }
+#endif
+#if defined(OS_CHROMEOS)
+  // If there's a GData upload associated with this download, we wait until that
+  // is complete before allowing the download item to complete.
+  if (!gdata::GDataDownloadObserver::IsReadyToComplete(item))
+    return false;
 #endif
   return true;
 }
@@ -301,9 +318,15 @@ void ChromeDownloadManagerDelegate::ChooseSavePath(
     bool can_save_as_complete,
     content::SaveFilePathPickedCallback callback) {
   // Deletes itself.
-  new SavePackageFilePicker(
-      web_contents, suggested_path, default_extension, can_save_as_complete,
-      download_prefs_.get(), callback);
+#if defined(OS_CHROMEOS)
+  // Note that we're ignoring the callback here.
+  // SavePackageFilePickerChromeOS completes the save operation itself.
+  // TODO(achuith): Fix this.
+  new SavePackageFilePickerChromeOS(web_contents, suggested_path);
+#else
+  new SavePackageFilePicker(web_contents, suggested_path, default_extension,
+      can_save_as_complete, download_prefs_.get(), callback);
+#endif
 }
 
 #if defined(ENABLE_SAFE_BROWSING)

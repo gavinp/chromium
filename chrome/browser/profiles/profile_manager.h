@@ -59,6 +59,11 @@ class ProfileManager : public base::NonThreadSafe,
   // Same as instance method but provides the default user_data_dir as well.
   static Profile* GetDefaultProfile();
 
+  // DEPRECATED: DO NOT USE unless in ChromeOS.
+  // Same as GetDefaultProfile() but returns OffTheRecord profile
+  // if guest login.
+  static Profile* GetDefaultProfileOrOffTheRecord();
+
   // Returns a profile for a specific profile directory within the user data
   // dir. This will return an existing profile it had already been created,
   // otherwise it will create and manage it.
@@ -313,6 +318,8 @@ class ProfileManager : public base::NonThreadSafe,
 
   // For keeping track of the last active profiles.
   std::map<Profile*, int> browser_counts_;
+  // On startup we launch the active profiles in the order they became active
+  // during the last run. This is why they are kept in a list, not in a set.
   std::vector<Profile*> active_profiles_;
   bool shutdown_started_;
 

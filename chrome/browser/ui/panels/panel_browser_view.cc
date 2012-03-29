@@ -21,6 +21,10 @@
 #include "ui/views/controls/label.h"
 #include "ui/views/widget/widget.h"
 
+#if defined(OS_WIN) && !defined(USE_AURA)
+#include "base/win/win_util.h"  // for IsCtrlPressed()
+#endif
+
 using content::WebContents;
 
 namespace {
@@ -114,7 +118,7 @@ void PanelBrowserView::Deactivate() {
 }
 
 bool PanelBrowserView::CanResize() const {
-  return false;
+  return true;
 }
 
 bool PanelBrowserView::CanMaximize() const {
@@ -132,9 +136,11 @@ void PanelBrowserView::SetBoundsInternal(const gfx::Rect& new_bounds,
 
   bounds_ = new_bounds;
 
-  // No animation if the panel is being dragged.
-  if (!animate || mouse_dragging_state_ == DRAGGING_STARTED) {
-    ::BrowserView::SetBounds(new_bounds);
+  if (!animate) {
+    // If no animation is in progress, apply bounds change instantly. Otherwise,
+    // continue the animation with new target bounds.
+    if (!IsAnimatingBounds())
+      ::BrowserView::SetBounds(new_bounds);
     return;
   }
 
@@ -265,6 +271,17 @@ void PanelBrowserView::OnWorkAreaChanged() {
 
 bool PanelBrowserView::WillProcessWorkAreaChange() const {
   return true;
+}
+
+void PanelBrowserView::OnWindowBeginUserBoundsChange() {
+  // On Windows, the user resizing is handled by the system, instead of by
+  // our platform-independent resizing framework. Thus we need to turn off the
+  // auto-resizing explicitly here.
+  panel_->SetAutoResizable(false);
+}
+
+void PanelBrowserView::OnWindowEndUserBoundsChange() {
+  bounds_ = GetBounds();
 }
 
 void PanelBrowserView::ShowPanel() {
@@ -455,7 +472,7 @@ bool PanelBrowserView::OnTitlebarMousePressed(
   mouse_pressed_ = true;
   mouse_pressed_time_ = base::TimeTicks::Now();
   mouse_dragging_state_ = NO_DRAGGING;
-  mouse_location_ = mouse_location;
+  last_mouse_location_ = mouse_location;
   return true;
 }
 
@@ -467,11 +484,8 @@ bool PanelBrowserView::OnTitlebarMouseDragged(
   if (!panel_->draggable())
     return true;
 
-  gfx::Point last_mouse_location = mouse_location_;
-  mouse_location_ = mouse_location;
-
-  int delta_x = mouse_location_.x() - last_mouse_location.x();
-  int delta_y = mouse_location_.y() - last_mouse_location.y();
+  int delta_x = mouse_location.x() - last_mouse_location_.x();
+  int delta_y = mouse_location.y() - last_mouse_location_.y();
   if (mouse_dragging_state_ == NO_DRAGGING &&
       ExceededDragThreshold(delta_x, delta_y)) {
     // When a drag begins, we do not want to the client area to still receive
@@ -479,11 +493,16 @@ bool PanelBrowserView::OnTitlebarMouseDragged(
     old_focused_view_ = GetFocusManager()->GetFocusedView();
     GetFocusManager()->SetFocusedView(GetFrameView());
 
-    panel_->manager()->StartDragging(panel_.get(), last_mouse_location);
+    panel_->manager()->StartDragging(panel_.get(), last_mouse_location_);
     mouse_dragging_state_ = DRAGGING_STARTED;
   }
-  if (mouse_dragging_state_ == DRAGGING_STARTED)
-    panel_->manager()->Drag(mouse_location_);
+  if (mouse_dragging_state_ == DRAGGING_STARTED) {
+    panel_->manager()->Drag(mouse_location);
+
+    // Once in drag, update |last_mouse_location_| on each drag fragment, since
+    // we already dragged the panel up to the current mouse location.
+    last_mouse_location_ = mouse_location;
+  }
   return true;
 }
 
@@ -503,6 +522,22 @@ bool PanelBrowserView::OnTitlebarMouseReleased() {
   if (mouse_dragging_state_ != NO_DRAGGING)
     return true;
 
+  // Ignore long clicks. Treated as a canceled click to be consistent with Mac.
+  if (base::TimeTicks::Now() - mouse_pressed_time_ >
+      base::TimeDelta::FromMilliseconds(kShortClickThresholdMs))
+    return true;
+
+#if defined(OS_WIN) && !defined(USE_AURA)
+  if (base::win::IsCtrlPressed()) {
+    panel_->OnTitlebarClicked(panel::APPLY_TO_ALL);
+    return true;
+  }
+#else
+  NOTIMPLEMENTED();  // Proceed without modifier.
+#endif
+
+  // TODO(jennb): Move remaining titlebar click handling out of here.
+  // (http://crbug.com/118431)
   PanelStrip* panel_strip = panel_->panel_strip();
   if (!panel_strip)
     return true;
@@ -516,11 +551,6 @@ bool PanelBrowserView::OnTitlebarMouseReleased() {
       base::TimeDelta::FromMilliseconds(kSuspendMinimizeOnClickIntervalMs)) {
     return true;
   }
-
-  // Ignore long clicks. Treated as a canceled click to be consistent with Mac.
-  if (base::TimeTicks::Now() - mouse_pressed_time_ >
-      base::TimeDelta::FromMilliseconds(kShortClickThresholdMs))
-    return true;
 
   if (panel_strip->type() == PanelStrip::DOCKED &&
       panel_->expansion_state() == Panel::EXPANDED)
@@ -569,6 +599,15 @@ void PanelBrowserView::SetPanelAppIconVisibility(bool visible) {
 
 void PanelBrowserView::SetPanelAlwaysOnTop(bool on_top) {
   GetWidget()->SetAlwaysOnTop(on_top);
+  GetWidget()->non_client_view()->Layout();
+  GetWidget()->client_view()->Layout();
+}
+
+bool PanelBrowserView::IsAnimatingBounds() const {
+  return bounds_animator_.get() && bounds_animator_->is_animating();
+}
+
+void PanelBrowserView::EnableResizeByMouse(bool enable) {
 }
 
 // NativePanelTesting implementation.
@@ -578,8 +617,9 @@ class NativePanelTestingWin : public NativePanelTesting {
 
  private:
   virtual void PressLeftMouseButtonTitlebar(
-      const gfx::Point& mouse_location) OVERRIDE;
-  virtual void ReleaseMouseButtonTitlebar() OVERRIDE;
+      const gfx::Point& mouse_location, panel::ClickModifier modifier) OVERRIDE;
+  virtual void ReleaseMouseButtonTitlebar(
+      panel::ClickModifier modifier) OVERRIDE;
   virtual void DragTitlebar(const gfx::Point& mouse_location) OVERRIDE;
   virtual void CancelDragTitlebar() OVERRIDE;
   virtual void FinishDragTitlebar() OVERRIDE;
@@ -605,11 +645,44 @@ NativePanelTestingWin::NativePanelTestingWin(
 }
 
 void NativePanelTestingWin::PressLeftMouseButtonTitlebar(
-    const gfx::Point& mouse_location) {
+    const gfx::Point& mouse_location, panel::ClickModifier modifier) {
+#if defined(OS_WIN) && !defined(USE_AURA)
+  if (modifier == panel::APPLY_TO_ALL) {
+    BYTE keyState[256];
+    ::GetKeyboardState(keyState);
+    BYTE newKeyState[256];
+    memcpy(newKeyState, keyState, sizeof(keyState));
+    newKeyState[VK_CONTROL] = 0x80;
+    ::SetKeyboardState(newKeyState);
+    panel_browser_view_->OnTitlebarMousePressed(mouse_location);
+    ::SetKeyboardState(keyState);  // restore to original
+    return;
+  }
+#else
+  // Cannot test with modifier. Proceed without it.
+#endif
+
   panel_browser_view_->OnTitlebarMousePressed(mouse_location);
 }
 
-void NativePanelTestingWin::ReleaseMouseButtonTitlebar() {
+void NativePanelTestingWin::ReleaseMouseButtonTitlebar(
+    panel::ClickModifier modifier) {
+#if defined(OS_WIN) && !defined(USE_AURA)
+  if (modifier == panel::APPLY_TO_ALL) {
+    BYTE keyState[256];
+    ::GetKeyboardState(keyState);
+    BYTE newKeyState[256];
+    memcpy(newKeyState, keyState, sizeof(keyState));
+    newKeyState[VK_CONTROL] = 0x80;
+    ::SetKeyboardState(newKeyState);
+    panel_browser_view_->OnTitlebarMouseReleased();
+    ::SetKeyboardState(keyState);  // restore to original
+    return;
+  }
+#else
+  // Cannot test with modifier. Proceed without it.
+#endif
+
   panel_browser_view_->OnTitlebarMouseReleased();
 }
 
@@ -650,6 +723,5 @@ bool NativePanelTestingWin::IsWindowSizeKnown() const {
 }
 
 bool NativePanelTestingWin::IsAnimatingBounds() const {
-  return panel_browser_view_->bounds_animator_.get() &&
-         panel_browser_view_->bounds_animator_->is_animating();
+  return panel_browser_view_->IsAnimatingBounds();
 }

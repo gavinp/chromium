@@ -18,11 +18,11 @@
 
 #include "base/memory/scoped_ptr.h"
 #include "base/observer_list.h"
-#include "chrome/browser/chromeos/input_method/ibus_input_methods.h"
 #include "chrome/browser/chromeos/input_method/input_method_engine.h"
 #include "chrome/browser/chromeos/input_method/input_method_manager.h"
 #include "chrome/browser/chromeos/input_method/input_method_util.h"
 #include "chrome/browser/chromeos/input_method/input_method_whitelist.h"
+#include "chrome/browser/chromeos/input_method/input_methods.h"
 
 namespace chromeos {
 namespace input_method {
@@ -363,13 +363,6 @@ class IBusControllerImpl : public IBusController {
           ibus_,
           reinterpret_cast<gpointer>(G_CALLBACK(IBusBusDisconnectedThunk)),
           this);
-#if !defined(USE_AURA)
-      g_signal_handlers_disconnect_by_func(
-          ibus_,
-          reinterpret_cast<gpointer>(
-              G_CALLBACK(IBusBusGlobalEngineChangedThunk)),
-          this);
-#endif
       g_signal_handlers_disconnect_by_func(
           ibus_,
           reinterpret_cast<gpointer>(G_CALLBACK(IBusBusNameOwnerChangedThunk)),
@@ -457,9 +450,7 @@ class IBusControllerImpl : public IBusController {
 
   // IBusController override.
   virtual bool ChangeInputMethod(const std::string& name) {
-#if defined(USE_AURA)
     DCHECK(!InputMethodUtil::IsKeyboardLayout(name));
-#endif
 
     if (!IBusConnectionsAreAlive()) {
       LOG(ERROR) << "ChangeInputMethod: IBus connection is not alive";
@@ -490,9 +481,7 @@ class IBusControllerImpl : public IBusController {
                                      NULL,  // callback
                                      NULL);  // user_data
 
-#if defined(USE_AURA)
     UpdateUI(name.c_str());
-#endif
     return true;
   }
 
@@ -650,15 +639,6 @@ class IBusControllerImpl : public IBusController {
         ->IBusBusDisconnected(sender);
   }
 
-#if !defined(USE_AURA)
-  static void IBusBusGlobalEngineChangedThunk(IBusBus* sender,
-                                              const gchar* engine_name,
-                                              gpointer userdata) {
-    return reinterpret_cast<IBusControllerImpl*>(userdata)
-        ->IBusBusGlobalEngineChanged(sender, engine_name);
-  }
-#endif
-
   static void IBusBusNameOwnerChangedThunk(IBusBus* sender,
                                            const gchar* name,
                                            const gchar* old_name,
@@ -729,11 +709,6 @@ class IBusControllerImpl : public IBusController {
 
     // Ask libibus to watch the NameOwnerChanged signal *asynchronously*.
     ibus_bus_set_watch_dbus_signal(ibus_, TRUE);
-
-#if !defined(USE_AURA)
-    // Ask libibus to watch the GlobalEngineChanged signal *asynchronously*.
-    ibus_bus_set_watch_ibus_signal(ibus_, TRUE);
-#endif
 
     if (ibus_bus_is_connected(ibus_)) {
       VLOG(1) << "IBus connection is ready.";
@@ -831,11 +806,11 @@ class IBusControllerImpl : public IBusController {
   void UpdateUI(const char* current_global_engine_id) {
     DCHECK(current_global_engine_id);
 
-    const IBusEngineInfo* engine_info = NULL;
-    for (size_t i = 0; i < arraysize(kIBusEngines); ++i) {
-      if (kIBusEngines[i].input_method_id ==
+    const InputMethodsInfo* engine_info = NULL;
+    for (size_t i = 0; i < arraysize(kInputMethods); ++i) {
+      if (kInputMethods[i].input_method_id ==
           std::string(current_global_engine_id)) {
-        engine_info = &kIBusEngines[i];
+        engine_info = &kInputMethods[i];
         break;
       }
     }
@@ -884,13 +859,6 @@ class IBusControllerImpl : public IBusController {
                      "disconnected",
                      G_CALLBACK(IBusBusDisconnectedThunk),
                      this);
-
-#if !defined(USE_AURA)
-    g_signal_connect(ibus_,
-                     "global-engine-changed",
-                     G_CALLBACK(IBusBusGlobalEngineChangedThunk),
-                     this);
-#endif
 
     g_signal_connect(ibus_,
                      "name-owner-changed",
@@ -943,15 +911,6 @@ class IBusControllerImpl : public IBusController {
     VLOG(1) << "Notifying Chrome that IBus is terminated.";
     FOR_EACH_OBSERVER(Observer, observers_, OnConnectionChange(false));
   }
-
-#if !defined(USE_AURA)
-  // Handles "global-engine-changed" signal from ibus-daemon.
-  void IBusBusGlobalEngineChanged(IBusBus* bus, const gchar* engine_name) {
-    DCHECK(engine_name);
-    VLOG(1) << "Global engine is changed to " << engine_name;
-    UpdateUI(engine_name);
-  }
-#endif
 
   // Handles "name-owner-changed" signal from ibus-daemon. The signal is sent
   // to libcros when an IBus component such as ibus-memconf, ibus-engine-*, ..
@@ -1040,13 +999,9 @@ class IBusControllerImpl : public IBusController {
     for (size_t i = 0; i < requested_input_methods.size(); ++i) {
       const std::string& input_method = requested_input_methods[i];
       if (whitelist_.InputMethodIdIsWhitelisted(input_method.c_str())) {
-#if defined(USE_AURA)
         if (!InputMethodUtil::IsKeyboardLayout(input_method)) {
           out_filtered_input_methods->push_back(input_method);
         }
-#else
-        out_filtered_input_methods->push_back(input_method);
-#endif
       } else {
         LOG(ERROR) << "Unsupported input method: " << input_method;
       }

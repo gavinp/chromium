@@ -29,6 +29,9 @@ IN_PROC_BROWSER_TEST_F(DetachedPanelBrowserTest, CheckDetachedPanelProperties) {
   EXPECT_TRUE(panel1->draggable());
   EXPECT_TRUE(panel2->draggable());
 
+  EXPECT_TRUE(panel1->CanResizeByMouse());
+  EXPECT_TRUE(panel2->CanResizeByMouse());
+
   Panel::AttentionMode expected_attention_mode =
       static_cast<Panel::AttentionMode>(Panel::USE_PANEL_ATTENTION |
                                          Panel::USE_SYSTEM_ATTENTION);
@@ -80,7 +83,6 @@ IN_PROC_BROWSER_TEST_F(DetachedPanelBrowserTest, DrawAttentionOnInactive) {
   EXPECT_FALSE(native_panel_testing->VerifyDrawingAttention());
 
   panel->Close();
-
 }
 
 IN_PROC_BROWSER_TEST_F(DetachedPanelBrowserTest, DrawAttentionResetOnActivate) {
@@ -105,4 +107,39 @@ IN_PROC_BROWSER_TEST_F(DetachedPanelBrowserTest, DrawAttentionResetOnActivate) {
   EXPECT_FALSE(native_panel_testing->VerifyDrawingAttention());
 
   panel->Close();
+}
+
+IN_PROC_BROWSER_TEST_F(DetachedPanelBrowserTest, ClickTitlebar) {
+  PanelManager* panel_manager = PanelManager::GetInstance();
+
+  Panel* panel = CreateDetachedPanel("1", gfx::Rect(300, 200, 250, 200));
+  EXPECT_TRUE(panel->IsActive());
+  EXPECT_FALSE(panel->IsMinimized());
+
+  // Clicking on an active detached panel's titlebar has no effect, regardless
+  // of modifier.
+  scoped_ptr<NativePanelTesting> test_panel(
+      NativePanelTesting::Create(panel->native_panel()));
+  test_panel->PressLeftMouseButtonTitlebar(panel->GetBounds().origin());
+  test_panel->ReleaseMouseButtonTitlebar();
+  EXPECT_TRUE(panel->IsActive());
+  EXPECT_FALSE(panel->IsMinimized());
+
+  test_panel->PressLeftMouseButtonTitlebar(panel->GetBounds().origin(),
+                                           panel::APPLY_TO_ALL);
+  test_panel->ReleaseMouseButtonTitlebar(panel::APPLY_TO_ALL);
+  EXPECT_TRUE(panel->IsActive());
+  EXPECT_FALSE(panel->IsMinimized());
+
+  // Create a second panel to cause the first to become inactive.
+  CreateDetachedPanel("2", gfx::Rect(100, 200, 230, 345));
+  EXPECT_FALSE(panel->IsActive());
+
+  // Clicking on an inactive detached panel's titlebar activates it.
+  test_panel->PressLeftMouseButtonTitlebar(panel->GetBounds().origin());
+  test_panel->ReleaseMouseButtonTitlebar();
+  WaitForPanelActiveState(panel, SHOW_AS_ACTIVE);
+  EXPECT_FALSE(panel->IsMinimized());
+
+  panel_manager->CloseAll();
 }

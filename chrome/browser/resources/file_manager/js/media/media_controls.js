@@ -255,10 +255,10 @@ MediaControls.prototype.attachMedia = function(mediaElement) {
   this.media_.addEventListener('timeupdate', this.onMediaProgressBound_);
   this.media_.addEventListener('error', this.onMediaError_);
 
-  // Reset the UI.
-  this.enableControls_('.media-control', false);
-  this.playButton_.setAttribute('state', 0);
-  this.displayProgress_(0, 1);
+  // Reflect the media state in the UI.
+  this.onMediaDuration_();
+  this.onMediaPlay_(this.isPlaying());
+  this.onMediaProgress_();
   if (this.volume_) {
     /* Copy the user selected volume to the new media element. */
     this.media_.volume = this.volume_.getValue();
@@ -289,8 +289,10 @@ MediaControls.prototype.onMediaPlay_ = function(playing) {
 };
 
 MediaControls.prototype.onMediaDuration_ = function() {
-  if (!this.media_.duration)
+  if (!this.media_.duration) {
+    this.enableControls_('.media-control', false);
     return;
+  }
 
   this.enableControls_('.media-control', true);
 
@@ -310,9 +312,11 @@ MediaControls.prototype.onMediaDuration_ = function() {
     this.progressSlider_.setValueToStringFunction(valueToString);
 };
 
-MediaControls.prototype.onMediaProgress_ = function(e) {
-  if (!this.media_.duration)
+MediaControls.prototype.onMediaProgress_ = function() {
+  if (!this.media_.duration) {
+    this.displayProgress_(0, 1);
     return;
+  }
 
   var current = this.media_.currentTime;
   var duration = this.media_.duration;
@@ -896,10 +900,11 @@ TimeLimitedMap.prototype.cleanup_ = function(map) {
  *
  * @param {HTMLElement} container
  * @param {function(boolean)} advanceTrack Parameter: true=forward.
+ * @param {function} onError
  * @constructor
  */
-function AudioControls(container, advanceTrack) {
-  MediaControls.call(this, container, null /* onError */);
+function AudioControls(container, advanceTrack, onError) {
+  MediaControls.call(this, container, onError);
 
   this.container_.classList.add('audio-controls');
 

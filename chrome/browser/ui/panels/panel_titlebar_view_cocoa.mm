@@ -42,10 +42,11 @@ const double kGlintRepeatIntervalIncreaseFactor = 1.5;
 // Used to implement TestingAPI
 static NSEvent* MakeMouseEvent(NSEventType type,
                                NSPoint point,
+                               int modifierFlags,
                                int clickCount) {
   return [NSEvent mouseEventWithType:type
                             location:point
-                       modifierFlags:0
+                       modifierFlags:modifierFlags
                            timestamp:0
                         windowNumber:0
                              context:nil
@@ -53,6 +54,31 @@ static NSEvent* MakeMouseEvent(NSEventType type,
                           clickCount:clickCount
                             pressure:0.0];
 }
+
+@implementation PanelTitlebarOverlayView
+// Sometimes we do not want to bring chrome window to foreground when we click
+// on any part of the titlebar. To do this, we first postpone the window
+// reorder here (shouldDelayWindowOrderingForEvent is called during when mouse
+// button is pressed but before mouseDown: is dispatched) and then complete
+// canceling the reorder by [NSApp preventWindowOrdering] in mouseDown handler
+// of this view.
+- (BOOL)shouldDelayWindowOrderingForEvent:(NSEvent*)theEvent {
+  disableReordering_ = ![controller_ isActivationByClickingTitlebarEnabled];
+  return disableReordering_;
+}
+
+- (void)mouseDown:(NSEvent*)event {
+  if (disableReordering_)
+    [NSApp preventWindowOrdering];
+  disableReordering_ = NO;
+  // Continue bubbling the event up the chain of responders.
+  [super mouseDown:event];
+}
+
+- (BOOL)acceptsFirstMouse:(NSEvent*)event {
+  return YES;
+}
+@end
 
 @implementation RepaintAnimation
 - (id)initWithView:(NSView*)targetView duration:(double) duration {
@@ -401,7 +427,7 @@ static NSEvent* MakeMouseEvent(NSEventType type,
   DCHECK(dragState_ != PANEL_DRAG_IN_PROGRESS);
 
   if ([event clickCount] == 1)
-    [controller_ onTitlebarMouseClicked];
+    [controller_ onTitlebarMouseClicked:[event modifierFlags]];
 }
 
 - (BOOL)exceedsDragThreshold:(NSPoint)mouseLocation {
@@ -572,16 +598,18 @@ static NSEvent* MakeMouseEvent(NSEventType type,
   [[closeButton_ cell] performClick:closeButton_];
 }
 
-- (void)pressLeftMouseButtonTitlebar:(NSPoint)mouseLocation {
+- (void)pressLeftMouseButtonTitlebar:(NSPoint)mouseLocation
+                           modifiers:(int)modifierFlags {
   // Convert from Cocoa's screen coordinates to base coordinates since the mouse
   // event takes base coordinates.
   NSEvent* event = MakeMouseEvent(
-      NSLeftMouseDown, [[self window] convertScreenToBase:mouseLocation], 0);
+      NSLeftMouseDown, [[self window] convertScreenToBase:mouseLocation],
+      modifierFlags, 0);
   [self mouseDown:event];
 }
 
-- (void)releaseLeftMouseButtonTitlebar {
-  NSEvent* event = MakeMouseEvent(NSLeftMouseUp, NSZeroPoint, 1);
+- (void)releaseLeftMouseButtonTitlebar:(int)modifierFlags {
+  NSEvent* event = MakeMouseEvent(NSLeftMouseUp, NSZeroPoint, modifierFlags, 1);
   [self mouseUp:event];
 }
 

@@ -32,7 +32,9 @@
 typedef ADDRESS_FAMILY sa_family_t;
 
 #define s6_addr16 u.Word
-#endif
+#define ntohs(x) _byteswap_ushort(x)
+#define htons(x) _byteswap_ushort(x)
+#endif // OS_WIN
 
 // The net address interface doesn't have a normal C -> C++ thunk since it
 // doesn't actually have any proxy wrapping or associated objects; it's just a
@@ -70,11 +72,11 @@ uint16_t GetPort(const PP_NetAddress_Private* addr) {
   switch (GetFamilyInternal(addr)) {
     case AF_INET: {
       const sockaddr_in* a = reinterpret_cast<const sockaddr_in*>(addr->data);
-      return ntohs(a->sin_port);
+      return base::NetToHost16(a->sin_port);
     }
     case AF_INET6: {
       const sockaddr_in6* a = reinterpret_cast<const sockaddr_in6*>(addr->data);
-      return ntohs(a->sin6_port);
+      return base::NetToHost16(a->sin6_port);
     }
     default:
       return 0;
@@ -87,7 +89,7 @@ PP_Bool GetAddress(const PP_NetAddress_Private* addr,
   switch (GetFamilyInternal(addr)) {
     case AF_INET: {
       const sockaddr_in* a = reinterpret_cast<const sockaddr_in*>(addr->data);
-      if (address_size >= sizeof(a->sin_addr.s_addr))  {
+      if (address_size >= sizeof(a->sin_addr.s_addr)) {
         memcpy(address, &(a->sin_addr.s_addr), sizeof(a->sin_addr.s_addr));
         return PP_TRUE;
       }
@@ -106,6 +108,17 @@ PP_Bool GetAddress(const PP_NetAddress_Private* addr,
   }
 
   return PP_FALSE;
+}
+
+uint32_t GetScopeID(const PP_NetAddress_Private* addr) {
+  switch (GetFamilyInternal(addr)) {
+    case AF_INET6: {
+      const sockaddr_in6* a = reinterpret_cast<const sockaddr_in6*>(addr->data);
+      return a->sin6_scope_id;
+    }
+    default:
+      return 0;
+  }
 }
 
 PP_Bool AreHostsEqual(const PP_NetAddress_Private* addr1,
@@ -168,8 +181,8 @@ PP_Bool AreEqual(const PP_NetAddress_Private* addr1,
 #if defined(OS_WIN) || defined(OS_MACOSX)
 std::string ConvertIPv4AddressToString(const sockaddr_in* a,
                                        bool include_port) {
-  unsigned ip = ntohl(a->sin_addr.s_addr);
-  unsigned port = ntohs(a->sin_port);
+  unsigned ip = base::NetToHost32(a->sin_addr.s_addr);
+  unsigned port = base::NetToHost16(a->sin_port);
   std::string description = base::StringPrintf(
       "%u.%u.%u.%u",
       (ip >> 24) & 0xff, (ip >> 16) & 0xff, (ip >> 8) & 0xff, ip & 0xff);
@@ -191,7 +204,7 @@ std::string ConvertIPv4AddressToString(const sockaddr_in* a,
 //    5952, but consistent with |getnameinfo()|.
 std::string ConvertIPv6AddressToString(const sockaddr_in6* a,
                                        bool include_port) {
-  unsigned port = ntohs(a->sin6_port);
+  unsigned port = base::NetToHost16(a->sin6_port);
   unsigned scope = a->sin6_scope_id;
   std::string description(include_port ? "[" : "");
 
@@ -216,7 +229,7 @@ std::string ConvertIPv6AddressToString(const sockaddr_in6* a,
     int curr_start = 0;
     int curr_length = 0;
     for (int i = 0; i < 8; i++) {
-      if (ntohs(a->sin6_addr.s6_addr16[i]) != 0) {
+      if (base::NetToHost16(a->sin6_addr.s6_addr16[i]) != 0) {
         curr_length = 0;
       } else {
         if (!curr_length)
@@ -236,7 +249,7 @@ std::string ConvertIPv6AddressToString(const sockaddr_in6* a,
         need_sep = false;
         i += longest_length;
       } else {
-        unsigned v = ntohs(a->sin6_addr.s6_addr16[i]);
+        unsigned v = base::NetToHost16(a->sin6_addr.s6_addr16[i]);
         base::StringAppendF(&description, need_sep ? ":%x" : "%x", v);
         need_sep = true;
         i++;
@@ -302,12 +315,14 @@ PP_Bool ReplacePort(const struct PP_NetAddress_Private* src_addr,
   switch (GetFamilyInternal(src_addr)) {
     case AF_INET: {
       memmove(dest_addr, src_addr, sizeof(*src_addr));
-      reinterpret_cast<sockaddr_in*>(dest_addr->data)->sin_port = htons(port);
+      reinterpret_cast<sockaddr_in*>(dest_addr->data)->sin_port =
+          base::HostToNet16(port);
       return PP_TRUE;
     }
     case AF_INET6: {
       memmove(dest_addr, src_addr, sizeof(*src_addr));
-      reinterpret_cast<sockaddr_in6*>(dest_addr->data)->sin6_port = htons(port);
+      reinterpret_cast<sockaddr_in6*>(dest_addr->data)->sin6_port =
+          base::HostToNet16(port);
       return PP_TRUE;
     }
     default:
@@ -330,6 +345,32 @@ void GetAnyAddress(PP_Bool is_ipv6, PP_NetAddress_Private* addr) {
   }
 }
 
+void CreateFromIPv4Address(const uint8_t ip[4],
+                           uint16_t port,
+                           struct PP_NetAddress_Private* addr_out) {
+  memset(addr_out->data, 0,
+         arraysize(addr_out->data) * sizeof(addr_out->data[0]));
+  sockaddr_in* a = reinterpret_cast<sockaddr_in*>(addr_out->data);
+  addr_out->size = sizeof(*a);
+  a->sin_family = AF_INET;
+  memcpy(&(a->sin_addr), ip, sizeof(a->sin_addr));
+  a->sin_port = htons(port);
+}
+
+void CreateFromIPv6Address(const uint8_t ip[16],
+                           uint32_t scope_id,
+                           uint16_t port,
+                           struct PP_NetAddress_Private* addr_out) {
+  memset(addr_out->data, 0,
+         arraysize(addr_out->data) * sizeof(addr_out->data[0]));
+  sockaddr_in6* a = reinterpret_cast<sockaddr_in6*>(addr_out->data);
+  addr_out->size = sizeof(*a);
+  a->sin6_family = AF_INET6;
+  memcpy(&(a->sin6_addr), ip, sizeof(a->sin6_addr));
+  a->sin6_port = htons(port);
+  a->sin6_scope_id = scope_id;
+}
+
 const PPB_NetAddress_Private_0_1 net_address_private_interface_0_1 = {
   &AreEqual,
   &AreHostsEqual,
@@ -349,6 +390,20 @@ const PPB_NetAddress_Private_1_0 net_address_private_interface_1_0 = {
   &GetAddress
 };
 
+const PPB_NetAddress_Private_1_1 net_address_private_interface_1_1 = {
+  &AreEqual,
+  &AreHostsEqual,
+  &Describe,
+  &ReplacePort,
+  &GetAnyAddress,
+  &GetFamily,
+  &GetPort,
+  &GetAddress,
+  &GetScopeID,
+  &CreateFromIPv4Address,
+  &CreateFromIPv6Address
+};
+
 }  // namespace
 
 namespace thunk {
@@ -361,6 +416,11 @@ GetPPB_NetAddress_Private_0_1_Thunk() {
 PPAPI_THUNK_EXPORT const PPB_NetAddress_Private_1_0*
 GetPPB_NetAddress_Private_1_0_Thunk() {
   return &net_address_private_interface_1_0;
+}
+
+PPAPI_THUNK_EXPORT const PPB_NetAddress_Private_1_1*
+GetPPB_NetAddress_Private_1_1_Thunk() {
+  return &net_address_private_interface_1_1;
 }
 
 }  // namespace thunk

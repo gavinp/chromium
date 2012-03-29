@@ -19,24 +19,24 @@
 #include "chrome/browser/ui/tab_contents/test_tab_contents_wrapper.h"
 #include "chrome/common/chrome_notification_types.h"
 #include "chrome/test/base/testing_profile.h"
-#include "content/browser/tab_contents/test_tab_contents.h"
 #include "content/public/browser/navigation_details.h"
 #include "content/public/browser/notification_registrar.h"
 #include "content/public/browser/notification_service.h"
+#include "content/public/browser/web_contents.h"
 #include "content/test/mock_geolocation.h"
 #include "content/test/mock_render_process_host.h"
 #include "content/test/test_browser_thread.h"
 #include "content/test/test_renderer_host.h"
+#include "content/test/web_contents_tester.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 using content::BrowserThread;
 using content::MockRenderProcessHost;
 using content::RenderViewHostTester;
 using content::WebContents;
+using content::WebContentsTester;
 
 // ClosedDelegateTracker ------------------------------------------------------
-
-namespace {
 
 // We need to track which infobars were closed.
 class ClosedDelegateTracker : public content::NotificationObserver {
@@ -57,6 +57,7 @@ class ClosedDelegateTracker : public content::NotificationObserver {
   void Clear();
 
  private:
+  FRIEND_TEST_ALL_PREFIXES(GeolocationPermissionContextTests, TabDestroyed);
   content::NotificationRegistrar registrar_;
   std::set<InfoBarDelegate*> removed_infobar_delegates_;
 };
@@ -85,9 +86,6 @@ bool ClosedDelegateTracker::Contains(InfoBarDelegate* delegate) const {
 void ClosedDelegateTracker::Clear() {
   removed_infobar_delegates_.clear();
 }
-
-}  // namespace
-
 
 // GeolocationPermissionContextTests ------------------------------------------
 
@@ -139,8 +137,8 @@ class GeolocationPermissionContextTests : public TabContentsWrapperTestHarness {
 
  private:
   // TabContentsWrapperTestHarness:
-  virtual void SetUp();
-  virtual void TearDown();
+  virtual void SetUp() OVERRIDE;
+  virtual void TearDown() OVERRIDE;
 
   content::TestBrowserThread ui_thread_;
   content::MockGeolocation mock_geolocation_;
@@ -239,6 +237,7 @@ void GeolocationPermissionContextTests::SetUp() {
 }
 
 void GeolocationPermissionContextTests::TearDown() {
+  extra_tabs_.reset();
   mock_geolocation_.TearDown();
   TabContentsWrapperTestHarness::TearDown();
 }
@@ -411,8 +410,8 @@ TEST_F(GeolocationPermissionContextTests, CancelGeolocationPermissionRequest) {
 }
 
 TEST_F(GeolocationPermissionContextTests, InvalidURL) {
-  GURL invalid_embedder;
-  GURL requesting_frame("about:blank");
+  GURL invalid_embedder("about:blank");
+  GURL requesting_frame;
   NavigateAndCommit(invalid_embedder);
   EXPECT_EQ(0U, infobar_tab_helper()->infobar_count());
   RequestGeolocationPermission(
@@ -471,8 +470,6 @@ TEST_F(GeolocationPermissionContextTests, SameOriginMultipleTabs) {
   EXPECT_EQ(1U, closed_delegate_tracker_.size());
   EXPECT_TRUE(closed_delegate_tracker_.Contains(infobar_1));
   infobar_1->InfoBarClosed();
-
-  extra_tabs_.reset();
 }
 
 TEST_F(GeolocationPermissionContextTests, QueuedOriginMultipleTabs) {
@@ -528,8 +525,6 @@ TEST_F(GeolocationPermissionContextTests, QueuedOriginMultipleTabs) {
   EXPECT_EQ(1U, closed_delegate_tracker_.size());
   EXPECT_TRUE(closed_delegate_tracker_.Contains(infobar_1));
   infobar_1->InfoBarClosed();
-
-  extra_tabs_.reset();
 }
 
 TEST_F(GeolocationPermissionContextTests, TabDestroyed) {
@@ -567,6 +562,16 @@ TEST_F(GeolocationPermissionContextTests, TabDestroyed) {
   // Delete the tab contents.
   DeleteContents();
   infobar_0->InfoBarClosed();
+
+  // During contents destruction, the infobar will have been closed, and a
+  // second (with it's own new delegate) will have been created. In Chromium,
+  // this would be properly deleted by the InfoBarContainer, but in this unit
+  // test, the closest thing we have to that is the ClosedDelegateTracker.
+  ASSERT_EQ(2U, closed_delegate_tracker_.size());
+  ASSERT_TRUE(closed_delegate_tracker_.Contains(infobar_0));
+  closed_delegate_tracker_.removed_infobar_delegates_.erase(infobar_0);
+  (*closed_delegate_tracker_.removed_infobar_delegates_.begin())->
+      InfoBarClosed();
 }
 
 TEST_F(GeolocationPermissionContextTests, InfoBarUsesCommittedEntry) {
@@ -590,7 +595,7 @@ TEST_F(GeolocationPermissionContextTests, InfoBarUsesCommittedEntry) {
   details.entry = contents()->GetController().GetLastCommittedEntry();
   ASSERT_FALSE(infobar_0->ShouldExpire(details));
   // Commit the "GoBack()" above, and ensure the infobar is now expired.
-  contents()->CommitPendingNavigation();
+  WebContentsTester::For(contents())->CommitPendingNavigation();
   details.entry = contents()->GetController().GetLastCommittedEntry();
   ASSERT_TRUE(infobar_0->ShouldExpire(details));
 
@@ -598,3 +603,5 @@ TEST_F(GeolocationPermissionContextTests, InfoBarUsesCommittedEntry) {
   DeleteContents();
   infobar_0->InfoBarClosed();
 }
+
+

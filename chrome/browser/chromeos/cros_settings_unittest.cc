@@ -15,6 +15,7 @@
 #include "chrome/browser/chromeos/cros_settings.h"
 #include "chrome/browser/chromeos/cros_settings_names.h"
 #include "chrome/browser/chromeos/cros/cros_library.h"
+#include "chrome/browser/chromeos/login/mock_user_manager.h"
 #include "chrome/browser/chromeos/login/signed_settings_cache.h"
 #include "chrome/browser/policy/proto/chrome_device_policy.pb.h"
 #include "chrome/browser/policy/proto/device_management_backend.pb.h"
@@ -22,6 +23,9 @@
 #include "chrome/test/base/testing_pref_service.h"
 #include "content/test/test_browser_thread.h"
 #include "testing/gtest/include/gtest/gtest.h"
+
+using ::testing::AnyNumber;
+using ::testing::Return;
 
 namespace em = enterprise_management;
 namespace chromeos {
@@ -40,6 +44,9 @@ class CrosSettingsTest : public testing::Test {
   }
 
   virtual void SetUp() {
+    EXPECT_CALL(*mock_user_manager_.user_manager(), IsCurrentUserOwner())
+        .Times(AnyNumber())
+        .WillRepeatedly(Return(true));
     // Reset the cache between tests.
     ApplyEmptyPolicy();
   }
@@ -57,7 +64,7 @@ class CrosSettingsTest : public testing::Test {
     if (expected_props_.find(pref) == expected_props_.end())
       return;
 
-    if (CrosSettings::Get()->GetTrusted(pref,
+    if (CrosSettings::Get()->PrepareTrustedValues(
             base::Bind(&CrosSettingsTest::FetchPref,
                        pointer_factory_.GetWeakPtr(), pref))) {
       scoped_ptr<base::Value> expected_value(
@@ -113,6 +120,7 @@ class CrosSettingsTest : public testing::Test {
 
   ScopedTestingLocalState local_state_;
 
+  ScopedMockUserManagerEnabler mock_user_manager_;
   ScopedStubCrosEnabler stub_cros_enabler_;
 };
 

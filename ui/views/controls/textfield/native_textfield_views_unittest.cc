@@ -746,7 +746,7 @@ TEST_F(NativeTextfieldViewsTest, DragToSelect) {
   EXPECT_EQ(textfield_->text(), textfield_->GetSelectedText());
 }
 
-#if defined(OS_WIN) || defined(TOOLKIT_USES_GTK)
+#if defined(OS_WIN)
 TEST_F(NativeTextfieldViewsTest, DragAndDrop_AcceptDrop) {
   InitTextfield(Textfield::STYLE_DEFAULT);
   textfield_->SetText(ASCIIToUTF16("hello world"));
@@ -789,15 +789,16 @@ TEST_F(NativeTextfieldViewsTest, DragAndDrop_AcceptDrop) {
   ui::OSExchangeData bad_data;
   bad_data.SetFilename(FilePath(FILE_PATH_LITERAL("x")));
 #if defined(OS_WIN)
-  bad_data.SetPickledData(CF_BITMAP, Pickle());
+#if defined(USE_AURA)
+  ui::OSExchangeData::CustomFormat fmt = ui::Clipboard::GetBitmapFormatType();
+#else
+  ui::OSExchangeData::CustomFormat fmt = CF_BITMAP;
+#endif
+  bad_data.SetPickledData(fmt, Pickle());
   bad_data.SetFileContents(FilePath(L"x"), "x");
   bad_data.SetHtml(string16(ASCIIToUTF16("x")), GURL("x.org"));
   ui::OSExchangeData::DownloadFileInfo download(FilePath(), NULL);
   bad_data.SetDownloadFileInfo(download);
-#else
-  // Skip OSExchangeDataProviderWin::SetURL, which also sets CF_TEXT / STRING.
-  bad_data.SetURL(GURL("x.org"), string16(ASCIIToUTF16("x")));
-  bad_data.SetPickledData(GDK_SELECTION_PRIMARY, Pickle());
 #endif
   EXPECT_FALSE(textfield_view_->CanDrop(bad_data));
 }

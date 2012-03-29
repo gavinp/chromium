@@ -47,7 +47,7 @@ class CallbackHelper {
 
   MOCK_METHOD1(OnStart, void(PipelineStatus));
   MOCK_METHOD1(OnSeek, void(PipelineStatus));
-  MOCK_METHOD1(OnStop, void(PipelineStatus));
+  MOCK_METHOD0(OnStop, void());
   MOCK_METHOD1(OnEnded, void(PipelineStatus));
   MOCK_METHOD1(OnError, void(PipelineStatus));
 
@@ -88,7 +88,7 @@ class PipelineTest : public ::testing::Test {
     }
 
     // Expect a stop callback if we were started.
-    EXPECT_CALL(callbacks_, OnStop(PIPELINE_OK));
+    EXPECT_CALL(callbacks_, OnStop());
     pipeline_->Stop(base::Bind(&CallbackHelper::OnStop,
                                base::Unretained(&callbacks_)));
     message_loop_.RunAllPending();
@@ -131,12 +131,6 @@ class PipelineTest : public ::testing::Test {
     EXPECT_CALL(*mocks_->video_decoder(),
                 Initialize(stream, _, _))
         .WillOnce(WithArg<1>(Invoke(&RunPipelineStatusOKCB)));
-    EXPECT_CALL(*mocks_->video_decoder(), SetPlaybackRate(0.0f));
-    EXPECT_CALL(*mocks_->video_decoder(),
-                Seek(mocks_->demuxer()->GetStartTime(), _))
-        .WillOnce(Invoke(&RunPipelineStatusCB));
-    EXPECT_CALL(*mocks_->video_decoder(), Stop(_))
-        .WillOnce(Invoke(&RunStopFilterCallback));
   }
 
   // Sets up expectations to allow the audio decoder to initialize.
@@ -147,8 +141,8 @@ class PipelineTest : public ::testing::Test {
 
   // Sets up expectations to allow the video renderer to initialize.
   void InitializeVideoRenderer() {
-    EXPECT_CALL(*mocks_->video_renderer(),
-                Initialize(mocks_->video_decoder(), _, _, _))
+    EXPECT_CALL(*mocks_->video_renderer(), Initialize(
+        scoped_refptr<VideoDecoder>(mocks_->video_decoder()), _, _, _))
         .WillOnce(Invoke(&RunPipelineStatusCB4));
     EXPECT_CALL(*mocks_->video_renderer(), SetPlaybackRate(0.0f));
     EXPECT_CALL(*mocks_->video_renderer(),
@@ -232,8 +226,6 @@ class PipelineTest : public ::testing::Test {
     }
 
     if (video_stream_) {
-      EXPECT_CALL(*mocks_->video_decoder(), Seek(seek_time, _))
-          .WillOnce(Invoke(&RunPipelineStatusCB));
       EXPECT_CALL(*mocks_->video_renderer(), Seek(seek_time, _))
           .WillOnce(Invoke(&RunPipelineStatusCB));
     }
@@ -326,8 +318,6 @@ TEST_F(PipelineTest, NeverInitializes) {
 }
 
 TEST_F(PipelineTest, RequiredFilterMissing) {
-  EXPECT_CALL(callbacks_, OnError(PIPELINE_ERROR_REQUIRED_FILTER_MISSING));
-
   // Sets up expectations on the callback and initializes the pipeline.  Called
   // after tests have set expectations any filters they wish to use.
   // Expect an initialization callback.
@@ -349,12 +339,6 @@ TEST_F(PipelineTest, RequiredFilterMissing) {
 }
 
 TEST_F(PipelineTest, URLNotFound) {
-  // TODO(acolwell,fischman): Since OnStart() is getting called with an error
-  // code already, OnError() doesn't also need to get called.  Fix the pipeline
-  // (and it's consumers!) so that OnError doesn't need to be called after
-  // another callback has already reported the error.  Same applies to NoStreams
-  // below.
-  EXPECT_CALL(callbacks_, OnError(PIPELINE_ERROR_URL_NOT_FOUND));
   InitializePipeline(PIPELINE_ERROR_URL_NOT_FOUND);
   EXPECT_FALSE(pipeline_->IsInitialized());
 }
@@ -364,9 +348,6 @@ TEST_F(PipelineTest, NoStreams) {
   // we cannot fully initialize the pipeline.
   EXPECT_CALL(*mocks_->demuxer(), Stop(_))
       .WillOnce(Invoke(&RunStopFilterCallback));
-  // TODO(acolwell,fischman): see TODO in URLNotFound above.
-  EXPECT_CALL(callbacks_, OnError(PIPELINE_ERROR_COULD_NOT_RENDER));
-
   InitializePipeline(PIPELINE_OK, PIPELINE_ERROR_COULD_NOT_RENDER);
   EXPECT_FALSE(pipeline_->IsInitialized());
 }
@@ -568,8 +549,6 @@ TEST_F(PipelineTest, DisableAudioRenderer) {
               OnAudioRendererDisabled());
   EXPECT_CALL(*mocks_->audio_renderer(),
               OnAudioRendererDisabled());
-  EXPECT_CALL(*mocks_->video_decoder(),
-              OnAudioRendererDisabled());
   EXPECT_CALL(*mocks_->video_renderer(),
               OnAudioRendererDisabled());
 
@@ -599,8 +578,6 @@ TEST_F(PipelineTest, DisableAudioRendererDuringInit) {
   EXPECT_CALL(*mocks_->demuxer(),
               OnAudioRendererDisabled());
   EXPECT_CALL(*mocks_->audio_renderer(),
-              OnAudioRendererDisabled());
-  EXPECT_CALL(*mocks_->video_decoder(),
               OnAudioRendererDisabled());
   EXPECT_CALL(*mocks_->video_renderer(),
               OnAudioRendererDisabled());
@@ -688,7 +665,6 @@ TEST_F(PipelineTest, AudioStreamShorterThanVideo) {
 
   float playback_rate = 1.0f;
   EXPECT_CALL(*mocks_->demuxer(), SetPlaybackRate(playback_rate));
-  EXPECT_CALL(*mocks_->video_decoder(), SetPlaybackRate(playback_rate));
   EXPECT_CALL(*mocks_->video_renderer(), SetPlaybackRate(playback_rate));
   EXPECT_CALL(*mocks_->audio_renderer(), SetPlaybackRate(playback_rate));
   pipeline_->SetPlaybackRate(playback_rate);
@@ -756,7 +732,6 @@ TEST_F(PipelineTest, ErrorDuringSeek) {
   pipeline_->Seek(seek_time,base::Bind(&CallbackHelper::OnSeek,
                                        base::Unretained(&callbacks_)));
   EXPECT_CALL(callbacks_, OnSeek(PIPELINE_ERROR_READ));
-  EXPECT_CALL(callbacks_, OnError(PIPELINE_ERROR_READ));
   message_loop_.RunAllPending();
 }
 
@@ -806,7 +781,6 @@ TEST_F(PipelineTest, NoMessageDuringTearDownFromError) {
   pipeline_->Seek(seek_time,base::Bind(&CallbackHelper::OnSeek,
                                        base::Unretained(&callbacks_)));
   EXPECT_CALL(callbacks_, OnSeek(PIPELINE_ERROR_READ));
-  EXPECT_CALL(callbacks_, OnError(PIPELINE_ERROR_READ));
   message_loop_.RunAllPending();
 }
 

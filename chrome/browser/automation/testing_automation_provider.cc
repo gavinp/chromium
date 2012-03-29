@@ -2710,7 +2710,9 @@ ListValue* TestingAutomationProvider::GetInfobarsInfo(WebContents* wc) {
     InfoBarDelegate* infobar = infobar_helper->GetInfoBarDelegateAt(i);
     if (infobar->AsConfirmInfoBarDelegate()) {
       // Also covers ThemeInstalledInfoBarDelegate.
-      if (infobar->AsRegisterProtocolHandlerInfoBarDelegate()) {
+      if (infobar->AsSavePasswordInfoBarDelegate()) {
+        infobar_item->SetString("type", "password_infobar");
+      } else if (infobar->AsRegisterProtocolHandlerInfoBarDelegate()) {
         infobar_item->SetString("type", "rph_infobar");
       } else {
         infobar_item->SetString("type", "confirm_infobar");
@@ -5123,7 +5125,6 @@ void TestingAutomationProvider::SignInToSync(Browser* browser,
 // {u'summary': u'SYNC DISABLED'}
 //
 // { u'last synced': u'Just now',
-//   u'summary': u'READY',
 //   u'sync url': u'clients4.google.com',
 //   u'updates received': 42,
 //   u'synced datatypes': [ u'Bookmarks',
@@ -5148,8 +5149,6 @@ void TestingAutomationProvider::GetSyncInfo(Browser* browser,
   } else {
     ProfileSyncService* service = sync_waiter_->service();
     ProfileSyncService::Status status = sync_waiter_->GetStatus();
-    sync_info->SetString("summary",
-        ProfileSyncService::BuildSyncStatusSummaryText(status.summary));
     sync_info->SetString("sync url", service->sync_service_url().host());
     sync_info->SetString("last synced", service->GetLastSyncedTimeString());
     sync_info->SetInteger("updates received", status.updates_received);
@@ -5198,18 +5197,9 @@ void TestingAutomationProvider::AwaitFullSyncCompletion(
     reply.SendError("Sync cycle did not complete.");
     return;
   }
-  ProfileSyncService::Status status = sync_waiter_->GetStatus();
-  if (status.summary == ProfileSyncService::Status::READY) {
-    scoped_ptr<DictionaryValue> return_value(new DictionaryValue);
-    return_value->SetBoolean("success", true);
-    reply.SendSuccess(return_value.get());
-  } else {
-    std::string error_msg = "Wait for sync cycle was unsuccessful. "
-                            "Sync status: ";
-    error_msg.append(
-        ProfileSyncService::BuildSyncStatusSummaryText(status.summary));
-    reply.SendError(error_msg);
-  }
+  scoped_ptr<DictionaryValue> return_value(new DictionaryValue);
+  return_value->SetBoolean("success", true);
+  reply.SendSuccess(return_value.get());
 }
 
 // Sample json output: { "success": true }
@@ -5235,18 +5225,9 @@ void TestingAutomationProvider::AwaitSyncRestart(
     reply.SendError("Sync did not successfully restart.");
     return;
   }
-  ProfileSyncService::Status status = sync_waiter_->GetStatus();
-  if (status.summary == ProfileSyncService::Status::READY) {
-    scoped_ptr<DictionaryValue> return_value(new DictionaryValue);
-    return_value->SetBoolean("success", true);
-    reply.SendSuccess(return_value.get());
-  } else {
-    std::string error_msg = "Wait for sync restart was unsuccessful. "
-                            "Sync status: ";
-    error_msg.append(
-        ProfileSyncService::BuildSyncStatusSummaryText(status.summary));
-    reply.SendError(error_msg);
-  }
+  scoped_ptr<DictionaryValue> return_value(new DictionaryValue);
+  return_value->SetBoolean("success", true);
+  reply.SendSuccess(return_value.get());
 }
 
 // Refer to EnableSyncForDatatypes() in chrome/test/pyautolib/pyauto.py for
@@ -5290,15 +5271,9 @@ void TestingAutomationProvider::EnableSyncForDatatypes(
           "Enabling datatype: %s", datatype_string.c_str()));
     }
   }
-  ProfileSyncService::Status status = sync_waiter_->GetStatus();
-  if (status.summary == ProfileSyncService::Status::READY ||
-      status.summary == ProfileSyncService::Status::SYNCING) {
-    scoped_ptr<DictionaryValue> return_value(new DictionaryValue);
-    return_value->SetBoolean("success", true);
-    reply.SendSuccess(return_value.get());
-  } else {
-    reply.SendError("Enabling sync for given datatypes was unsuccessful");
-  }
+  scoped_ptr<DictionaryValue> return_value(new DictionaryValue);
+  return_value->SetBoolean("success", true);
+  reply.SendSuccess(return_value.get());
 }
 
 // Refer to DisableSyncForDatatypes() in chrome/test/pyautolib/pyauto.py for
@@ -5328,15 +5303,6 @@ void TestingAutomationProvider::DisableSyncForDatatypes(
   }
   if (first_datatype == "All") {
     sync_waiter_->DisableSyncForAllDatatypes();
-    ProfileSyncService::Status status = sync_waiter_->GetStatus();
-    if (status.summary != ProfileSyncService::Status::READY &&
-        status.summary != ProfileSyncService::Status::SYNCING) {
-      scoped_ptr<DictionaryValue> return_value(new DictionaryValue);
-      return_value->SetBoolean("success", true);
-      reply.SendSuccess(return_value.get());
-    } else {
-      reply.SendError("Disabling all sync datatypes was unsuccessful");
-    }
   } else {
     int num_datatypes = datatypes->GetSize();
     for (int i = 0; i < num_datatypes; i++) {
@@ -5353,15 +5319,9 @@ void TestingAutomationProvider::DisableSyncForDatatypes(
       sync_waiter_->AwaitFullSyncCompletion(StringPrintf(
           "Disabling datatype: %s", datatype_string.c_str()));
     }
-    ProfileSyncService::Status status = sync_waiter_->GetStatus();
-    if (status.summary == ProfileSyncService::Status::READY ||
-        status.summary == ProfileSyncService::Status::SYNCING) {
-      scoped_ptr<DictionaryValue> return_value(new DictionaryValue);
-      return_value->SetBoolean("success", true);
-      reply.SendSuccess(return_value.get());
-    } else {
-      reply.SendError("Disabling sync for given datatypes was unsuccessful");
-    }
+    scoped_ptr<DictionaryValue> return_value(new DictionaryValue);
+    return_value->SetBoolean("success", true);
+    reply.SendSuccess(return_value.get());
   }
 }
 
@@ -6321,7 +6281,12 @@ void TestingAutomationProvider::GetPolicyDefinitionList(
       reply.SendError(error + entry->name);
       return;
     }
-    response.SetString(entry->name, types[entry->value_type]);
+    Value* type = Value::CreateStringValue(types[entry->value_type]);
+    Value* device_policy = Value::CreateBooleanValue(entry->device_policy);
+    ListValue* definition = new ListValue;
+    definition->Append(type);
+    definition->Append(device_policy);
+    response.Set(entry->name, definition);
   }
 
   reply.SendSuccess(&response);
@@ -6500,8 +6465,18 @@ void TestingAutomationProvider::AddDomRaisedEventObserver(
 
   AutomationJSONReply reply(this, reply_message);
   std::string event_name;
+  int automation_id;
+  bool recurring;
   if (!args->GetString("event_name", &event_name)) {
     reply.SendError("'event_name' missing or invalid");
+    return;
+  }
+  if (!args->GetInteger("automation_id", &automation_id)) {
+    reply.SendError("'automation_id' missing or invalid");
+    return;
+  }
+  if (!args->GetBoolean("recurring", &recurring)) {
+    reply.SendError("'recurring' missing or invalid");
     return;
   }
 
@@ -6509,7 +6484,10 @@ void TestingAutomationProvider::AddDomRaisedEventObserver(
     automation_event_queue_.reset(new AutomationEventQueue);
 
   int observer_id = automation_event_queue_->AddObserver(
-      new DomRaisedEventObserver(automation_event_queue_.get(), event_name));
+      new DomRaisedEventObserver(automation_event_queue_.get(),
+                                 event_name,
+                                 automation_id,
+                                 recurring));
   scoped_ptr<DictionaryValue> return_value(new DictionaryValue);
   return_value->SetInteger("observer_id", observer_id);
   reply.SendSuccess(return_value.get());
@@ -6556,7 +6534,7 @@ void TestingAutomationProvider::GetNextEvent(
   }
   if (!automation_event_queue_.get()) {
     reply->SendError(
-        "No observers are attached to the queue. Did you forget to add one?");
+        "No observers are attached to the queue. Did you create any?");
     return;
   }
 

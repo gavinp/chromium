@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,8 +17,7 @@
 #include "content/public/browser/browser_child_process_host.h"
 #include "content/public/common/child_process_host.h"
 
-NaClBrokerHost::NaClBrokerHost()
-    : stopping_(false) {
+NaClBrokerHost::NaClBrokerHost() {
   process_.reset(content::BrowserChildProcessHost::Create(
       content::PROCESS_TYPE_NACL_BROKER, this));
 }
@@ -55,23 +54,31 @@ bool NaClBrokerHost::OnMessageReceived(const IPC::Message& msg) {
   bool handled = true;
   IPC_BEGIN_MESSAGE_MAP(NaClBrokerHost, msg)
     IPC_MESSAGE_HANDLER(NaClProcessMsg_LoaderLaunched, OnLoaderLaunched)
+    IPC_MESSAGE_HANDLER(NaClProcessMsg_DebugExceptionHandlerLaunched,
+                        OnDebugExceptionHandlerLaunched)
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP()
   return handled;
 }
 
-bool NaClBrokerHost::LaunchLoader(
-    const std::wstring& loader_channel_id) {
+bool NaClBrokerHost::LaunchLoader(const std::string& loader_channel_id) {
   return process_->Send(
       new NaClProcessMsg_LaunchLoaderThroughBroker(loader_channel_id));
 }
 
-void NaClBrokerHost::OnLoaderLaunched(const std::wstring& loader_channel_id,
+void NaClBrokerHost::OnLoaderLaunched(const std::string& loader_channel_id,
                                       base::ProcessHandle handle) {
   NaClBrokerService::GetInstance()->OnLoaderLaunched(loader_channel_id, handle);
 }
 
+bool NaClBrokerHost::LaunchDebugExceptionHandler(int32 pid) {
+  return process_->Send(new NaClProcessMsg_LaunchDebugExceptionHandler(pid));
+}
+
+void NaClBrokerHost::OnDebugExceptionHandlerLaunched(int32 pid) {
+  NaClBrokerService::GetInstance()->OnDebugExceptionHandlerLaunched(pid);
+}
+
 void NaClBrokerHost::StopBroker() {
-  stopping_ = true;
   process_->Send(new NaClProcessMsg_StopBroker());
 }

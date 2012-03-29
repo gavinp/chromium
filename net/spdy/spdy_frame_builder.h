@@ -14,7 +14,7 @@
 #include "net/base/net_export.h"
 #include "net/spdy/spdy_protocol.h"
 
-namespace spdy {
+namespace net {
 
 // This class provides facilities for basic binary value packing and unpacking
 // into Spdy frames.
@@ -48,6 +48,9 @@ class NET_EXPORT_PRIVATE SpdyFrameBuilder {
   // Methods for adding to the payload.  These values are appended to the end
   // of the SpdyFrameBuilder payload. Note - binary integers are converted from
   // host to network form.
+  bool WriteUInt8(uint8 value) {
+    return WriteBytes(&value, sizeof(value));
+  }
   bool WriteUInt16(uint16 value) {
     value = htons(value);
     return WriteBytes(&value, sizeof(value));
@@ -128,6 +131,6 @@ class NET_EXPORT_PRIVATE SpdyFrameBuilder {
   size_t variable_buffer_offset_;  // IF non-zero, then offset to a buffer.
 };
 
-}  // namespace spdy
+}  // namespace net
 
 #endif  // NET_SPDY_SPDY_FRAME_BUILDER_H_

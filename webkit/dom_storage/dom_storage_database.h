@@ -22,8 +22,10 @@ namespace dom_storage {
 // class is designed to be used on a single thread.
 class DomStorageDatabase {
  public:
+  static FilePath GetJournalFilePath(const FilePath& database_path);
+
   explicit DomStorageDatabase(const FilePath& file_path);
-  ~DomStorageDatabase();
+  virtual ~DomStorageDatabase();  // virtual for unit testing
 
   // Reads all the key, value pairs stored in the database and returns
   // them. |result| is assumed to be empty and any duplicate keys will
@@ -37,6 +39,13 @@ class DomStorageDatabase {
   // |changes| will be examined - keys mapped to a null NullableString16
   // will be removed and all others will be inserted/updated as appropriate.
   bool CommitChanges(bool clear_all_first, const ValuesMap& changes);
+
+  // Simple getter for the path we were constructed with.
+  const FilePath& file_path() const { return file_path_; }
+
+ protected:
+  // Constructor that uses an in-memory sqlite database, for testing.
+  DomStorageDatabase();
 
  private:
   FRIEND_TEST_ALL_PREFIXES(DomStorageDatabaseTest, SimpleOpenAndClose);
@@ -54,6 +63,8 @@ class DomStorageDatabase {
   FRIEND_TEST_ALL_PREFIXES(DomStorageDatabaseTest,
                            TestCanOpenFileThatIsNotADatabase);
   FRIEND_TEST_ALL_PREFIXES(DomStorageAreaTest, BackingDatabaseOpened);
+  FRIEND_TEST_ALL_PREFIXES(DomStorageAreaTest, CommitTasks);
+  FRIEND_TEST_ALL_PREFIXES(DomStorageAreaTest, PurgeMemory);
 
   enum SchemaVersion {
     INVALID,
@@ -91,22 +102,11 @@ class DomStorageDatabase {
   void Close();
   bool IsOpen() const { return db_.get() ? db_->is_open() : false; }
 
-#ifdef UNIT_TEST
-  // This constructor allows us to bypass the DCHECK in the public
-  // constructor that normally verifies a valid file path was passed to
-  // back the database on disk. We want to be able to run unit tests
-  // from in-memory databases where possible, so we use an empty
-  // backing file path to signify we should open the database in memory
-  // inside LazyOpen. This constructor will allow us to bypass the
-  // DCHECK when running the unit tests.
-  DomStorageDatabase();
-#endif
-
   // Initialization code shared between the two constructors of this class.
   void Init();
 
   // Path to the database on disk.
-  FilePath file_path_;
+  const FilePath file_path_;
   scoped_ptr<sql::Connection> db_;
   bool failed_to_open_;
   bool tried_to_recreate_;

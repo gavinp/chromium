@@ -23,17 +23,56 @@ struct ASH_EXPORT NetworkIconInfo {
   NetworkIconInfo();
   ~NetworkIconInfo();
 
+  bool highlight;
+  bool tray_icon_visible;
   SkBitmap image;
   string16 name;
   string16 description;
   std::string service_path;
 };
 
+struct ASH_EXPORT BluetoothDeviceInfo {
+  BluetoothDeviceInfo();
+  ~BluetoothDeviceInfo();
+
+  std::string address;
+  string16 display_name;
+  bool connected;
+};
+
+typedef std::vector<BluetoothDeviceInfo> BluetoothDeviceList;
+
+struct ASH_EXPORT IMEPropertyInfo {
+  IMEPropertyInfo();
+  ~IMEPropertyInfo();
+
+  bool selected;
+  std::string key;
+  string16 name;
+};
+
+typedef std::vector<IMEPropertyInfo> IMEPropertyInfoList;
+
+struct ASH_EXPORT IMEInfo {
+  IMEInfo();
+  ~IMEInfo();
+
+  bool selected;
+  std::string id;
+  string16 name;
+  string16 short_name;
+};
+
+typedef std::vector<IMEInfo> IMEInfoList;
+
 struct PowerSupplyStatus;
 
 class SystemTrayDelegate {
  public:
   virtual ~SystemTrayDelegate() {}
+
+  // Returns true if system tray should be visible on startup.
+  virtual bool GetTrayVisibilityOnStartup() = 0;
 
   // Gets information about the logged in user.
   virtual const std::string GetUserDisplayName() const = 0;
@@ -59,8 +98,14 @@ class SystemTrayDelegate {
   // Shows the settings related to date, timezone etc.
   virtual void ShowDateSettings() = 0;
 
-  // Show the settings related to network.
+  // Shows the settings related to network.
   virtual void ShowNetworkSettings() = 0;
+
+  // Shows the settings related to bluetooth.
+  virtual void ShowBluetoothSettings() = 0;
+
+  // Shows settings related to input methods.
+  virtual void ShowIMESettings() = 0;
 
   // Shows help.
   virtual void ShowHelp() = 0;
@@ -92,16 +137,50 @@ class SystemTrayDelegate {
   // Attempts to lock the screen.
   virtual void RequestLockScreen() = 0;
 
+  // Attempts to restart the system.
+  virtual void RequestRestart() = 0;
+
+  // Returns a list of available bluetooth devices.
+  virtual void GetAvailableBluetoothDevices(BluetoothDeviceList* devices) = 0;
+
+  // Toggles connection to a specific bluetooth device.
+  virtual void ToggleBluetoothConnection(const std::string& address) = 0;
+
+  // Returns the currently selected IME.
+  virtual void GetCurrentIME(IMEInfo* info) = 0;
+
+  // Returns a list of availble IMEs.
+  virtual void GetAvailableIMEList(IMEInfoList* list) = 0;
+
+  // Returns a list of properties for the currently selected IME.
+  virtual void GetCurrentIMEProperties(IMEPropertyInfoList* list) = 0;
+
+  // Switches to the selected input method.
+  virtual void SwitchIME(const std::string& ime_id) = 0;
+
+  // Activates an IME property.
+  virtual void ActivateIMEProperty(const std::string& key) = 0;
+
   // Returns information about the most relevant network. Relevance is
   // determined by the implementor (e.g. a connecting network may be more
   // relevant over a connected network etc.)
-  virtual NetworkIconInfo GetMostRelevantNetworkIcon(bool large) = 0;
+  virtual void GetMostRelevantNetworkIcon(NetworkIconInfo* info,
+                                          bool large) = 0;
 
   // Returns information about the available networks.
   virtual void GetAvailableNetworks(std::vector<NetworkIconInfo>* list) = 0;
 
   // Connects to the network specified by the unique id.
   virtual void ConnectToNetwork(const std::string& network_id) = 0;
+
+  // Gets the network IP address, and the mac addresses for the ethernet and
+  // wifi devices. If any of this is unavailable, empty strings are returned.
+  virtual void GetNetworkAddresses(std::string* ip_address,
+                                   std::string* ethernet_mac_address,
+                                   std::string* wifi_mac_address) = 0;
+
+  // Shous UI to add a new bluetooth device.
+  virtual void AddBluetoothDevice() = 0;
 
   // Toggles airplane mode.
   virtual void ToggleAirplaneMode() = 0;
@@ -112,17 +191,43 @@ class SystemTrayDelegate {
   // Toggles cellular network.
   virtual void ToggleCellular() = 0;
 
+  // Toggles bluetooth.
+  virtual void ToggleBluetooth() = 0;
+
+  // Shows UI to connect to an unlisted wifi network.
+  virtual void ShowOtherWifi() = 0;
+
+  // Shows UI to search for cellular networks.
+  virtual void ShowOtherCellular() = 0;
+
   // Returns whether wifi is available.
   virtual bool GetWifiAvailable() = 0;
 
   // Returns whether cellular networking is available.
   virtual bool GetCellularAvailable() = 0;
 
+  // Returns whether bluetooth capability is available.
+  virtual bool GetBluetoothAvailable() = 0;
+
   // Returns whether wifi is enabled.
   virtual bool GetWifiEnabled() = 0;
 
   // Returns whether cellular networking is enabled.
   virtual bool GetCellularEnabled() = 0;
+
+  // Returns whether bluetooth is enabled.
+  virtual bool GetBluetoothEnabled() = 0;
+
+  // Returns whether cellular scanning is supported.
+  virtual bool GetCellularScanSupported() = 0;
+
+  // Retrieves information about the carrier. If the information cannot be
+  // retrieved, returns false.
+  virtual bool GetCellularCarrierInfo(std::string* carrier_id,
+                                      std::string* toup_url) = 0;
+
+  // Opens the top up url.
+  virtual void ShowCellularTopupURL(const std::string& topup_url) = 0;
 
   // Shows UI for changing proxy settings.
   virtual void ChangeProxySettings() = 0;

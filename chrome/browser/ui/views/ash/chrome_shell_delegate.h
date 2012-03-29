@@ -11,15 +11,19 @@
 #include "base/basictypes.h"
 #include "base/compiler_specific.h"
 #include "base/memory/scoped_ptr.h"
+#include "content/public/browser/notification_observer.h"
+#include "content/public/browser/notification_registrar.h"
 
 class StatusAreaHostAura;
 class StatusAreaView;
+class WindowPositioner;
 
 namespace views {
 class View;
 }
 
-class ChromeShellDelegate : public ash::ShellDelegate {
+class ChromeShellDelegate : public ash::ShellDelegate,
+                            public content::NotificationObserver {
  public:
   ChromeShellDelegate();
   virtual ~ChromeShellDelegate();
@@ -32,12 +36,16 @@ class ChromeShellDelegate : public ash::ShellDelegate {
 
   StatusAreaView* GetStatusArea();
 
+  WindowPositioner* window_positioner() { return window_positioner_.get(); }
+
   // ash::ShellDelegate overrides;
   virtual views::Widget* CreateStatusArea() OVERRIDE;
-#if defined(OS_CHROMEOS)
+  virtual bool IsUserLoggedIn() OVERRIDE;
   virtual void LockScreen() OVERRIDE;
-#endif
+  virtual void UnlockScreen() OVERRIDE;
+  virtual bool IsScreenLocked() const OVERRIDE;
   virtual void Exit() OVERRIDE;
+  virtual void NewWindow(bool is_incognito) OVERRIDE;
   virtual ash::AppListViewDelegate* CreateAppListViewDelegate() OVERRIDE;
   virtual std::vector<aura::Window*> GetCycleWindowList(
       CycleSource source) const OVERRIDE;
@@ -47,11 +55,20 @@ class ChromeShellDelegate : public ash::ShellDelegate {
       ash::LauncherModel* model) OVERRIDE;
   virtual ash::SystemTrayDelegate* CreateSystemTrayDelegate(
       ash::SystemTray* tray) OVERRIDE;
+  virtual ash::UserWallpaperDelegate* CreateUserWallpaperDelegate() OVERRIDE;
+
+  // content::NotificationObserver override:
+  virtual void Observe(int type,
+                       const content::NotificationSource& source,
+                       const content::NotificationDetails& details) OVERRIDE;
 
  private:
   static ChromeShellDelegate* instance_;
 
+  content::NotificationRegistrar registrar_;
+
   scoped_ptr<StatusAreaHostAura> status_area_host_;
+  scoped_ptr<WindowPositioner> window_positioner_;
 
   DISALLOW_COPY_AND_ASSIGN(ChromeShellDelegate);
 };

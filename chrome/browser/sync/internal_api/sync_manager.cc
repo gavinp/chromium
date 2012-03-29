@@ -13,6 +13,7 @@
 #include "base/compiler_specific.h"
 #include "base/json/json_writer.h"
 #include "base/memory/ref_counted.h"
+#include "base/metrics/histogram.h"
 #include "base/observer_list.h"
 #include "base/string_number_conversions.h"
 #include "base/values.h"
@@ -110,6 +111,10 @@ GetUpdatesCallerInfo::GetUpdatesSource GetSourceFromReason(
   return GetUpdatesCallerInfo::UNKNOWN;
 }
 
+// The maximum number of times we will automatically overwrite the nigori node
+// because the encryption keys don't match (per chrome instantiation).
+static const int kNigoriOverwriteLimit = 10;
+
 } // namespace
 
 namespace sync_api {
@@ -140,7 +145,8 @@ class SyncManager::SyncInternal
         encryptor_(NULL),
         unrecoverable_error_handler_(NULL),
         report_unrecoverable_error_function_(NULL),
-        created_on_loop_(MessageLoop::current()) {
+        created_on_loop_(MessageLoop::current()),
+        nigori_overwrite_count_(0) {
     // Pre-fill |notification_info_map_|.
     for (int i = syncable::FIRST_REAL_MODEL_TYPE;
          i < syncable::MODEL_TYPE_COUNT; ++i) {
@@ -232,6 +238,11 @@ class SyncManager::SyncInternal
       const std::string& chrome_version,
       const base::Closure& done_callback);
 
+  // Stores the current set of encryption keys (if the cryptographer is ready)
+  // and encrypted types into the nigori node.
+  void UpdateNigoriEncryptionState(Cryptographer* cryptographer,
+                                   WriteNode* nigori_node);
+
   // Updates the nigori node with any new encrypted types and then
   // encrypts the nodes for those new data types as well as other
   // nodes that should be encrypted but aren't.  Triggers
@@ -242,7 +253,7 @@ class SyncManager::SyncInternal
   // a flag in the nigori node specifying whether the current passphrase is
   // explicit (custom passphrase) or non-explicit (GAIA). If the existing
   // encryption passphrase is "explicit", the data cannot be re-encrypted and
-  // OnPassphraseRequired is triggered with REASON_SET_PASSPHRASE_FAILED.
+  // SetEncryptionPassphrase will do nothing.
   // If !is_explicit and there are pending keys, we will attempt to decrypt them
   // using this passphrase. If this fails, we will save this encryption key to
   // be applied later after the pending keys are resolved.
@@ -264,8 +275,6 @@ class SyncManager::SyncInternal
   //            success == false, we send an OnPassphraseRequired notification.
   // |bootstrap_token|: used to inform observers if the cryptographer's
   //                    bootstrap token was updated.
-  // |pending_keys|: used to pass on the cryptographer's pending keys to the UI
-  //                 thread so they can be cached. Ignored if |success| == true.
   // |is_explicit|: used to differentiate between a custom passphrase (true) and
   //                a GAIA passphrase that is implicitly used for encryption
   //                (false).
@@ -273,7 +282,6 @@ class SyncManager::SyncInternal
   void FinishSetPassphrase(
       bool success,
       const std::string& bootstrap_token,
-      const sync_pb::EncryptedData& pending_keys,
       bool is_explicit,
       WriteTransaction* trans,
       WriteNode* nigori_node);
@@ -606,6 +614,11 @@ class SyncManager::SyncInternal
   ReportUnrecoverableErrorFunction report_unrecoverable_error_function_;
 
   MessageLoop* const created_on_loop_;
+
+  // The number of times we've automatically (i.e. not via SetPassphrase or
+  // conflict resolver) updated the nigori's encryption keys in this chrome
+  // instantiation.
+  int nigori_overwrite_count_;
 };
 
 // A class to calculate nudge delays for types.
@@ -692,8 +705,7 @@ SyncManager::SyncManager(const std::string& name)
     : data_(new SyncInternal(name)) {}
 
 SyncManager::Status::Status()
-    : summary(INVALID),
-      notifications_enabled(false),
+    : notifications_enabled(false),
       notifications_received(0),
       unsynced_count(0),
       encryption_conflicts(0),
@@ -705,6 +717,7 @@ SyncManager::Status::Status()
       initial_sync_ended(false),
       updates_available(0),
       updates_received(0),
+      reflected_updates_received(0),
       tombstone_updates_received(0),
       num_local_overwrites_total(0),
       num_server_overwrites_total(0),
@@ -1004,6 +1017,40 @@ void SyncManager::SyncInternal::UpdateCryptographerAndNigori(
           done_callback));
 }
 
+void SyncManager::SyncInternal::UpdateNigoriEncryptionState(
+    Cryptographer* cryptographer,
+    WriteNode* nigori_node) {
+  DCHECK(nigori_node);
+  sync_pb::NigoriSpecifics nigori = nigori_node->GetNigoriSpecifics();
+
+  if (cryptographer->is_ready() &&
+      nigori_overwrite_count_ < kNigoriOverwriteLimit) {
+    // Does not modify the encrypted blob if the unencrypted data already
+    // matches what is about to be written.
+    sync_pb::EncryptedData original_keys = nigori.encrypted();
+    if (!cryptographer->GetKeys(nigori.mutable_encrypted()))
+      NOTREACHED();
+
+    if (nigori.encrypted().SerializeAsString() !=
+        original_keys.SerializeAsString()) {
+      // We've updated the nigori node's encryption keys. In order to prevent
+      // a possible looping of two clients constantly overwriting each other,
+      // we limit the absolute number of overwrites per client instantiation.
+      nigori_overwrite_count_++;
+      UMA_HISTOGRAM_COUNTS("Sync.AutoNigoriOverwrites",
+                           nigori_overwrite_count_);
+    }
+
+    // Note: we don't try to set using_explicit_passphrase here since if that
+    // is lost the user can always set it again. The main point is to preserve
+    // the encryption keys so all data remains decryptable.
+  }
+  cryptographer->UpdateNigoriFromEncryptedTypes(&nigori);
+
+  // If nothing has changed, this is a no-op.
+  nigori_node->SetNigoriSpecifics(nigori);
+}
+
 void SyncManager::SyncInternal::UpdateCryptographerAndNigoriCallback(
     const std::string& chrome_version,
     const base::Closure& done_callback,
@@ -1031,14 +1078,6 @@ void SyncManager::SyncInternal::UpdateCryptographerAndNigoriCallback(
                                                pending_keys));
       }
 
-      // Due to http://crbug.com/102526, we must check if the encryption keys
-      // are present in the nigori node. If they're not, we write the current
-      // set of keys.
-      if (!nigori.has_encrypted() && cryptographer->is_ready()) {
-        if (!cryptographer->GetKeys(nigori.mutable_encrypted())) {
-          NOTREACHED();
-        }
-      }
 
       // Add or update device information.
       bool contains_this_device = false;
@@ -1073,12 +1112,10 @@ void SyncManager::SyncInternal::UpdateCryptographerAndNigoriCallback(
         device_information->set_name(session_name);
         device_information->set_chrome_version(chrome_version);
       }
-
-      // Ensure the nigori node reflects the most recent set of sensitive
-      // types and properly sets encrypt_everything. This is a no-op if
-      // nothing changes.
-      cryptographer->UpdateNigoriFromEncryptedTypes(&nigori);
       node.SetNigoriSpecifics(nigori);
+
+      // Make sure the nigori node has the up to date encryption info.
+      UpdateNigoriEncryptionState(cryptographer, &node);
 
       allstatus_.SetCryptographerReady(cryptographer->is_ready());
       allstatus_.SetCryptoHasPendingKeys(cryptographer->has_pending_keys());
@@ -1308,14 +1345,14 @@ void SyncManager::SyncInternal::SetEncryptionPassphrase(
     success = false;
   }
 
-  DVLOG_IF(1, success)
-      << "Failure in SetEncryptionPassphrase; notifying and returning.";
   DVLOG_IF(1, !success)
+      << "Failure in SetEncryptionPassphrase; notifying and returning.";
+  DVLOG_IF(1, success)
       << "Successfully set encryption passphrase; updating nigori and "
          "reencrypting.";
 
   FinishSetPassphrase(
-      success, bootstrap_token, pending_keys, is_explicit, &trans, &node);
+      success, bootstrap_token, is_explicit, &trans, &node);
 }
 
 void SyncManager::SyncInternal::SetDecryptionPassphrase(
@@ -1447,15 +1484,14 @@ void SyncManager::SyncInternal::SetDecryptionPassphrase(
     }
   }  // nigori_has_explicit_passphrase
 
-  DVLOG_IF(1, success)
-      << "Failure in SetDecryptionPassphrase; notifying and returning.";
   DVLOG_IF(1, !success)
+      << "Failure in SetDecryptionPassphrase; notifying and returning.";
+  DVLOG_IF(1, success)
       << "Successfully set decryption passphrase; updating nigori and "
          "reencrypting.";
 
   FinishSetPassphrase(success,
                       bootstrap_token,
-                      pending_keys,
                       nigori_has_explicit_passphrase,
                       &trans,
                       &node);
@@ -1464,10 +1500,13 @@ void SyncManager::SyncInternal::SetDecryptionPassphrase(
 void SyncManager::SyncInternal::FinishSetPassphrase(
     bool success,
     const std::string& bootstrap_token,
-    const sync_pb::EncryptedData& pending_keys,
     bool is_explicit,
     WriteTransaction* trans,
     WriteNode* nigori_node) {
+  Cryptographer* cryptographer = trans->GetCryptographer();
+  allstatus_.SetCryptographerReady(cryptographer->is_ready());
+  allstatus_.SetCryptoHasPendingKeys(cryptographer->has_pending_keys());
+
   // It's possible we need to change the bootstrap token even if we failed to
   // set the passphrase (for example if we need to preserve the new GAIA
   // passphrase).
@@ -1478,16 +1517,23 @@ void SyncManager::SyncInternal::FinishSetPassphrase(
   }
 
   if (!success) {
-    FOR_EACH_OBSERVER(SyncManager::Observer, observers_,
-                      OnPassphraseRequired(
-                          sync_api::REASON_SET_PASSPHRASE_FAILED,
-                          pending_keys));
+    if (cryptographer->is_ready()) {
+      LOG(ERROR) << "Attempt to change passphrase failed while cryptographer "
+                 << "was ready.";
+    } else if (cryptographer->has_pending_keys()) {
+      FOR_EACH_OBSERVER(SyncManager::Observer, observers_,
+                        OnPassphraseRequired(sync_api::REASON_DECRYPTION,
+                                             cryptographer->GetPendingKeys()));
+    } else {
+      FOR_EACH_OBSERVER(SyncManager::Observer, observers_,
+                        OnPassphraseRequired(sync_api::REASON_ENCRYPTION,
+                                             sync_pb::EncryptedData()));
+    }
     return;
   }
 
   FOR_EACH_OBSERVER(SyncManager::Observer, observers_,
                     OnPassphraseAccepted());
-  Cryptographer* cryptographer = trans->GetCryptographer();
   DCHECK(cryptographer->is_ready());
 
   // TODO(tim): Bug 58231. It would be nice if setting a passphrase didn't
@@ -1548,13 +1594,8 @@ void SyncManager::SyncInternal::RefreshEncryption() {
     return;
   }
 
-  // Update the Nigori node's set of encrypted datatypes.
-  // Note, we merge the current encrypted types with those requested. Once a
-  // datatypes is marked as needing encryption, it is never unmarked.
-  sync_pb::NigoriSpecifics nigori;
-  nigori.CopyFrom(node.GetNigoriSpecifics());
-  cryptographer->UpdateNigoriFromEncryptedTypes(&nigori);
-  node.SetNigoriSpecifics(nigori);
+  UpdateNigoriEncryptionState(cryptographer, &node);
+
   allstatus_.SetEncryptedTypes(cryptographer->GetEncryptedTypes());
 
   // We reencrypt everything regardless of whether the set of encrypted
@@ -1991,7 +2032,7 @@ void SyncManager::SyncInternal::OnSyncEngineEvent(
     {
       // Check to see if we need to notify the frontend that we have newly
       // encrypted types or that we require a passphrase.
-      sync_api::ReadTransaction trans(FROM_HERE, GetUserShare());
+      ReadTransaction trans(FROM_HERE, GetUserShare());
       Cryptographer* cryptographer = trans.GetCryptographer();
       // If we've completed a sync cycle and the cryptographer isn't ready
       // yet, prompt the user for a passphrase.
@@ -2022,6 +2063,15 @@ void SyncManager::SyncInternal::OnSyncEngineEvent(
     }
 
     if (!event.snapshot->has_more_to_sync) {
+      // To account for a nigori node arriving with stale/bad data, we ensure
+      // that the nigori node is up to date at the end of each cycle.
+      WriteTransaction trans(FROM_HERE, GetUserShare());
+      WriteNode nigori_node(&trans);
+      if (nigori_node.InitByTagLookup(kNigoriTag)) {
+        Cryptographer* cryptographer = trans.GetCryptographer();
+        UpdateNigoriEncryptionState(cryptographer, &nigori_node);
+      }
+
       DVLOG(1) << "Sending OnSyncCycleCompleted";
       FOR_EACH_OBSERVER(SyncManager::Observer, observers_,
                         OnSyncCycleCompleted(event.snapshot));
@@ -2370,10 +2420,6 @@ void SyncManager::SyncInternal::RemoveObserver(
   observers_.RemoveObserver(observer);
 }
 
-SyncManager::Status::Summary SyncManager::GetStatusSummary() const {
-  return data_->GetStatus().summary;
-}
-
 SyncManager::Status SyncManager::GetDetailedStatus() const {
   return data_->GetStatus();
 }
@@ -2470,8 +2516,6 @@ const char* PassphraseRequiredReasonToString(
       return "REASON_ENCRYPTION";
     case REASON_DECRYPTION:
       return "REASON_DECRYPTION";
-    case REASON_SET_PASSPHRASE_FAILED:
-      return "REASON_SET_PASSPHRASE_FAILED";
     default:
       NOTREACHED();
       return "INVALID_REASON";

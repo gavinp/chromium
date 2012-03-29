@@ -43,6 +43,7 @@
 #include "content/browser/renderer_host/resource_request_info_impl.h"
 #include "content/browser/renderer_host/sync_resource_handler.h"
 #include "content/browser/renderer_host/throttling_resource_handler.h"
+#include "content/browser/resource_context_impl.h"
 #include "content/browser/ssl/ssl_client_auth_handler.h"
 #include "content/browser/ssl/ssl_manager.h"
 #include "content/browser/worker_host/worker_service_impl.h"
@@ -55,7 +56,6 @@
 #include "content/public/browser/global_request_id.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/render_view_host_delegate.h"
-#include "content/public/browser/resource_context.h"
 #include "content/public/browser/resource_dispatcher_host_delegate.h"
 #include "content/public/browser/resource_dispatcher_host_login_delegate.h"
 #include "content/public/browser/resource_throttle.h"
@@ -338,6 +338,9 @@ ResourceDispatcherHostImpl::ResourceDispatcherHostImpl()
   BrowserThread::PostTask(
       BrowserThread::IO, FROM_HERE,
       base::Bind(&appcache::AppCacheInterceptor::EnsureRegistered));
+
+  update_load_states_timer_.reset(
+      new base::RepeatingTimer<ResourceDispatcherHostImpl>());
 }
 
 ResourceDispatcherHostImpl::~ResourceDispatcherHostImpl() {
@@ -605,7 +608,7 @@ void ResourceDispatcherHostImpl::OnShutdown() {
   // Make sure we shutdown the timer now, otherwise by the time our destructor
   // runs if the timer is still running the Task is deleted twice (once by
   // the MessageLoop and the second time by RepeatingTimer).
-  update_load_states_timer_.Stop();
+  update_load_states_timer_.reset();
 
   // Clear blocked requests if any left.
   // Note that we have to do this in 2 passes as we cannot call
@@ -740,7 +743,7 @@ void ResourceDispatcherHostImpl::BeginRequest(
 
   // Might need to resolve the blob references in the upload data.
   if (request_data.upload_data) {
-    ResourceContext::GetBlobStorageController(resource_context)->
+    GetBlobStorageControllerForResourceContext(resource_context)->
         ResolveBlobReferencesInUploadData(request_data.upload_data.get());
   }
 
@@ -911,7 +914,7 @@ void ResourceDispatcherHostImpl::BeginRequest(
     // Hang on to a reference to ensure the blob is not released prior
     // to the job being started.
     webkit_blob::BlobStorageController* controller =
-        ResourceContext::GetBlobStorageController(resource_context);
+        GetBlobStorageControllerForResourceContext(resource_context);
     extra_info->set_requested_blob_data(
         controller->GetBlobDataFromUrl(request->url()));
   }
@@ -1368,8 +1371,8 @@ void ResourceDispatcherHostImpl::RemovePendingRequest(
   pending_requests_.erase(iter);
 
   // If we have no more pending requests, then stop the load state monitor
-  if (pending_requests_.empty())
-    update_load_states_timer_.Stop();
+  if (pending_requests_.empty() && update_load_states_timer_.get())
+    update_load_states_timer_->Stop();
 }
 
 // net::URLRequest::Delegate ---------------------------------------------------
@@ -1731,8 +1734,8 @@ void ResourceDispatcherHostImpl::StartRequest(net::URLRequest* request) {
   request->Start();
 
   // Make sure we have the load state monitor running
-  if (!update_load_states_timer_.IsRunning()) {
-    update_load_states_timer_.Start(FROM_HERE,
+  if (!update_load_states_timer_->IsRunning()) {
+    update_load_states_timer_->Start(FROM_HERE,
         TimeDelta::FromMilliseconds(kUpdateLoadStatesIntervalMsec),
         this, &ResourceDispatcherHostImpl::UpdateLoadStates);
   }

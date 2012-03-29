@@ -114,6 +114,8 @@ void BluetoothAdapter::ChangeAdapter(const dbus::ObjectPath& adapter_path) {
       DBusThreadManager::Get()->GetBluetoothAdapterClient()->
       GetProperties(object_path_);
 
+  address_ = properties->address.value();
+
   PoweredChanged(properties->powered.value());
   DiscoveringChanged(properties->discovering.value());
   DevicesChanged(properties->devices.value());
@@ -133,6 +135,7 @@ void BluetoothAdapter::RemoveAdapter() {
   ClearDevices();
 
   object_path_ = dbus::ObjectPath("");
+  address_.clear();
 
   FOR_EACH_OBSERVER(BluetoothAdapter::Observer, observers_,
                     AdapterPresentChanged(this, false));
@@ -276,7 +279,7 @@ void BluetoothAdapter::UpdateDevice(const dbus::ObjectPath& device_path) {
   if (iter != devices_.end()){
     BluetoothDevice* device = iter->second;
 
-    if (device->WasDiscovered())
+    if (!device->IsPaired())
       device->SetObjectPath(device_path);
     device->Update(properties, true);
 
@@ -296,8 +299,20 @@ void BluetoothAdapter::UpdateDevice(const dbus::ObjectPath& device_path) {
 }
 
 BluetoothAdapter::DeviceList BluetoothAdapter::GetDevices() {
+  ConstDeviceList const_devices =
+      const_cast<const BluetoothAdapter *>(this)->GetDevices();
+
   DeviceList devices;
-  for (DevicesMap::iterator iter = devices_.begin();
+  for (ConstDeviceList::const_iterator i = const_devices.begin();
+      i != const_devices.end(); ++i)
+    devices.push_back(const_cast<BluetoothDevice *>(*i));
+
+  return devices;
+}
+
+BluetoothAdapter::ConstDeviceList BluetoothAdapter::GetDevices() const {
+  ConstDeviceList devices;
+  for (DevicesMap::const_iterator iter = devices_.begin();
        iter != devices_.end(); ++iter)
     devices.push_back(iter->second);
 
@@ -305,7 +320,13 @@ BluetoothAdapter::DeviceList BluetoothAdapter::GetDevices() {
 }
 
 BluetoothDevice* BluetoothAdapter::GetDevice(const std::string& address) {
-  DevicesMap::iterator iter = devices_.find(address);
+  return const_cast<BluetoothDevice *>(
+      const_cast<const BluetoothAdapter *>(this)->GetDevice(address));
+}
+
+const BluetoothDevice* BluetoothAdapter::GetDevice(
+    const std::string& address) const {
+  DevicesMap::const_iterator iter = devices_.find(address);
   if (iter != devices_.end())
     return iter->second;
 
@@ -367,7 +388,7 @@ void BluetoothAdapter::ClearDiscoveredDevices() {
     DevicesMap::iterator temp = iter;
     ++iter;
 
-    if (device->WasDiscovered()) {
+    if (!device->IsPaired()) {
       FOR_EACH_OBSERVER(BluetoothAdapter::Observer, observers_,
                         DeviceRemoved(this, device));
 
@@ -384,8 +405,8 @@ void BluetoothAdapter::DeviceFound(
     return;
 
   // DeviceFound can also be called to indicate that a device we've
-  // paired with or previously connected to is now visible to the adapter,
-  // so check it's not already in the list and just update if it is.
+  // paired with is now visible to the adapter, so check it's not already
+  // in the list and just update if it is.
   BluetoothDevice* device;
   DevicesMap::iterator iter = devices_.find(address);
   if (iter == devices_.end()) {
@@ -399,7 +420,7 @@ void BluetoothAdapter::DeviceFound(
     device = iter->second;
     device->Update(&properties, false);
 
-    if (device->IsSupported() || !device->WasDiscovered())
+    if (device->IsSupported() || device->IsPaired())
       FOR_EACH_OBSERVER(BluetoothAdapter::Observer, observers_,
                         DeviceChanged(this, device));
   }
@@ -417,9 +438,9 @@ void BluetoothAdapter::DeviceDisappeared(const dbus::ObjectPath& adapter_path,
   BluetoothDevice* device = iter->second;
 
   // DeviceDisappeared can also be called to indicate that a device we've
-  // paired with or previously connected to is no longer visible to the
-  // adapter, so only delete discovered devices.
-  if (device->WasDiscovered()) {
+  // paired with is no longer visible to the adapter, so only delete
+  // discovered devices.
+  if (!device->IsPaired()) {
     FOR_EACH_OBSERVER(BluetoothAdapter::Observer, observers_,
                       DeviceRemoved(this, device));
 

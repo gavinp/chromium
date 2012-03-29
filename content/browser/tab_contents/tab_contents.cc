@@ -4,7 +4,6 @@
 
 #include "content/browser/tab_contents/tab_contents.h"
 
-#include <cmath>
 #include <utility>
 
 #include "base/command_line.h"
@@ -62,7 +61,6 @@
 #include "net/base/network_change_notifier.h"
 #include "net/url_request/url_request_context_getter.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebView.h"
-#include "ui/gfx/codec/png_codec.h"
 #include "webkit/glue/web_intent_data.h"
 #include "webkit/glue/webpreferences.h"
 
@@ -156,7 +154,7 @@ const int kQueryStateDelay = 5000;
 
 const int kSyncWaitDelay = 40;
 
-static const char kDotGoogleDotCom[] = ".google.com";
+const char kDotGoogleDotCom[] = ".google.com";
 
 #if defined(OS_WIN)
 
@@ -401,8 +399,6 @@ WebPreferences TabContents::GetWebkitPrefs(RenderViewHost* rvh,
   prefs.accelerated_compositing_enabled =
       GpuProcessHost::gpu_enabled() &&
       !command_line.HasSwitch(switches::kDisableAcceleratedCompositing);
-  prefs.threaded_compositing_enabled =
-      command_line.HasSwitch(switches::kEnableThreadedCompositing);
   prefs.force_compositing_mode =
       command_line.HasSwitch(switches::kForceCompositingMode);
   prefs.fixed_position_compositing_enabled =
@@ -413,7 +409,7 @@ WebPreferences TabContents::GetWebkitPrefs(RenderViewHost* rvh,
   prefs.deferred_2d_canvas_enabled =
       command_line.HasSwitch(switches::kEnableDeferred2dCanvas);
   prefs.threaded_animation_enabled =
-      command_line.HasSwitch(switches::kEnableThreadedAnimation);
+      !command_line.HasSwitch(switches::kDisableThreadedAnimation);
   prefs.accelerated_painting_enabled =
       GpuProcessHost::gpu_enabled() &&
       command_line.HasSwitch(switches::kEnableAcceleratedPainting);
@@ -437,7 +433,8 @@ WebPreferences TabContents::GetWebkitPrefs(RenderViewHost* rvh,
       !command_line.HasSwitch(switches::kDisableFullScreen);
   prefs.css_regions_enabled =
       command_line.HasSwitch(switches::kEnableCssRegions);
-
+  prefs.css_shaders_enabled =
+      command_line.HasSwitch(switches::kEnableCssShaders);
 
 #if defined(OS_MACOSX)
   bool default_enable_scroll_animator = true;
@@ -635,10 +632,8 @@ void TabContents::SetDelegate(content::WebContentsDelegate* delegate) {
 }
 
 content::RenderProcessHost* TabContents::GetRenderProcessHost() const {
-  if (render_manager_.current_host())
-    return render_manager_.current_host()->GetProcess();
-  else
-    return NULL;
+  RenderViewHostImpl* host = render_manager_.current_host();
+  return host ? host->GetProcess() : NULL;
 }
 
 RenderViewHost* TabContents::GetRenderViewHost() const {
@@ -1067,8 +1062,12 @@ bool TabContents::NavigateToEntry(
 #if defined(OS_CHROMEOS)
   is_allowed_in_web_ui_renderer |= entry.GetURL().SchemeIs(chrome::kDataScheme);
 #endif
-  CHECK(!(enabled_bindings & content::BINDINGS_POLICY_WEB_UI) ||
-        is_allowed_in_web_ui_renderer);
+  if ((enabled_bindings & content::BINDINGS_POLICY_WEB_UI) &&
+      !is_allowed_in_web_ui_renderer) {
+    // Log the URL to help us diagnose http://crbug.com/72235.
+    content::GetContentClient()->SetActiveURL(entry.GetURL());
+    CHECK(0);
+  }
 
   // Tell DevTools agent that it is attached prior to the navigation.
   DevToolsManagerImpl::GetInstance()->OnNavigatingToPendingEntry(
@@ -1409,9 +1408,7 @@ bool TabContents::FocusLocationBarByDefault() {
   if (web_ui)
     return web_ui->ShouldFocusLocationBarByDefault();
   NavigationEntry* entry = controller_.GetActiveEntry();
-  if (entry && entry->GetURL() == GURL(chrome::kAboutBlankURL))
-    return true;
-  return false;
+  return (entry && entry->GetURL() == GURL(chrome::kAboutBlankURL));
 }
 
 void TabContents::SetFocusToLocationBar(bool select_all) {
@@ -1441,10 +1438,17 @@ void TabContents::OnDidStartProvisionalLoadForFrame(int64 frame_id,
                                                     const GURL& url) {
   bool is_error_page = (url.spec() == chrome::kUnreachableWebDataURL);
   GURL validated_url(url);
+  GURL validated_opener_url(opener_url);
   GetRenderViewHostImpl()->FilterURL(
       ChildProcessSecurityPolicyImpl::GetInstance(),
       GetRenderProcessHost()->GetID(),
+      false,
       &validated_url);
+  GetRenderViewHostImpl()->FilterURL(
+      ChildProcessSecurityPolicyImpl::GetInstance(),
+      GetRenderProcessHost()->GetID(),
+      true,
+      &validated_opener_url);
 
   RenderViewHost* rvh =
       render_manager_.pending_render_view_host() ?
@@ -1457,7 +1461,8 @@ void TabContents::OnDidStartProvisionalLoadForFrame(int64 frame_id,
   if (is_main_frame) {
     // Notify observers about the provisional change in the main frame URL.
     FOR_EACH_OBSERVER(WebContentsObserver, observers_,
-                      ProvisionalChangeToMainFrameUrl(url, opener_url));
+                      ProvisionalChangeToMainFrameUrl(validated_url,
+                                                      validated_opener_url));
   }
 }
 
@@ -1468,18 +1473,36 @@ void TabContents::OnDidRedirectProvisionalLoad(int32 page_id,
   // TODO(creis): Remove this method and have the pre-rendering code listen to
   // the ResourceDispatcherHost's RESOURCE_RECEIVED_REDIRECT notification
   // instead.  See http://crbug.com/78512.
+  GURL validated_source_url(source_url);
+  GURL validated_target_url(target_url);
+  GURL validated_opener_url(opener_url);
+  GetRenderViewHostImpl()->FilterURL(
+      ChildProcessSecurityPolicyImpl::GetInstance(),
+      GetRenderProcessHost()->GetID(),
+      false,
+      &validated_source_url);
+  GetRenderViewHostImpl()->FilterURL(
+      ChildProcessSecurityPolicyImpl::GetInstance(),
+      GetRenderProcessHost()->GetID(),
+      false,
+      &validated_target_url);
+  GetRenderViewHostImpl()->FilterURL(
+      ChildProcessSecurityPolicyImpl::GetInstance(),
+      GetRenderProcessHost()->GetID(),
+      true,
+      &validated_opener_url);
   NavigationEntry* entry;
   if (page_id == -1)
     entry = controller_.GetPendingEntry();
   else
     entry = controller_.GetEntryWithPageID(GetSiteInstance(), page_id);
-  if (!entry || entry->GetURL() != source_url)
+  if (!entry || entry->GetURL() != validated_source_url)
     return;
 
   // Notify observers about the provisional change in the main frame URL.
   FOR_EACH_OBSERVER(WebContentsObserver, observers_,
-                    ProvisionalChangeToMainFrameUrl(target_url,
-                                                    opener_url));
+                    ProvisionalChangeToMainFrameUrl(validated_target_url,
+                                                    validated_opener_url));
 }
 
 void TabContents::OnDidFailProvisionalLoadWithError(
@@ -1495,6 +1518,7 @@ void TabContents::OnDidFailProvisionalLoadWithError(
   GetRenderViewHostImpl()->FilterURL(
       ChildProcessSecurityPolicyImpl::GetInstance(),
       GetRenderProcessHost()->GetID(),
+      false,
       &validated_url);
 
   if (net::ERR_ABORTED == params.error_code) {
@@ -1579,10 +1603,8 @@ void TabContents::OnDidRunInsecureContent(
   LOG(INFO) << security_origin << " ran insecure content from "
             << target_url.possibly_invalid_spec();
   content::RecordAction(UserMetricsAction("SSL.RanInsecureContent"));
-  if (EndsWith(security_origin, kDotGoogleDotCom, false)) {
-    content::RecordAction(
-        UserMetricsAction("SSL.RanInsecureContentGoogle"));
-  }
+  if (EndsWith(security_origin, kDotGoogleDotCom, false))
+    content::RecordAction(UserMetricsAction("SSL.RanInsecureContentGoogle"));
   controller_.ssl_manager()->DidRunInsecureContent(security_origin);
   displayed_insecure_content_ = true;
   SSLManager::NotifySSLInternalStateChanged(&GetControllerImpl());
@@ -2179,10 +2201,8 @@ void TabContents::RequestMove(const gfx::Rect& new_bounds) {
 void TabContents::DidStartLoading() {
   SetIsLoading(true, NULL);
 
-  if (delegate_ && content_restrictions_) {
-      content_restrictions_ = 0;
-      delegate_->ContentRestrictionsChanged(this);
-  }
+  if (delegate_ && content_restrictions_)
+    OnUpdateContentRestrictions(0);
 
   // Notify observers about navigation.
   FOR_EACH_OBSERVER(WebContentsObserver, observers_, DidStartLoading());

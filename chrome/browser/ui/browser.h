@@ -41,6 +41,7 @@
 #include "chrome/browser/ui/select_file_dialog.h"
 #include "chrome/browser/ui/tab_contents/core_tab_helper_delegate.h"
 #include "chrome/browser/ui/toolbar/toolbar_model.h"
+#include "chrome/browser/ui/webui/sync_promo/sync_promo_ui.h"
 #include "chrome/common/content_settings.h"
 #include "chrome/common/content_settings_types.h"
 #include "chrome/common/extensions/extension_constants.h"
@@ -108,6 +109,17 @@ class Browser : public TabHandlerDelegate,
     TYPE_PANEL = 3
   };
 
+  // Distinguishes between browsers that host an app (opened from
+  // Browser::OpenApplication), and child browsers created by an app from
+  // Browser::CreateForApp (e.g. by windows.open or the extension API).
+  // TODO(stevenjb): This is currently only needed by the ash Launcher for
+  // identifying child panels. Remove this once panels are no longer
+  // implemented as Browsers, crbug.com/112198.
+  enum AppType {
+    APP_TYPE_HOST = 1,
+    APP_TYPE_CHILD = 2
+  };
+
   // Possible elements of the Browser window.
   enum WindowFeature {
     FEATURE_NONE = 0,
@@ -149,6 +161,9 @@ class Browser : public TabHandlerDelegate,
     // 1) we launch an application via an application shortcut or extension API.
     // 2) we launch an undocked devtool window.
     std::string app_name;
+
+    // Type of app (host or child). See description of AppType.
+    AppType app_type;
 
     // The bounds of the window to open.
     gfx::Rect initial_bounds;
@@ -226,6 +241,7 @@ class Browser : public TabHandlerDelegate,
 
   Type type() const { return type_; }
   const std::string& app_name() const { return app_name_; }
+  AppType app_type() const { return app_type_; }
   Profile* profile() const { return profile_; }
   gfx::Rect override_bounds() const { return override_bounds_; }
 
@@ -264,7 +280,7 @@ class Browser : public TabHandlerDelegate,
   // Browser Creation Helpers /////////////////////////////////////////////////
 
   // Opens a new window with the default blank tab.
-  static Browser* NewEmptyWindow(Profile* profile);
+  static void  NewEmptyWindow(Profile* profile);
 
   // Opens a new window with the default blank tab. This bypasses metrics and
   // various internal bookkeeping; NewEmptyWindow (above) is preferred.
@@ -335,11 +351,13 @@ class Browser : public TabHandlerDelegate,
 #if defined(OS_MACOSX)
   // Open a new window with history/downloads/help/options (needed on Mac when
   // there are no windows).
+  static void OpenAboutWindow(Profile* profile);
   static void OpenHistoryWindow(Profile* profile);
   static void OpenDownloadsWindow(Profile* profile);
   static void OpenHelpWindow(Profile* profile);
   static void OpenOptionsWindow(Profile* profile);
-  static void OpenSyncSetupWindow(Profile* profile);
+  static void OpenSyncSetupWindow(Profile* profile,
+                                  SyncPromoUI::Source source);
   static void OpenClearBrowsingDataDialogWindow(Profile* profile);
   static void OpenImportSettingsDialogWindow(Profile* profile);
   static void OpenInstantConfirmDialogWindow(Profile* profile);
@@ -667,17 +685,18 @@ class Browser : public TabHandlerDelegate,
 #if defined(OS_CHROMEOS)
   void LockScreen();
   void Shutdown();
-  void OpenAdvancedOptionsDialog();
+  void ShowDateOptions();
   void OpenInternetOptionsDialog();
   void OpenLanguageOptionsDialog();
   void OpenSystemTabAndActivate();
   void OpenMobilePlanTabAndActivate();
+  void OpenAddBluetoothDeviceDialog();
 #endif
 #if defined(OS_CHROMEOS) && defined(USE_AURA)
   void OpenCrosh();
 #endif
   void OpenPluginsTabAndActivate();
-  void ShowSyncSetup();
+  void ShowSyncSetup(SyncPromoUI::Source source);
   void ToggleSpeechInput();
 
   virtual void UpdateDownloadShelfVisibility(bool visible);
@@ -1017,7 +1036,8 @@ class Browser : public TabHandlerDelegate,
       content::WebContents* web_contents,
       int route_id,
       WindowContainerType window_container_type,
-      const string16& frame_name) OVERRIDE;
+      const string16& frame_name,
+      const GURL& target_url) OVERRIDE;
   virtual void WebContentsCreated(content::WebContents* source_contents,
                                   int64 source_frame_id,
                                   const GURL& target_url,
@@ -1337,9 +1357,9 @@ class Browser : public TabHandlerDelegate,
   // Creates a BackgroundContents if appropriate; return true if one was
   // created.
   bool MaybeCreateBackgroundContents(int route_id,
-                                     content::SiteInstance* site,
-                                     const GURL& opener_url,
-                                     const string16& frame_name);
+                                     content::WebContents* opener_web_contents,
+                                     const string16& frame_name,
+                                     const GURL& target_url);
 
   // Data members /////////////////////////////////////////////////////////////
 
@@ -1369,6 +1389,9 @@ class Browser : public TabHandlerDelegate,
   // 1) we launch an application via an application shortcut or extension API.
   // 2) we launch an undocked devtool window.
   std::string app_name_;
+
+  // Type of app (host or child). See description of AppType.
+  AppType app_type_;
 
   // Unique identifier of this browser for session restore. This id is only
   // unique within the current session, and is not guaranteed to be unique

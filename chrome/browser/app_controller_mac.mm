@@ -41,7 +41,6 @@
 #include "chrome/browser/ui/browser_init.h"
 #include "chrome/browser/ui/browser_list.h"
 #include "chrome/browser/ui/browser_window.h"
-#import "chrome/browser/ui/cocoa/about_window_controller.h"
 #import "chrome/browser/ui/cocoa/bookmarks/bookmark_menu_bridge.h"
 #import "chrome/browser/ui/cocoa/browser_window_cocoa.h"
 #import "chrome/browser/ui/cocoa/browser_window_controller.h"
@@ -369,9 +368,6 @@ const AEEventClass kAECloudPrintUninstallClass = 'GCPu';
   // Tell BrowserList not to keep the browser process alive. Once all the
   // browsers get dealloc'd, it will stop the RunLoop and fall back into main().
   BrowserList::EndKeepAlive();
-
-  // Close these off if they have open windows.
-  [aboutController_ close];
 
   [self unregisterEventHandlers];
 }
@@ -912,9 +908,9 @@ const AEEventClass kAECloudPrintUninstallClass = 'GCPu';
       break;
     case IDC_SHOW_SYNC_SETUP:
       if (Browser* browser = ActivateBrowser(lastProfile))
-        browser->ShowSyncSetup();
+        browser->ShowSyncSetup(SyncPromoUI::SOURCE_MENU);
       else
-        Browser::OpenSyncSetupWindow(lastProfile);
+        Browser::OpenSyncSetupWindow(lastProfile, SyncPromoUI::SOURCE_MENU);
       break;
     case IDC_TASK_MANAGER:
       content::RecordAction(UserMetricsAction("TaskManager"));
@@ -1199,35 +1195,14 @@ const AEEventClass kAECloudPrintUninstallClass = 'GCPu';
   }
 }
 
-// Called when the about window is closed. We use this to release the
-// window controller.
-- (void)aboutWindowClosed:(NSNotification*)notification {
-  NSWindow* window = [aboutController_ window];
-  DCHECK_EQ([notification object], window);
-  [[NSNotificationCenter defaultCenter]
-      removeObserver:self
-                name:NSWindowWillCloseNotification
-              object:window];
-  // AboutWindowControllers are autoreleased in
-  // -[AboutWindowController windowWillClose:].
-  aboutController_ = nil;
-}
-
 - (IBAction)orderFrontStandardAboutPanel:(id)sender {
-  if (!aboutController_) {
-    aboutController_ =
-        [[AboutWindowController alloc] initWithProfile:[self lastProfile]];
-
-    // Watch for a notification of when it goes away so that we can destroy
-    // the controller.
-    [[NSNotificationCenter defaultCenter]
-        addObserver:self
-           selector:@selector(aboutWindowClosed:)
-               name:NSWindowWillCloseNotification
-             object:[aboutController_ window]];
+  if (Browser* browser = ActivateBrowser([self lastProfile])) {
+    // Show about tab in the active browser window.
+    browser->OpenAboutChromeDialog();
+  } else {
+    // No browser window, so create one for the about tab.
+    Browser::OpenAboutWindow([self lastProfile]);
   }
-
-  [aboutController_ showWindow:self];
 }
 
 - (IBAction)toggleConfirmToQuit:(id)sender {

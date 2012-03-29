@@ -332,7 +332,6 @@ bool PrerenderManager::MaybeUsePrerenderedPage(WebContents* web_contents,
                                                const GURL& url) {
   DCHECK(CalledOnValidThread());
   DCHECK(!IsWebContentsPrerendering(web_contents));
-  RecordNavigation(url);
 
   scoped_ptr<PrerenderContents> prerender_contents(
       GetEntryButNotSpecifiedWC(url, web_contents));
@@ -480,6 +479,7 @@ bool PrerenderManager::MaybeUsePrerenderedPage(WebContents* web_contents,
   // TODO(cbentzel): Should prerender_contents move to the pending delete
   //                 list, instead of deleting directly here?
   AddToHistory(prerender_contents.get());
+  RecordNavigation(url);
   return true;
 }
 
@@ -732,11 +732,16 @@ bool PrerenderManager::HasRecentlyBeenNavigatedTo(const GURL& url) {
   DCHECK(CalledOnValidThread());
 
   CleanUpOldNavigations();
-  for (std::list<NavigationRecord>::const_iterator it = navigations_.begin();
-       it != navigations_.end();
+  std::list<NavigationRecord>::const_reverse_iterator end = navigations_.rend();
+  for (std::list<NavigationRecord>::const_reverse_iterator it =
+           navigations_.rbegin();
+       it != end;
        ++it) {
-    if (it->url_ == url)
+    if (it->url_ == url) {
+      base::TimeDelta delta = GetCurrentTimeTicks() - it->time_;
+      histograms_->RecordTimeSinceLastRecentVisit(delta);
       return true;
+    }
   }
 
   return false;
@@ -819,6 +824,13 @@ bool PrerenderManager::IsPendingEntry(const GURL& url) const {
 bool PrerenderManager::IsPrerendering(const GURL& url) const {
   DCHECK(CalledOnValidThread());
   return (FindEntry(url) != NULL);
+}
+
+void PrerenderManager::RecordNavigation(const GURL& url) {
+  DCHECK(CalledOnValidThread());
+
+  navigations_.push_back(NavigationRecord(url, GetCurrentTimeTicks()));
+  CleanUpOldNavigations();
 }
 
 // protected
@@ -965,7 +977,8 @@ PrerenderContents* PrerenderManager::GetEntryButNotSpecifiedWC(
        it != prerender_list_.end();
        ++it) {
     PrerenderContents* prerender_contents = it->contents_;
-    if (prerender_contents->MatchesURL(url, NULL)) {
+    if (prerender_contents->MatchesURL(url, NULL) &&
+        !IsNoSwapInExperiment(prerender_contents->experiment_id())) {
       if (!prerender_contents->prerender_contents() ||
           !wc ||
           prerender_contents->prerender_contents()->web_contents() != wc) {
@@ -1179,13 +1192,6 @@ void PrerenderManager::AddToHistory(PrerenderContents* contents) {
                                 contents->origin(),
                                 base::Time::Now());
   prerender_history_->AddEntry(entry);
-}
-
-void PrerenderManager::RecordNavigation(const GURL& url) {
-  DCHECK(CalledOnValidThread());
-
-  navigations_.push_back(NavigationRecord(url, GetCurrentTimeTicks()));
-  CleanUpOldNavigations();
 }
 
 Value* PrerenderManager::GetActivePrerendersAsValue() const {

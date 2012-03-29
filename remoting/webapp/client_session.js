@@ -9,7 +9,7 @@
  * The ClientSession class controls lifetime of the client plugin
  * object and provides the plugin with the functionality it needs to
  * establish connection. Specifically it:
- *  - Delivers incoming/otgoing signaling messages,
+ *  - Delivers incoming/outgoing signaling messages,
  *  - Adjusts plugin size and position when destop resolution changes,
  *
  * This class should not access the plugin directly, instead it should
@@ -61,7 +61,29 @@ remoting.ClientSession = function(hostJid, hostPublicKey, sharedSecret,
   /** @type {remoting.ClientSession} */
   var that = this;
   /** @type {function():void} @private */
-  this.refocusPlugin_ = function() { that.plugin.element().focus(); };
+  this.callPluginLostFocus_ = function() { that.pluginLostFocus_(); };
+  /** @type {function():void} @private */
+  this.callPluginGotFocus_ = function() { that.pluginGotFocus_(); };
+  /** @type {function():void} @private */
+  this.callEnableShrink_ = function() { that.setScaleToFit(true); };
+  /** @type {function():void} @private */
+  this.callDisableShrink_ = function() { that.setScaleToFit(false); };
+  /** @type {function():void} @private */
+  this.callToggleFullScreen_ = function() { that.toggleFullScreen_(); };
+  /** @type {remoting.MenuButton} @private */
+  this.screenOptionsMenu_ = new remoting.MenuButton(
+      document.getElementById('screen-options-menu'),
+      function() { that.onShowOptionsMenu_(); }
+  );
+  /** @type {HTMLElement} @private */
+  this.shrinkToFit_ = document.getElementById('enable-shrink-to-fit');
+  /** @type {HTMLElement} @private */
+  this.originalSize_ = document.getElementById('disable-shrink-to-fit');
+  /** @type {HTMLElement} @private */
+  this.fullScreen_ = document.getElementById('toggle-full-screen');
+  this.shrinkToFit_.addEventListener('click', this.callEnableShrink_, false);
+  this.originalSize_.addEventListener('click', this.callDisableShrink_, false);
+  this.fullScreen_.addEventListener('click', this.callToggleFullScreen_, false);
 };
 
 // Note that the positive values in both of these enums are copied directly
@@ -88,7 +110,8 @@ remoting.ClientSession.ConnectionError = {
   HOST_IS_OFFLINE: 1,
   SESSION_REJECTED: 2,
   INCOMPATIBLE_PROTOCOL: 3,
-  NETWORK_FAILURE: 4
+  NETWORK_FAILURE: 4,
+  HOST_OVERLOAD: 5
 };
 
 // The mode of this session.
@@ -185,6 +208,31 @@ remoting.ClientSession.prototype.createClientPlugin_ = function(container, id) {
 };
 
 /**
+ * Callback function called when the plugin element gets focus.
+ */
+remoting.ClientSession.prototype.pluginGotFocus_ = function() {
+  // It would be cleaner to send a paste command to the plugin element,
+  // but that's not supported.
+  /** @type {function(string): void } */
+  document.execCommand;
+  document.execCommand("paste");
+};
+
+/**
+ * Callback function called when the plugin element loses focus.
+ */
+remoting.ClientSession.prototype.pluginLostFocus_ = function() {
+  if (this.plugin) {
+    // Release all keys to prevent them becoming 'stuck down' on the host.
+    this.plugin.releaseAllKeys();
+    if (this.plugin.element()) {
+      // Focus should stay on the element, not (for example) the toolbar.
+      this.plugin.element().focus();
+    }
+  }
+};
+
+/**
  * Adds <embed> element to |container| and readies the sesion object.
  *
  * @param {Element} container The element to add the plugin to.
@@ -195,7 +243,6 @@ remoting.ClientSession.prototype.createPluginAndConnect =
   this.plugin = this.createClientPlugin_(container, this.PLUGIN_ID);
 
   this.plugin.element().focus();
-  this.plugin.element().addEventListener('blur', this.refocusPlugin_, false);
 
   /** @type {remoting.ClientSession} */
   var that = this;
@@ -203,6 +250,10 @@ remoting.ClientSession.prototype.createPluginAndConnect =
   this.plugin.initialize(function(result) {
       that.onPluginInitialized_(oauth2AccessToken, result);
     });
+  this.plugin.element().addEventListener(
+      'focus', this.callPluginGotFocus_, false);
+  this.plugin.element().addEventListener(
+      'blur', this.callPluginLostFocus_, false);
 };
 
 /**
@@ -226,7 +277,8 @@ remoting.ClientSession.prototype.onPluginInitialized_ =
     return;
   }
 
-  // Enable scale-to-fit if the plugin is new enough for high-quality scaling.
+  // Enable scale-to-fit if and only if the plugin is new enough for
+  // high-quality scaling.
   this.setScaleToFit(this.plugin.isHiQualityScalingSupported());
 
   /** @type {remoting.ClientSession} */ var that = this;
@@ -261,10 +313,17 @@ remoting.ClientSession.prototype.onPluginInitialized_ =
 remoting.ClientSession.prototype.removePlugin = function() {
   if (this.plugin) {
     this.plugin.element().removeEventListener(
-        'blur', this.refocusPlugin_, false);
+        'focus', this.callPluginGotFocus_, false);
+    this.plugin.element().removeEventListener(
+        'blur', this.callPluginLostFocus_, false);
     this.plugin.cleanup();
     this.plugin = null;
   }
+  this.shrinkToFit_.removeEventListener('click', this.callEnableShrink_, false);
+  this.originalSize_.removeEventListener('click', this.callDisableShrink_,
+                                         false);
+  this.fullScreen_.removeEventListener('click', this.callToggleFullScreen_,
+                                       false);
 };
 
 /**
@@ -497,4 +556,29 @@ remoting.ClientSession.prototype.getPerfStats = function() {
  */
 remoting.ClientSession.prototype.logStatistics = function(stats) {
   this.logToServer.logStatistics(stats, this.mode);
+};
+
+/**
+ * Toggles between full-screen and windowed mode.
+ * @return {void} Nothing.
+ * @private
+ */
+remoting.ClientSession.prototype.toggleFullScreen_ = function() {
+  if (document.webkitIsFullScreen) {
+    document.webkitCancelFullScreen();
+  } else {
+    document.body.webkitRequestFullScreen();
+  }
+};
+
+/**
+ * Updates the options menu to reflect the current scale-to-fit and full-screen
+ * settings.
+ * @return {void} Nothing.
+ * @private
+ */
+remoting.ClientSession.prototype.onShowOptionsMenu_ = function() {
+  remoting.MenuButton.select(this.shrinkToFit_, this.scaleToFit);
+  remoting.MenuButton.select(this.originalSize_, !this.scaleToFit);
+  remoting.MenuButton.select(this.fullScreen_, document.webkitIsFullScreen);
 };

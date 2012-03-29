@@ -106,7 +106,6 @@ extern const char kWebKitGlobalJavascriptCanOpenWindowsAutomatically[];
 extern const char kWebKitJavascriptCanOpenWindowsAutomatically[];
 extern const char kWebKitGlobalLoadsImagesAutomatically[];
 extern const char kWebKitLoadsImagesAutomatically[];
-extern const char kWebKitImagesEnabled[];
 extern const char kWebKitGlobalPluginsEnabled[];
 extern const char kWebKitPluginsEnabled[];
 extern const char kWebKitDomPasteEnabled[];
@@ -118,7 +117,6 @@ extern const char kWebKitJavaEnabled[];
 extern const char kWebkitTabsToLinks[];
 extern const char kWebKitAllowDisplayingInsecureContent[];
 extern const char kWebKitAllowRunningInsecureContent[];
-extern const char kWebKitXSSAuditorEnabled[];
 extern const char kPasswordManagerEnabled[];
 extern const char kPasswordManagerAllowShowPasswords[];
 extern const char kAutologinEnabled[];
@@ -168,9 +166,13 @@ extern const char kAudioMute[];
 extern const char kAudioVolumeDb[];
 extern const char kAudioVolumePercent[];
 extern const char kTapToClickEnabled[];
+extern const char kNaturalScroll[];
 extern const char kPrimaryMouseButtonRight[];
 extern const char kTouchpadSensitivity[];
 extern const char kUse24HourClock[];
+extern const char kDisableGData[];
+extern const char kDisableGDataOverCellular[];
+extern const char kDisableGDataHostedFiles[];
 // TODO(yusukes): Change "kLanguageABC" to "kABC". The current form is too long
 // to remember and confusing. The prefs are actually for input methods and i18n
 // keyboards, not UI languages.
@@ -314,7 +316,6 @@ extern const char kEditBookmarksEnabled[];
 extern const char kEnableTranslate[];
 extern const char kPinnedTabs[];
 extern const char kHttpThrottlingEnabled[];
-extern const char kHttpThrottlingMayExperiment[];
 
 extern const char kDisable3DAPIs[];
 extern const char kEnableHyperlinkAuditing[];
@@ -552,6 +553,7 @@ extern const char kSyncUsingSecondaryPassphrase[];
 extern const char kSyncEncryptionBootstrapToken[];
 extern const char kSyncAcknowledgedSyncTypes[];
 extern const char kSyncMaxInvalidationVersions[];
+extern const char kSyncSessionsGUID[];
 
 extern const char kSyncPromoStartupCount[];
 extern const char kSyncPromoViewCount[];
@@ -676,6 +678,9 @@ extern const char kMaximumTouchDownDurationInSecondsForClick[];
 extern const char kMaximumTouchMoveInPixelsForClick[];
 extern const char kMinFlickSpeedSquared[];
 extern const char kMinimumTouchDownDurationInSecondsForClick[];
+
+extern const char kShelfAutoHideBehavior[];
+
 #endif
 
 extern const char kInManagedMode[];

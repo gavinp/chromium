@@ -8,11 +8,14 @@
 #include "chrome/browser/bookmarks/bookmark_extension_api.h"
 #include "chrome/browser/bookmarks/bookmark_manager_extension_api.h"
 #include "chrome/browser/download/download_extension_api.h"
+#include "chrome/browser/extensions/api/alarms/alarms_api.h"
 #include "chrome/browser/extensions/api/app/app_api.h"
 #include "chrome/browser/extensions/api/browsing_data/browsing_data_api.h"
 #include "chrome/browser/extensions/api/declarative/declarative_api.h"
 #include "chrome/browser/extensions/api/extension_action/extension_browser_actions_api.h"
 #include "chrome/browser/extensions/api/extension_action/extension_page_actions_api.h"
+#include "chrome/browser/extensions/api/identity/identity_api.h"
+#include "chrome/browser/extensions/api/offscreen_tabs/offscreen_tabs_api.h"
 #include "chrome/browser/extensions/api/permissions/permissions_api.h"
 #include "chrome/browser/extensions/api/serial/serial_api.h"
 #include "chrome/browser/extensions/api/socket/socket_api.h"
@@ -36,8 +39,6 @@
 #include "chrome/browser/extensions/extension_processes_api.h"
 #include "chrome/browser/extensions/extension_tabs_module.h"
 #include "chrome/browser/extensions/extension_test_api.h"
-#include "chrome/browser/extensions/extension_tts_api.h"
-#include "chrome/browser/extensions/extension_tts_engine_api.h"
 #include "chrome/browser/extensions/extension_web_socket_proxy_private_api.h"
 #include "chrome/browser/extensions/extension_webnavigation_api.h"
 #include "chrome/browser/extensions/extension_webstore_private_api.h"
@@ -48,6 +49,8 @@
 #include "chrome/browser/infobars/infobar_extension_api.h"
 #include "chrome/browser/rlz/rlz_extension_api.h"
 #include "chrome/browser/speech/speech_input_extension_api.h"
+#include "chrome/browser/speech/extension_api/tts_extension_api.h"
+#include "chrome/browser/speech/extension_api/tts_engine_extension_api.h"
 #include "chrome/common/extensions/api/generated_api.h"
 
 #if defined(TOOLKIT_VIEWS)
@@ -60,6 +63,7 @@
 
 #if defined(OS_CHROMEOS)
 #include "chrome/browser/chromeos/extensions/file_browser_private_api.h"
+#include "chrome/browser/chromeos/extensions/offers_private_api.h"
 #include "chrome/browser/chromeos/media/media_player_extension_api.h"
 #include "chrome/browser/extensions/api/terminal/terminal_private_api.h"
 #include "chrome/browser/extensions/extension_info_private_api_chromeos.h"
@@ -81,6 +85,13 @@ ExtensionFunctionRegistry::~ExtensionFunctionRegistry() {
 
 void ExtensionFunctionRegistry::ResetFunctions() {
   // Register all functions here.
+
+  // Alarms
+  RegisterFunction<AlarmsCreateFunction>();
+  RegisterFunction<AlarmsGetFunction>();
+  RegisterFunction<AlarmsGetAllFunction>();
+  RegisterFunction<AlarmsClearFunction>();
+  RegisterFunction<AlarmsClearAllFunction>();
 
   // Windows
   RegisterFunction<GetWindowFunction>();
@@ -141,7 +152,7 @@ void ExtensionFunctionRegistry::ResetFunctions() {
   RegisterFunction<RemoveHistoryFunction>();
   RegisterFunction<RemoveIndexedDBFunction>();
   RegisterFunction<RemoveLocalStorageFunction>();
-  RegisterFunction<RemoveOriginBoundCertsFunction>();
+  RegisterFunction<RemoveServerBoundCertsFunction>();
   RegisterFunction<RemovePluginDataFunction>();
   RegisterFunction<RemovePasswordsFunction>();
   RegisterFunction<RemoveWebSQLFunction>();
@@ -205,7 +216,7 @@ void ExtensionFunctionRegistry::ResetFunctions() {
   RegisterFunction<MetricsRecordLongTimeFunction>();
 
   // RLZ.
-#if defined(OS_WIN)
+#if defined(OS_WIN) || defined(OS_MACOSX)
   RegisterFunction<RlzRecordProductEventFunction>();
   RegisterFunction<RlzGetAccessPointRlzFunction>();
   RegisterFunction<RlzSendFinancialPingFunction>();
@@ -361,6 +372,9 @@ void ExtensionFunctionRegistry::ResetFunctions() {
   RegisterFunction<PinGDataFileFunction>();
   RegisterFunction<GetFileLocationsFunction>();
   RegisterFunction<GetGDataFilesFunction>();
+  RegisterFunction<GetFileTransfersFunction>();
+  RegisterFunction<CancelFileTransfersFunction>();
+  RegisterFunction<TransferFileFunction>();
 
   // Mediaplayer
   RegisterFunction<PlayMediaplayerFunction>();
@@ -370,6 +384,10 @@ void ExtensionFunctionRegistry::ResetFunctions() {
 
   // InputMethod
   RegisterFunction<GetInputMethodFunction>();
+
+  // Offers
+  RegisterFunction<GetCouponCodeFunction>();
+  RegisterFunction<GetUserConsentFunction>();
 
   // Terminal
   RegisterFunction<OpenTerminalProcessFunction>();
@@ -410,6 +428,12 @@ void ExtensionFunctionRegistry::ResetFunctions() {
   RegisterFunction<GetFontListFunction>();
   RegisterFunction<GetFontNameFunction>();
   RegisterFunction<SetFontNameFunction>();
+  RegisterFunction<GetDefaultFontSizeFunction>();
+  RegisterFunction<SetDefaultFontSizeFunction>();
+  RegisterFunction<GetDefaultFixedFontSizeFunction>();
+  RegisterFunction<SetDefaultFixedFontSizeFunction>();
+  RegisterFunction<GetMinimumFontSizeFunction>();
+  RegisterFunction<SetMinimumFontSizeFunction>();
 
   // ChromeAuth settings.
   RegisterFunction<SetCloudPrintCredentialsFunction>();
@@ -465,6 +489,19 @@ void ExtensionFunctionRegistry::ResetFunctions() {
   RegisterFunction<extensions::AddRulesFunction>();
   RegisterFunction<extensions::RemoveRulesFunction>();
   RegisterFunction<extensions::GetRulesFunction>();
+
+  // Experimental Offscreen Tabs
+  RegisterFunction<CreateOffscreenTabFunction>();
+  RegisterFunction<GetOffscreenTabFunction>();
+  RegisterFunction<GetAllOffscreenTabFunction>();
+  RegisterFunction<RemoveOffscreenTabFunction>();
+  RegisterFunction<SendKeyboardEventOffscreenTabFunction>();
+  RegisterFunction<SendMouseEventOffscreenTabFunction>();
+  RegisterFunction<ToDataUrlOffscreenTabFunction>();
+  RegisterFunction<UpdateOffscreenTabFunction>();
+
+  // Identity
+  RegisterFunction<extensions::GetAuthTokenFunction>();
 
   // Generated APIs
   extensions::api::GeneratedFunctionRegistry::RegisterAll(this);

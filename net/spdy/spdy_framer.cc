@@ -24,7 +24,7 @@
 
 using std::vector;
 
-namespace spdy {
+namespace net {
 
 // Compute the id of our dictionary so that we know we're using the
 // right one when asked for it.
@@ -60,7 +60,7 @@ FlagsAndLength CreateFlagsAndLength(SpdyControlFlags flags, size_t length) {
 }
 
 // By default is compression on or off.
-bool SpdyFramer::compression_default_ = true;
+bool g_enable_compression_default = true;
 
 // The initial size of the control frame buffer; this is used internally
 // as we parse through control frames. (It is exposed here for unit test
@@ -82,7 +82,6 @@ size_t SpdyFramer::kUncompressedControlFrameBufferInitialSize = 18;
 
 const SpdyStreamId SpdyFramer::kInvalidStream = -1;
 const size_t SpdyFramer::kHeaderDataChunkMaxSize = 1024;
-
 
 #ifdef DEBUG_SPDY_STATE_CHANGES
 #define CHANGE_STATE(newstate) \
@@ -143,7 +142,7 @@ SpdyFramer::SpdyFramer(int version)
       current_frame_len_(0),
       current_frame_capacity_(0),
       validate_control_frame_sizes_(true),
-      enable_compression_(compression_default_),
+      enable_compression_(g_enable_compression_default),
       visitor_(NULL),
       display_protocol_("SPDY"),
       spdy_version_(version),
@@ -179,7 +178,7 @@ void SpdyFramer::Reset() {
   }
   if (current_frame_capacity_ != initial_size) {
     delete [] current_frame_buffer_;
-    current_frame_buffer_ = 0;
+    current_frame_buffer_ = NULL;
     current_frame_capacity_ = 0;
     ExpandControlFrameBuffer(initial_size);
   }
@@ -353,6 +352,7 @@ size_t SpdyFramer::ProcessInput(const char* data, size_t len) {
         size_t bytes_read = ProcessCredentialFramePayload(data, len);
         len -= bytes_read;
         data += bytes_read;
+        continue;
       }
 
       case SPDY_CONTROL_FRAME_PAYLOAD: {
@@ -497,10 +497,16 @@ void SpdyFramer::ProcessControlFrameHeader() {
         }
         break;
       case GOAWAY:
-        if (current_control_frame.length() !=
-            SpdyGoAwayControlFrame::size() - SpdyFrame::kHeaderSize)
-          set_error(SPDY_INVALID_CONTROL_FRAME);
-        break;
+        {
+          // SPDY 2 GOAWAY frames are 4 bytes smaller than in SPDY 3. We account
+          // for this difference via a separate offset variable, since
+          // SpdyGoAwayControlFrame::size() returns the SPDY 3 size.
+          const size_t goaway_offset = (protocol_version() < 3) ? 4 : 0;
+          if (current_control_frame.length() + goaway_offset !=
+              SpdyGoAwayControlFrame::size() - SpdyFrame::kHeaderSize)
+            set_error(SPDY_INVALID_CONTROL_FRAME);
+          break;
+        }
       case HEADERS:
         if (current_control_frame.length() <
             SpdyHeadersControlFrame::size() - SpdyControlFrame::kHeaderSize)
@@ -851,6 +857,8 @@ size_t SpdyFramer::ProcessControlFramePayload(const char* data, size_t len) {
 }
 
 size_t SpdyFramer::ProcessCredentialFramePayload(const char* data, size_t len) {
+  // Process only up to the end of this CREDENTIAL frame.
+  len = std::min(len, remaining_control_payload_);
   bool processed_succesfully = visitor_->OnCredentialFrameData(data, len);
   remaining_control_payload_ -= len;
   remaining_data_ -= len;
@@ -858,6 +866,7 @@ size_t SpdyFramer::ProcessCredentialFramePayload(const char* data, size_t len) {
     set_error(SPDY_CREDENTIAL_FRAME_CORRUPT);
   } else if (remaining_control_payload_ == 0) {
     visitor_->OnCredentialFrameData(NULL, 0);
+    CHANGE_STATE(SPDY_AUTO_RESET);
   }
   return len;
 }
@@ -930,8 +939,10 @@ void SpdyFramer::ExpandControlFrameBuffer(size_t size) {
   if (alloc_size <= current_frame_capacity_)
     return;
   char* new_buffer = new char[alloc_size];
-  memcpy(new_buffer, current_frame_buffer_, current_frame_len_);
-  delete [] current_frame_buffer_;
+  if (current_frame_buffer_ != NULL) {
+    memcpy(new_buffer, current_frame_buffer_, current_frame_len_);
+    delete [] current_frame_buffer_;
+  }
   current_frame_capacity_ = alloc_size;
   current_frame_buffer_ = new_buffer;
 }
@@ -1049,6 +1060,7 @@ SpdySynStreamControlFrame* SpdyFramer::CreateSynStream(
     SpdyStreamId stream_id,
     SpdyStreamId associated_stream_id,
     SpdyPriority priority,
+    uint8 credential_slot,
     SpdyControlFlags flags,
     bool compressed,
     const SpdyHeaderBlock* headers) {
@@ -1076,7 +1088,8 @@ SpdySynStreamControlFrame* SpdyFramer::CreateSynStream(
     priority = GetLowestPriority();
   }
   // Priority is 2 bits for <spdy3, 3 bits otherwise.
-  frame.WriteUInt16(ntohs(priority) << (spdy_version_ < 3 ? 6 : 5));
+  frame.WriteUInt8(priority << ((spdy_version_ < 3) ? 6 : 5));
+  frame.WriteUInt8((spdy_version_ < 3) ? 0 : credential_slot);
   WriteHeaderBlock(&frame, headers);
 
   scoped_ptr<SpdySynStreamControlFrame> syn_frame(
@@ -1176,15 +1189,24 @@ SpdyPingControlFrame* SpdyFramer::CreatePingFrame(uint32 unique_id) const {
 }
 
 SpdyGoAwayControlFrame* SpdyFramer::CreateGoAway(
-    SpdyStreamId last_accepted_stream_id) const {
+    SpdyStreamId last_accepted_stream_id,
+    SpdyGoAwayStatus status) const {
   DCHECK_EQ(0u, last_accepted_stream_id & ~kStreamIdMask);
 
-  SpdyFrameBuilder frame(SpdyGoAwayControlFrame::size());
+  // SPDY 2 GOAWAY frames are 4 bytes smaller than in SPDY 3. We account for
+  // this difference via a separate offset variable, since
+  // SpdyGoAwayControlFrame::size() returns the SPDY 3 size.
+  const size_t goaway_offset = (protocol_version() < 3) ? 4 : 0;
+  SpdyFrameBuilder frame(SpdyGoAwayControlFrame::size() - goaway_offset);
   frame.WriteUInt16(kControlFlagMask | spdy_version_);
   frame.WriteUInt16(GOAWAY);
-  size_t go_away_size = SpdyGoAwayControlFrame::size() - SpdyFrame::kHeaderSize;
+  size_t go_away_size =
+      SpdyGoAwayControlFrame::size() - SpdyFrame::kHeaderSize - goaway_offset;
   frame.WriteUInt32(go_away_size);
   frame.WriteUInt32(last_accepted_stream_id);
+  if (protocol_version() >= 3) {
+    frame.WriteUInt32(status);
+  }
   return reinterpret_cast<SpdyGoAwayControlFrame*>(frame.take());
 }
 
@@ -1237,7 +1259,7 @@ SpdyWindowUpdateControlFrame* SpdyFramer::CreateWindowUpdate(
   DCHECK_EQ(0u, stream_id & ~kStreamIdMask);
   DCHECK_GT(delta_window_size, 0u);
   DCHECK_LE(delta_window_size,
-            static_cast<uint32>(spdy::kSpdyStreamMaximumWindowSize));
+            static_cast<uint32>(kSpdyStreamMaximumWindowSize));
 
   SpdyFrameBuilder frame(SpdyWindowUpdateControlFrame::size());
   frame.WriteUInt16(kControlFlagMask | spdy_version_);
@@ -1688,7 +1710,8 @@ SpdyFrame* SpdyFramer::DuplicateFrame(const SpdyFrame& frame) {
   return new_frame;
 }
 
-size_t SpdyFramer::GetMinimumControlFrameSize(SpdyControlType type) {
+size_t SpdyFramer::GetMinimumControlFrameSize(int version,
+                                              SpdyControlType type) {
   switch (type) {
     case SYN_STREAM:
       return SpdySynStreamControlFrame::size();
@@ -1706,7 +1729,14 @@ size_t SpdyFramer::GetMinimumControlFrameSize(SpdyControlType type) {
     case PING:
       return SpdyPingControlFrame::size();
     case GOAWAY:
-      return SpdyGoAwayControlFrame::size();
+      if (version < 3) {
+        // SPDY 2 GOAWAY is smaller by 32 bits. Since
+        // SpdyGoAwayControlFrame::size() returns the size for SPDY 3, we adjust
+        // before returning here.
+        return SpdyGoAwayControlFrame::size() - 4;
+      } else {
+        return SpdyGoAwayControlFrame::size();
+      }
     case HEADERS:
       return SpdyHeadersControlFrame::size();
     case WINDOW_UPDATE:
@@ -1771,7 +1801,7 @@ void SpdyFramer::set_validate_control_frame_sizes(bool value) {
 }
 
 void SpdyFramer::set_enable_compression_default(bool value) {
-  compression_default_ = value;
+  g_enable_compression_default = value;
 }
 
-}  // namespace spdy
+}  // namespace net

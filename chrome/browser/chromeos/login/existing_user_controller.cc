@@ -19,9 +19,9 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/chromeos/accessibility/accessibility_util.h"
 #include "chrome/browser/chromeos/boot_times_loader.h"
-#include "chrome/browser/chromeos/cros_settings.h"
 #include "chrome/browser/chromeos/cros/cros_library.h"
 #include "chrome/browser/chromeos/cros/network_library.h"
+#include "chrome/browser/chromeos/cros_settings.h"
 #include "chrome/browser/chromeos/customization_document.h"
 #include "chrome/browser/chromeos/dbus/dbus_thread_manager.h"
 #include "chrome/browser/chromeos/dbus/session_manager_client.h"
@@ -91,6 +91,9 @@ const char kCaptivePortalLaunchURL[] = "http://www.google.com/";
 
 // Delay for transferring the auth cache to the system profile.
 const long int kAuthCacheTransferDelayMs = 2000;
+
+// Delay for restarting the ui if safe-mode login has failed.
+const long int kSafeModeRestartUiDelayMs = 30000;
 
 // Makes a call to the policy subsystem to reload the policy when we detect
 // authentication change.
@@ -399,11 +402,9 @@ void ExistingUserController::LoginAsGuest() {
 
   // Check allow_guest in case this call is fired from key accelerator.
   // Must not proceed without signature verification.
-  bool trusted_setting_available = cros_settings_->GetTrusted(
-      kAccountsPrefAllowGuest,
+  if (!cros_settings_->PrepareTrustedValues(
       base::Bind(&ExistingUserController::LoginAsGuest,
-                 weak_factory_.GetWeakPtr()));
-  if (!trusted_setting_available) {
+                 weak_factory_.GetWeakPtr()))) {
     // Value of AllowGuest setting is still not verified.
     // Another attempt will be invoked again after verification completion.
     return;
@@ -474,7 +475,15 @@ void ExistingUserController::OnLoginFailure(const LoginFailure& failure) {
   guest_mode_url_ = GURL::EmptyGURL();
   std::string error = failure.GetErrorString();
 
-  if (!online_succeeded_for_.empty()) {
+  if (failure.reason() == LoginFailure::OWNER_REQUIRED) {
+    ShowError(IDS_LOGIN_ERROR_OWNER_REQUIRED, error);
+    content::BrowserThread::PostDelayedTask(
+        content::BrowserThread::UI, FROM_HERE,
+        base::Bind(&SessionManagerClient::StopSession,
+                   base::Unretained(DBusThreadManager::Get()->
+                                    GetSessionManagerClient())),
+        kSafeModeRestartUiDelayMs);
+  } else if (!online_succeeded_for_.empty()) {
     ShowGaiaPasswordChanged(online_succeeded_for_);
   } else {
     // Check networking after trying to login in case user is
@@ -623,12 +632,9 @@ void ExistingUserController::OnOffTheRecordLoginSuccess() {
 
 void ExistingUserController::OnPasswordChangeDetected() {
   // Must not proceed without signature verification.
-  bool trusted_setting_available = cros_settings_->GetTrusted(
-      kDeviceOwner,
+  if (!cros_settings_->PrepareTrustedValues(
       base::Bind(&ExistingUserController::OnPasswordChangeDetected,
-                 weak_factory_.GetWeakPtr()));
-
-  if (!trusted_setting_available) {
+                 weak_factory_.GetWeakPtr()))) {
     // Value of owner email is still not verified.
     // Another attempt will be invoked after verification completion.
     return;
@@ -640,9 +646,8 @@ void ExistingUserController::OnPasswordChangeDetected() {
   // TODO(gspencer): We shouldn't have to erase stateful data when
   // doing this.  See http://crosbug.com/9115 http://crosbug.com/7792
   PasswordChangedView* view = new PasswordChangedView(this, false);
-  views::Widget* window = browser::CreateViewsWindow(GetNativeWindow(),
-                                                     view,
-                                                     STYLE_GENERIC);
+  views::Widget* window = views::Widget::CreateWindowWithParent(
+      view, GetNativeWindow());
   window->SetAlwaysOnTop(true);
   window->Show();
 

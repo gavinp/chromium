@@ -26,11 +26,11 @@ const AcceleratorData kAcceleratorData[] = {
 
   // Accelerators that should be processed after a key is sent to an IME.
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_TAB, false, false, true,
-    CYCLE_FORWARD },
+    CYCLE_FORWARD_MRU },
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_TAB, true, false, true,
-    CYCLE_BACKWARD },
+    CYCLE_BACKWARD_MRU },
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_F5, false, false, false,
-    CYCLE_FORWARD },
+    CYCLE_FORWARD_LINEAR },
 #if defined(OS_CHROMEOS)
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_BRIGHTNESS_DOWN, false, false, false,
     BRIGHTNESS_DOWN },
@@ -39,8 +39,11 @@ const AcceleratorData kAcceleratorData[] = {
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_L, true, true, false, LOCK_SCREEN },
 #endif
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_Q, true, true, false, EXIT },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_N, true, true, false,
+      NEW_INCOGNITO_WINDOW },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_N, false, true, false, NEW_WINDOW },
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_F5, true, false, false,
-    CYCLE_BACKWARD },
+    CYCLE_BACKWARD_LINEAR },
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_F5, false, true, false,
     TAKE_SCREENSHOT },
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_F5, true, true, false,
@@ -67,7 +70,28 @@ const AcceleratorData kAcceleratorData[] = {
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_F10, false, false, false, VOLUME_UP },
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_VOLUME_UP, false, false, false,
     VOLUME_UP },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_S, true, false, true, FOCUS_TRAY },
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_F1, true, true, false, SHOW_OAK },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_1, false, false, true,
+    SELECT_WIN_0 },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_2, false, false, true,
+    SELECT_WIN_1 },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_3, false, false, true,
+    SELECT_WIN_2 },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_4, false, false, true,
+    SELECT_WIN_3 },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_5, false, false, true,
+    SELECT_WIN_4 },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_6, false, false, true,
+    SELECT_WIN_5 },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_7, false, false, true,
+    SELECT_WIN_6 },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_8, false, false, true,
+    SELECT_WIN_7 },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_9, false, false, true,
+    SELECT_LAST_WIN },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_F3, true, true, true,
+    ROTATE_WINDOWS },
 #if !defined(NDEBUG)
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_HOME, false, true, false,
     ROTATE_SCREEN },
@@ -81,12 +105,38 @@ const AcceleratorData kAcceleratorData[] = {
     PRINT_WINDOW_HIERARCHY },
   // For testing on systems where Alt-Tab is already mapped.
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_W, false, false, true,
-    CYCLE_FORWARD },
+    CYCLE_FORWARD_MRU },
   { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_W, true, false, true,
-    CYCLE_BACKWARD },
+    CYCLE_BACKWARD_MRU },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_F4, false, true, false,
+    ADD_REMOVE_MONITOR },
+  { ui::ET_TRANSLATED_KEY_PRESS, ui::VKEY_F4, true, true, false,
+    CYCLE_MONITOR },
 #endif
 };
 
 const size_t kAcceleratorDataLength = arraysize(kAcceleratorData);
+
+const AcceleratorAction kActionsAllowedAtLoginScreen[] = {
+  BRIGHTNESS_DOWN,
+  BRIGHTNESS_UP,
+  NEXT_IME,
+  PREVIOUS_IME,
+  SWITCH_IME,  // Switch to another IME depending on the accelerator.
+  TAKE_SCREENSHOT,
+  TAKE_PARTIAL_SCREENSHOT,
+  VOLUME_DOWN,
+  VOLUME_MUTE,
+  VOLUME_UP,
+  ROTATE_WINDOWS,
+#if !defined(NDEBUG)
+  PRINT_LAYER_HIERARCHY,
+  PRINT_WINDOW_HIERARCHY,
+  ROTATE_SCREEN,
+#endif
+};
+
+const size_t kActionsAllowedAtLoginScreenLength =
+    arraysize(kActionsAllowedAtLoginScreen);
 
 }  // namespace ash

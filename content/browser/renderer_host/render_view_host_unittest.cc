@@ -5,7 +5,7 @@
 #include "content/browser/child_process_security_policy_impl.h"
 #include "content/browser/renderer_host/test_render_view_host.h"
 #include "content/browser/tab_contents/navigation_controller_impl.h"
-#include "content/browser/tab_contents/test_tab_contents.h"
+#include "content/browser/tab_contents/test_web_contents.h"
 #include "content/common/view_messages.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/common/bindings_policy.h"
@@ -15,6 +15,7 @@
 #include "webkit/glue/webdropdata.h"
 
 using content::RenderViewHostImplTestHarness;
+using content::TestWebContents;
 
 class RenderViewHostTest : public RenderViewHostImplTestHarness {
 };
@@ -67,8 +68,8 @@ TEST_F(RenderViewHostTest, ResetUnloadOnReload) {
 // Ensure we do not grant bindings to a process shared with unprivileged views.
 TEST_F(RenderViewHostTest, DontGrantBindingsToSharedProcess) {
   // Create another view in the same process.
-  scoped_ptr<TestTabContents> new_tab(
-      new TestTabContents(browser_context(), rvh()->GetSiteInstance()));
+  scoped_ptr<TestWebContents> new_tab(
+      new TestWebContents(browser_context(), rvh()->GetSiteInstance()));
 
   rvh()->AllowBindings(content::BINDINGS_POLICY_WEB_UI);
   EXPECT_FALSE(rvh()->GetEnabledBindings() & content::BINDINGS_POLICY_WEB_UI);
@@ -124,17 +125,17 @@ class MockDraggingRenderViewHostDelegateView
 };
 
 TEST_F(RenderViewHostTest, StartDragging) {
-  TestTabContents* tab_contents = contents();
+  TestWebContents* web_contents = contents();
   MockDraggingRenderViewHostDelegateView view_delegate;
-  tab_contents->set_view_delegate(&view_delegate);
+  web_contents->set_view_delegate(&view_delegate);
 
   WebDropData drop_data;
   GURL file_url = GURL("file:///home/user/secrets.txt");
   drop_data.url = file_url;
   drop_data.html_base_url = file_url;
   test_rvh()->TestOnMsgStartDragging(drop_data);
-  EXPECT_TRUE(view_delegate.drag_url().is_empty());
-  EXPECT_TRUE(view_delegate.html_base_url().is_empty());
+  EXPECT_EQ(GURL("about:blank"), view_delegate.drag_url());
+  EXPECT_EQ(GURL("about:blank"), view_delegate.html_base_url());
 
   GURL http_url = GURL("http://www.domain.com/index.html");
   drop_data.url = http_url;
@@ -181,7 +182,7 @@ TEST_F(RenderViewHostTest, BadMessageHandlerRenderViewHost) {
   // two payload items but the one we construct has none.
   IPC::Message message(0, ViewHostMsg_UpdateTargetURL::ID,
                        IPC::Message::PRIORITY_NORMAL);
-  test_rvh()->TestOnMessageReceived(message);
+  test_rvh()->OnMessageReceived(message);
   EXPECT_EQ(1, process()->bad_msg_count());
 }
 
@@ -193,7 +194,7 @@ TEST_F(RenderViewHostTest, BadMessageHandlerRenderWidgetHost) {
   // one payload item but the one we construct has none.
   IPC::Message message(0, ViewHostMsg_UpdateRect::ID,
                        IPC::Message::PRIORITY_NORMAL);
-  test_rvh()->TestOnMessageReceived(message);
+  test_rvh()->OnMessageReceived(message);
   EXPECT_EQ(1, process()->bad_msg_count());
 }
 
@@ -206,7 +207,7 @@ TEST_F(RenderViewHostTest, BadMessageHandlerInputEventAck) {
   // OnMsgInputEventAck() processing.
   IPC::Message message(0, ViewHostMsg_HandleInputEvent_ACK::ID,
                        IPC::Message::PRIORITY_NORMAL);
-  test_rvh()->TestOnMessageReceived(message);
+  test_rvh()->OnMessageReceived(message);
   EXPECT_EQ(1, process()->bad_msg_count());
 }
 

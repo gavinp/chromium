@@ -5,16 +5,30 @@
 #include "webkit/dom_storage/dom_storage_area.h"
 
 #include "base/bind.h"
+#include "base/file_util.h"
+#include "base/location.h"
 #include "base/logging.h"
 #include "base/time.h"
-#include "base/tracked_objects.h"
+#include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebString.h"
+#include "webkit/database/database_util.h"
 #include "webkit/dom_storage/dom_storage_map.h"
 #include "webkit/dom_storage/dom_storage_namespace.h"
 #include "webkit/dom_storage/dom_storage_task_runner.h"
 #include "webkit/dom_storage/dom_storage_types.h"
 #include "webkit/fileapi/file_system_util.h"
+#include "webkit/glue/webkit_glue.h"
+
+using webkit_database::DatabaseUtil;
 
 namespace dom_storage {
+
+static const int kCommitTimerSeconds = 1;
+
+DomStorageArea::CommitBatch::CommitBatch()
+  : clear_all_first(false) {
+}
+DomStorageArea::CommitBatch::~CommitBatch() {}
+
 
 // static
 const FilePath::CharType DomStorageArea::kDatabaseFileExtension[] =
@@ -30,6 +44,14 @@ FilePath DomStorageArea::DatabaseFileNameFromOrigin(const GURL& origin) {
       InsertBeforeExtensionASCII(filename);
 }
 
+// static
+GURL DomStorageArea::OriginFromDatabaseFileName(const FilePath& name) {
+  DCHECK(name.MatchesExtension(kDatabaseFileExtension));
+  WebKit::WebString origin_id = webkit_glue::FilePathToWebString(
+      name.BaseName().RemoveExtension());
+  return DatabaseUtil::GetOriginFromIdentifier(origin_id);
+}
+
 DomStorageArea::DomStorageArea(
     int64 namespace_id, const GURL& origin,
     const FilePath& directory, DomStorageTaskRunner* task_runner)
@@ -37,51 +59,35 @@ DomStorageArea::DomStorageArea(
       directory_(directory),
       task_runner_(task_runner),
       map_(new DomStorageMap(kPerAreaQuota)),
-      backing_(NULL),
-      initial_import_done_(false),
-      clear_all_next_commit_(false),
-      commit_in_flight_(false) {
-
+      is_initial_import_done_(true),
+      is_shutdown_(false) {
   if (namespace_id == kLocalStorageNamespaceId && !directory.empty()) {
     FilePath path = directory.Append(DatabaseFileNameFromOrigin(origin_));
     backing_.reset(new DomStorageDatabase(path));
-  } else {
-    // Not a local storage area or no directory specified for backing
-    // database, (i.e. it's an incognito profile).
-    initial_import_done_ = true;
+    is_initial_import_done_ = false;
   }
 }
 
 DomStorageArea::~DomStorageArea() {
-  if (clear_all_next_commit_ || !changed_values_.empty()) {
-    // Still some data left that was not committed to disk, try now.
-    // We do this regardless of whether we think a commit is in flight
-    // as there is no guarantee that that commit will actually get
-    // processed. For example the task_runner_'s message loop could
-    // unexpectedly quit before the delayed task is fired and leave the
-    // commit_in_flight_ flag set. But there's no way for us to determine
-    // that has happened so force a commit now.
-
-    CommitChanges();
-
-    // TODO(benm): It's possible that the commit failed, and in
-    // that case we're going to lose data. Integrate with UMA
-    // to gather stats about how often this actually happens,
-    // so that we can figure out a contingency plan.
-  }
 }
 
 unsigned DomStorageArea::Length() {
+  if (is_shutdown_)
+    return 0;
   InitialImportIfNeeded();
   return map_->Length();
 }
 
 NullableString16 DomStorageArea::Key(unsigned index) {
+  if (is_shutdown_)
+    return NullableString16(true);
   InitialImportIfNeeded();
   return map_->Key(index);
 }
 
 NullableString16 DomStorageArea::GetItem(const string16& key) {
+  if (is_shutdown_)
+    return NullableString16(true);
   InitialImportIfNeeded();
   return map_->GetItem(key);
 }
@@ -89,31 +95,36 @@ NullableString16 DomStorageArea::GetItem(const string16& key) {
 bool DomStorageArea::SetItem(const string16& key,
                              const string16& value,
                              NullableString16* old_value) {
+  if (is_shutdown_)
+    return false;
   InitialImportIfNeeded();
-
   if (!map_->HasOneRef())
     map_ = map_->DeepCopy();
   bool success = map_->SetItem(key, value, old_value);
   if (success && backing_.get()) {
-    changed_values_[key] = NullableString16(value, false);
-    ScheduleCommitChanges();
+    CommitBatch* commit_batch = CreateCommitBatchIfNeeded();
+    commit_batch->changed_values[key] = NullableString16(value, false);
   }
   return success;
 }
 
 bool DomStorageArea::RemoveItem(const string16& key, string16* old_value) {
+  if (is_shutdown_)
+    return false;
   InitialImportIfNeeded();
   if (!map_->HasOneRef())
     map_ = map_->DeepCopy();
   bool success = map_->RemoveItem(key, old_value);
   if (success && backing_.get()) {
-    changed_values_[key] = NullableString16(true);
-    ScheduleCommitChanges();
+    CommitBatch* commit_batch = CreateCommitBatchIfNeeded();
+    commit_batch->changed_values[key] = NullableString16(true);
   }
   return success;
 }
 
 bool DomStorageArea::Clear() {
+  if (is_shutdown_)
+    return false;
   InitialImportIfNeeded();
   if (map_->Length() == 0)
     return false;
@@ -121,9 +132,9 @@ bool DomStorageArea::Clear() {
   map_ = new DomStorageMap(kPerAreaQuota);
 
   if (backing_.get()) {
-    changed_values_.clear();
-    clear_all_next_commit_ = true;
-    ScheduleCommitChanges();
+    CommitBatch* commit_batch = CreateCommitBatchIfNeeded();
+    commit_batch->clear_all_first = true;
+    commit_batch->changed_values.clear();
   }
 
   return true;
@@ -132,17 +143,73 @@ bool DomStorageArea::Clear() {
 DomStorageArea* DomStorageArea::ShallowCopy(int64 destination_namespace_id) {
   DCHECK_NE(kLocalStorageNamespaceId, namespace_id_);
   DCHECK_NE(kLocalStorageNamespaceId, destination_namespace_id);
-  // SessionNamespaces aren't backed by files on disk.
-  DCHECK(!backing_.get());
+  DCHECK(!backing_.get());  // SessionNamespaces aren't stored on disk.
 
   DomStorageArea* copy = new DomStorageArea(destination_namespace_id, origin_,
                                             FilePath(), task_runner_);
   copy->map_ = map_;
+  copy->is_shutdown_ = is_shutdown_;
   return copy;
 }
 
+bool DomStorageArea::HasUncommittedChanges() const {
+  DCHECK(!is_shutdown_);
+  return commit_batch_.get() || in_flight_commit_batch_.get();
+}
+
+void DomStorageArea::DeleteOrigin() {
+  DCHECK(!is_shutdown_);
+  if (HasUncommittedChanges()) {
+    // TODO(michaeln): This logically deletes the data immediately,
+    // and in a matter of a second, deletes the rows from the backing
+    // database file, but the file itself will linger until shutdown
+    // or purge time. Ideally, this should delete the file more
+    // quickly.
+    Clear();
+    return;
+  }
+  map_ = new DomStorageMap(kPerAreaQuota);
+  if (backing_.get()) {
+    is_initial_import_done_ = false;
+    backing_.reset(new DomStorageDatabase(backing_->file_path()));
+    file_util::Delete(backing_->file_path(), false);
+    file_util::Delete(
+        DomStorageDatabase::GetJournalFilePath(backing_->file_path()), false);
+  }
+}
+
+void DomStorageArea::PurgeMemory() {
+  DCHECK(!is_shutdown_);
+  if (!is_initial_import_done_ ||  // We're not using any memory.
+      !backing_.get() ||  // We can't purge anything.
+      HasUncommittedChanges())  // We leave things alone with changes pending.
+    return;
+
+  // Drop the in memory cache, we'll reload when needed.
+  is_initial_import_done_ = false;
+  map_ = new DomStorageMap(kPerAreaQuota);
+
+  // Recreate the database object, this frees up the open sqlite connection
+  // and its page cache.
+  backing_.reset(new DomStorageDatabase(backing_->file_path()));
+}
+
+void DomStorageArea::Shutdown() {
+  DCHECK(!is_shutdown_);
+  is_shutdown_ = true;
+  map_ = NULL;
+  if (!backing_.get())
+    return;
+
+  bool success = task_runner_->PostShutdownBlockingTask(
+      FROM_HERE,
+      DomStorageTaskRunner::COMMIT_SEQUENCE,
+      base::Bind(&DomStorageArea::ShutdownInCommitSequence, this));
+  DCHECK(success);
+}
+
 void DomStorageArea::InitialImportIfNeeded() {
-  if (initial_import_done_)
+  if (is_initial_import_done_)
     return;
 
   DCHECK_EQ(kLocalStorageNamespaceId, namespace_id_);
@@ -151,31 +218,85 @@ void DomStorageArea::InitialImportIfNeeded() {
   ValuesMap initial_values;
   backing_->ReadAllValues(&initial_values);
   map_->SwapValues(&initial_values);
-  initial_import_done_ = true;
+  is_initial_import_done_ = true;
 }
 
-void DomStorageArea::ScheduleCommitChanges() {
-  DCHECK_EQ(kLocalStorageNamespaceId, namespace_id_);
-  DCHECK(backing_.get());
-  DCHECK(clear_all_next_commit_ || !changed_values_.empty());
-  DCHECK(task_runner_.get());
+DomStorageArea::CommitBatch* DomStorageArea::CreateCommitBatchIfNeeded() {
+  DCHECK(!is_shutdown_);
+  if (!commit_batch_.get()) {
+    commit_batch_.reset(new CommitBatch());
 
-  if (commit_in_flight_)
+    // Start a timer to commit any changes that accrue in the batch,
+    // but only if a commit is not currently in flight. In that case
+    // the timer will be started after the current commit has happened.
+    if (!in_flight_commit_batch_.get()) {
+      task_runner_->PostDelayedTask(
+          FROM_HERE,
+          base::Bind(&DomStorageArea::OnCommitTimer, this),
+          base::TimeDelta::FromSeconds(kCommitTimerSeconds));
+    }
+  }
+  return commit_batch_.get();
+}
+
+void DomStorageArea::OnCommitTimer() {
+  DCHECK_EQ(kLocalStorageNamespaceId, namespace_id_);
+  if (is_shutdown_)
     return;
 
-  commit_in_flight_ = task_runner_->PostDelayedTask(
-      FROM_HERE, base::Bind(&DomStorageArea::CommitChanges, this),
-      base::TimeDelta::FromSeconds(1));
-  DCHECK(commit_in_flight_);
+  DCHECK(backing_.get());
+  DCHECK(commit_batch_.get());
+  DCHECK(!in_flight_commit_batch_.get());
+
+  // This method executes on the primary sequence, we schedule
+  // a task for immediate execution on the commit sequence.
+  in_flight_commit_batch_ = commit_batch_.Pass();
+  bool success = task_runner_->PostShutdownBlockingTask(
+      FROM_HERE,
+      DomStorageTaskRunner::COMMIT_SEQUENCE,
+      base::Bind(&DomStorageArea::CommitChanges, this));
+  DCHECK(success);
 }
 
 void DomStorageArea::CommitChanges() {
-  DCHECK(backing_.get());
-  if (backing_->CommitChanges(clear_all_next_commit_, changed_values_)) {
-    clear_all_next_commit_ = false;
-    changed_values_.clear();
+  // This method executes on the commit sequence.
+  DCHECK(in_flight_commit_batch_.get());
+  bool success = backing_->CommitChanges(
+      in_flight_commit_batch_->clear_all_first,
+      in_flight_commit_batch_->changed_values);
+  DCHECK(success);  // TODO(michaeln): what if it fails?
+  task_runner_->PostTask(
+      FROM_HERE,
+      base::Bind(&DomStorageArea::OnCommitComplete, this));
+}
+
+void DomStorageArea::OnCommitComplete() {
+  // We're back on the primary sequence in this method.
+  if (is_shutdown_)
+    return;
+  in_flight_commit_batch_.reset();
+  if (commit_batch_.get()) {
+    // More changes have accrued, restart the timer.
+    task_runner_->PostDelayedTask(
+        FROM_HERE,
+        base::Bind(&DomStorageArea::OnCommitTimer, this),
+        base::TimeDelta::FromSeconds(kCommitTimerSeconds));
   }
-  commit_in_flight_ = false;
+}
+
+void DomStorageArea::ShutdownInCommitSequence() {
+  // This method executes on the commit sequence.
+  DCHECK(backing_.get());
+  if (commit_batch_.get()) {
+    // Commit any changes that accrued prior to the timer firing.
+    bool success = backing_->CommitChanges(
+        commit_batch_->clear_all_first,
+        commit_batch_->changed_values);
+    DCHECK(success);
+  }
+  commit_batch_.reset();
+  in_flight_commit_batch_.reset();
+  backing_.reset();
 }
 
 }  // namespace dom_storage

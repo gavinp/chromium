@@ -6,7 +6,7 @@
 
 #include "base/logging.h"
 
-namespace spdy {
+namespace net {
 
 BufferedSpdyFramer::BufferedSpdyFramer(int version)
     : spdy_framer_(version),
@@ -27,7 +27,7 @@ void BufferedSpdyFramer::set_visitor(
   spdy_framer_.set_visitor(this);
 }
 
-void BufferedSpdyFramer::OnError(spdy::SpdyFramer* spdy_framer) {
+void BufferedSpdyFramer::OnError(SpdyFramer* spdy_framer) {
   DCHECK(spdy_framer);
   visitor_->OnError(spdy_framer->error_code());
 }
@@ -42,21 +42,21 @@ void BufferedSpdyFramer::OnControl(const SpdyControlFrame* frame) {
       break;
     case GOAWAY:
       visitor_->OnGoAway(
-          *reinterpret_cast<const spdy::SpdyGoAwayControlFrame*>(frame));
+          *reinterpret_cast<const SpdyGoAwayControlFrame*>(frame));
       break;
     case PING:
       visitor_->OnPing(
-          *reinterpret_cast<const spdy::SpdyPingControlFrame*>(frame));
+          *reinterpret_cast<const SpdyPingControlFrame*>(frame));
       break;
     case SETTINGS:
       break;
     case RST_STREAM:
       visitor_->OnRstStream(
-          *reinterpret_cast<const spdy::SpdyRstStreamControlFrame*>(frame));
+          *reinterpret_cast<const SpdyRstStreamControlFrame*>(frame));
       break;
-    case spdy::WINDOW_UPDATE:
+    case WINDOW_UPDATE:
       visitor_->OnWindowUpdate(
-          *reinterpret_cast<const spdy::SpdyWindowUpdateControlFrame*>(frame));
+          *reinterpret_cast<const SpdyWindowUpdateControlFrame*>(frame));
       break;
     default:
       NOTREACHED();  // Error!
@@ -172,11 +172,13 @@ SpdySynStreamControlFrame* BufferedSpdyFramer::CreateSynStream(
     SpdyStreamId stream_id,
     SpdyStreamId associated_stream_id,
     int priority,
+    uint8 credential_slot,
     SpdyControlFlags flags,
     bool compressed,
     const SpdyHeaderBlock* headers) {
-  return spdy_framer_.CreateSynStream(
-      stream_id, associated_stream_id, priority, flags, compressed, headers);
+  return spdy_framer_.CreateSynStream(stream_id, associated_stream_id, priority,
+                                      credential_slot, flags, compressed,
+                                      headers);
 }
 
 SpdySynReplyControlFrame* BufferedSpdyFramer::CreateSynReply(
@@ -204,8 +206,9 @@ SpdyPingControlFrame* BufferedSpdyFramer::CreatePingFrame(
 }
 
 SpdyGoAwayControlFrame* BufferedSpdyFramer::CreateGoAway(
-    SpdyStreamId last_accepted_stream_id) const {
-  return spdy_framer_.CreateGoAway(last_accepted_stream_id);
+    SpdyStreamId last_accepted_stream_id,
+    SpdyGoAwayStatus status) const {
+  return spdy_framer_.CreateGoAway(last_accepted_stream_id, status);
 }
 
 SpdyHeadersControlFrame* BufferedSpdyFramer::CreateHeaders(
@@ -223,7 +226,7 @@ SpdyWindowUpdateControlFrame* BufferedSpdyFramer::CreateWindowUpdate(
 }
 
 SpdyCredentialControlFrame* BufferedSpdyFramer::CreateCredentialFrame(
-    const spdy::SpdyCredential& credential) const {
+    const SpdyCredential& credential) const {
   return spdy_framer_.CreateCredentialFrame(credential);
 }
 
@@ -273,4 +276,4 @@ void BufferedSpdyFramer::InitHeaderStreaming(const SpdyControlFrame* frame) {
          frame_size_without_header_block);
 }
 
-}  // namespace spdy
+}  // namespace net

@@ -11,6 +11,8 @@
 #include "base/string_util.h"
 #include "base/values.h"
 #include "content/public/browser/browser_thread.h"
+#include "chrome/browser/chromeos/gdata/gdata_system_service.h"
+#include "chrome/browser/chromeos/gdata/gdata_file_system.h"
 #include "webkit/blob/shareable_file_reference.h"
 #include "webkit/fileapi/file_system_file_util_proxy.h"
 #include "webkit/fileapi/file_system_types.h"
@@ -33,6 +35,7 @@ void CallSnapshotFileCallback(
     base::PlatformFileInfo file_info,
     base::PlatformFileError error,
     const FilePath& local_path,
+    const std::string& unused_mime_type,
     gdata::GDataFileType file_type) {
   scoped_refptr<ShareableFileReference> file_ref;
 
@@ -42,7 +45,7 @@ void CallSnapshotFileCallback(
   if (error == base::PLATFORM_FILE_OK && file_type == gdata::HOSTED_DOCUMENT) {
     file_ref = ShareableFileReference::GetOrCreate(
         local_path, ShareableFileReference::DELETE_ON_FINAL_RELEASE,
-        base::MessageLoopProxy::current());
+        BrowserThread::GetMessageLoopProxyForThread(BrowserThread::FILE));
   }
 
   callback.Run(error, file_info, local_path, file_ref);
@@ -68,8 +71,9 @@ base::FileUtilProxy::Entry GDataFileToFileUtilProxyEntry(
 
 // GDataFileSystemProxy class implementation.
 
-GDataFileSystemProxy::GDataFileSystemProxy(Profile* profile)
-    : file_system_(GDataFileSystemFactory::GetForProfile(profile)) {
+GDataFileSystemProxy::GDataFileSystemProxy(
+    GDataFileSystemInterface* file_system)
+    : file_system_(file_system) {
   // Should be created from the file browser extension API (AddMountFunction)
   // on UI thread.
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
@@ -190,8 +194,9 @@ void GDataFileSystemProxy::CreateSnapshotFile(
     const FileSystemOperationInterface::SnapshotFileCallback& callback) {
   FilePath file_path;
   base::PlatformFileInfo file_info;
+  GDataFileProperties file_properties;
   if (!ValidateUrl(file_url, &file_path) ||
-      !file_system_->GetFileInfoFromPath(file_path, &file_info)) {
+      !file_system_->GetFileInfoFromPath(file_path, &file_properties)) {
     MessageLoopProxy::current()->PostTask(FROM_HERE,
          base::Bind(callback,
                     base::PLATFORM_FILE_ERROR_NOT_FOUND,
@@ -204,7 +209,7 @@ void GDataFileSystemProxy::CreateSnapshotFile(
   file_system_->GetFile(file_path,
                         base::Bind(&CallSnapshotFileCallback,
                                    callback,
-                                   file_info));
+                                   file_properties.file_info));
 }
 
 // static.

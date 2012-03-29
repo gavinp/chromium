@@ -12,8 +12,9 @@
 #include "base/string_piece.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/native_web_keyboard_event.h"
-#include "content/browser/tab_contents/tab_contents.h"
-#include "content/browser/tab_contents/tab_contents_view_gtk.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_contents_view.h"
+#include "content/public/common/renderer_preferences.h"
 #include "third_party/skia/include/core/SkColor.h"
 
 namespace content {
@@ -143,18 +144,17 @@ void Shell::PlatformCreateWindow(int width, int height) {
   gtk_container_add(GTK_CONTAINER(window_), vbox_);
   gtk_widget_show_all(GTK_WIDGET(window_));
 
-  PlatformSizeTo(width, height);
+  SizeTo(width, height);
 }
 
 void Shell::PlatformSetContents() {
-  TabContentsViewGtk* content_view =
-      static_cast<TabContentsViewGtk*>(tab_contents_->GetView());
+  WebContentsView* content_view = web_contents_->GetView();
   gtk_container_add(GTK_CONTAINER(vbox_), content_view->GetNativeView());
 
   // As an additional requirement on Linux, we must set the colors for the
   // render widgets in webkit.
   content::RendererPreferences* prefs =
-      tab_contents_->GetMutableRendererPrefs();
+      web_contents_->GetMutableRendererPrefs();
   prefs->focus_ring_color = SkColorSetARGB(255, 229, 151, 0);
   prefs->thumb_active_color = SkColorSetRGB(244, 244, 244);
   prefs->thumb_inactive_color = SkColorSetRGB(234, 234, 234);
@@ -166,16 +166,16 @@ void Shell::PlatformSetContents() {
   prefs->inactive_selection_fg_color = SkColorSetRGB(50, 50, 50);
 }
 
-void Shell::PlatformSizeTo(int width, int height) {
+void Shell::SizeTo(int width, int height) {
   content_width_ = width;
   content_height_ = height;
-  if (tab_contents_.get()) {
-    gtk_widget_set_size_request(tab_contents_->GetNativeView(), width, height);
+  if (web_contents_.get()) {
+    gtk_widget_set_size_request(web_contents_->GetNativeView(), width, height);
   }
 }
 
 void Shell::PlatformResizeSubViews() {
-  PlatformSizeTo(content_width_, content_height_);
+  SizeTo(content_width_, content_height_);
 }
 
 void Shell::OnBackButtonClicked(GtkWidget* widget) {

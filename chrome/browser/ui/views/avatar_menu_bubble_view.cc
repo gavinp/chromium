@@ -33,6 +33,7 @@ const int kItemHeight = 44;
 const int kItemMarginY = 4;
 const int kIconMarginX = 6;
 const int kSeparatorPaddingY = 5;
+const int kMaxItemTextWidth = 200;
 
 inline int Round(double x) {
   return static_cast<int>(x + 0.5);
@@ -127,7 +128,7 @@ void EditProfileLink::OnBlur() {
 // ProfileImageView -----------------------------------------------------------
 
 // A custom image view that ignores mouse events so that the parent can receive
-// them them instead.
+// them instead.
 class ProfileImageView : public views::ImageView {
  public:
   virtual bool HitTest(const gfx::Point& l) const OVERRIDE;
@@ -179,7 +180,7 @@ ProfileItemView::ProfileItemView(const AvatarMenuModel::Item& item,
     : views::CustomButton(switch_profile_listener),
       item_(item) {
   image_view_ = new ProfileImageView();
-  SkBitmap profile_icon = item_.icon;
+  SkBitmap profile_icon = *item_.icon.ToSkBitmap();
   if (item_.active) {
     SkBitmap badged_icon(GetBadgedIcon(profile_icon));
     image_view_->SetImage(&badged_icon);
@@ -189,18 +190,22 @@ ProfileItemView::ProfileItemView(const AvatarMenuModel::Item& item,
   AddChildView(image_view_);
 
   // Add a label to show the profile name.
-  name_label_ = new views::Label(item_.name);
   ResourceBundle& rb = ResourceBundle::GetSharedInstance();
-  gfx::Font base_font = rb.GetFont(ResourceBundle::BaseFont);
-  int style = item_.active ? gfx::Font::BOLD : 0;
+  const gfx::Font base_font = rb.GetFont(ResourceBundle::BaseFont);
+  const int style = item_.active ? gfx::Font::BOLD : 0;
   const int kNameFontDelta = 1;
-  name_label_->SetFont(base_font.DeriveFont(kNameFontDelta, style));
+  name_label_ = new views::Label(item_.name,
+                                 base_font.DeriveFont(kNameFontDelta, style));
   name_label_->SetHorizontalAlignment(views::Label::ALIGN_LEFT);
   AddChildView(name_label_);
 
   // Add a label to show the sync state.
-  sync_state_label_ = new views::Label(item_.sync_state);
   const int kStateFontDelta = -1;
+  sync_state_label_ = new views::Label();
+  if (item_.signed_in)
+    sync_state_label_->SetEmail(item.sync_state);
+  else
+    sync_state_label_->SetText(item_.sync_state);
   sync_state_label_->SetFont(base_font.DeriveFont(kStateFontDelta));
   sync_state_label_->SetHorizontalAlignment(views::Label::ALIGN_LEFT);
   sync_state_label_->SetEnabled(false);
@@ -219,10 +224,11 @@ ProfileItemView::ProfileItemView(const AvatarMenuModel::Item& item,
 }
 
 gfx::Size ProfileItemView::GetPreferredSize() {
-  int width = std::max(name_label_->GetPreferredSize().width(),
-                       sync_state_label_->GetPreferredSize().width());
-  width = std::max(edit_link_->GetPreferredSize().width(), width);
-  return gfx::Size(profiles::kAvatarIconWidth + kIconMarginX + width,
+  int text_width = std::max(name_label_->GetPreferredSize().width(),
+                            sync_state_label_->GetPreferredSize().width());
+  text_width = std::max(edit_link_->GetPreferredSize().width(), text_width);
+  text_width = std::min(kMaxItemTextWidth, text_width);
+  return gfx::Size(profiles::kAvatarIconWidth + kIconMarginX + text_width,
                    kItemHeight);
 }
 
@@ -310,17 +316,18 @@ SkBitmap ProfileItemView::GetBadgedIcon(const SkBitmap& icon) {
   gfx::Rect icon_rect = GetCenteredAndScaledRect(icon.width(), icon.height(),
       0, 0, profiles::kAvatarIconWidth, kItemHeight);
 
-  ResourceBundle& rb = ResourceBundle::GetSharedInstance();
-  SkBitmap badge = rb.GetImageNamed(IDR_PROFILE_SELECTED);
+  ui::ResourceBundle& rb = ui::ResourceBundle::GetSharedInstance();
+  const SkBitmap* badge = rb.GetImageNamed(IDR_PROFILE_SELECTED).ToSkBitmap();
   const float kBadgeOverlapRatioX = 1.0f / 5.0f;
-  int width = icon_rect.width() + badge.width() * kBadgeOverlapRatioX;
+  int width = icon_rect.width() + badge->width() * kBadgeOverlapRatioX;
   const float kBadgeOverlapRatioY = 1.0f / 3.0f;
-  int height = icon_rect.height() + badge.height() * kBadgeOverlapRatioY;
+  int height = icon_rect.height() + badge->height() * kBadgeOverlapRatioY;
 
   gfx::Canvas canvas(gfx::Size(width, height), false);
   canvas.DrawBitmapInt(icon, 0, 0, icon.width(), icon.height(), 0, 0,
                        icon_rect.width(), icon_rect.height(), true);
-  canvas.DrawBitmapInt(badge, width - badge.width(), height - badge.height());
+  canvas.DrawBitmapInt(*badge, width - badge->width(),
+                       height - badge->height());
   return canvas.ExtractBitmap();
 }
 

@@ -33,6 +33,16 @@ enum PanelDragState {
   PANEL_DRAG_SUPPRESSED  // Ignore drag events until PANEL_DRAG_CAN_START.
 };
 
+// This view overlays the titlebar on top. It is used to intercept
+// mouse input to prevent reordering of the other browser windows when clicking
+// on the titlebar (to minimize or reorder) while in a docked strip.
+@interface PanelTitlebarOverlayView : NSView {
+ @private
+  IBOutlet PanelWindowControllerCocoa* controller_;
+  BOOL disableReordering_;
+}
+@end
+
 @interface RepaintAnimation : NSAnimation {
  @private
   NSView* targetView_;
@@ -123,8 +133,9 @@ enum PanelDragState {
 
 // NativePanelTesting support.
 // |mouseLocation| is in Cocoa's screen coordinates.
-- (void)pressLeftMouseButtonTitlebar:(NSPoint)mouseLocation;
-- (void)releaseLeftMouseButtonTitlebar;
+- (void)pressLeftMouseButtonTitlebar:(NSPoint)mouseLocation
+                           modifiers:(int)modifierFlags;
+- (void)releaseLeftMouseButtonTitlebar:(int)modifierFlags;
 - (void)dragTitlebar:(NSPoint)mouseLocation;
 - (void)cancelDragTitlebar;
 - (void)finishDragTitlebar;

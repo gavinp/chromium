@@ -322,35 +322,33 @@ void PanelBrowserWindowGtk::SetBoundsInternal(const gfx::Rect& bounds,
   if (bounds == bounds_)
     return;
 
-  if (drag_widget_) {
-    DCHECK(!IsAnimatingBounds());
-    // If the current panel is being dragged, it should just move with the
-    // user drag, we should not animate.
-    gtk_window_move(window(), bounds.x(), bounds.y());
-  } else {
-    bool old_show_close_button = show_close_button_;
-    show_close_button_ =
-        bounds.width() > panel_->manager()->overflow_strip_width();
-    if (show_close_button_ != old_show_close_button)
-      titlebar()->UpdateCustomFrame(true);
+  bool old_show_close_button = show_close_button_;
+  show_close_button_ =
+      bounds.width() > panel_->manager()->overflow_strip_width();
+  if (show_close_button_ != old_show_close_button)
+    titlebar()->UpdateCustomFrame(true);
 
-    if (!bounds_.width() || !bounds_.height()) {
-      // If the old bounds are 0 in either dimension, we need to show the
-      // window as it would now be hidden.
-      gtk_widget_show(GTK_WIDGET(window()));
-      gdk_window_move(gtk_widget_get_window(GTK_WIDGET(window())), bounds_.x(),
-                      bounds_.y());
-    }
+  if (!bounds_.width() || !bounds_.height()) {
+    // If the old bounds are 0 in either dimension, we need to show the
+    // window as it would now be hidden.
+    gtk_widget_show(GTK_WIDGET(window()));
+    gdk_window_move(gtk_widget_get_window(GTK_WIDGET(window())), bounds_.x(),
+                    bounds_.y());
+  }
 
-    if (!animate) {
+  if (!animate) {
+    // If no animation is in progress, apply bounds change instantly. Otherwise,
+    // continue the animation with new target bounds.
+    if (!IsAnimatingBounds()) {
       if (bounds_.origin() != bounds.origin())
         gtk_window_move(window(), bounds.x(), bounds.y());
       if (bounds_.size() != bounds.size())
         ResizeWindow(bounds.width(), bounds.height());
-    } else if (window_size_known_) {
-      StartBoundsAnimation(bounds_, bounds);
     }
+  } else if (window_size_known_) {
+    StartBoundsAnimation(bounds_, bounds);
   }
+
   // If window size is not known, wait till the size is known before starting
   // the animation.
 
@@ -493,6 +491,9 @@ void PanelBrowserWindowGtk::SetPanelAlwaysOnTop(bool on_top) {
   gtk_window_set_keep_above(window(), on_top);
 }
 
+void PanelBrowserWindowGtk::EnableResizeByMouse(bool enable) {
+}
+
 gfx::Size PanelBrowserWindowGtk::WindowSizeFromContentSize(
     const gfx::Size& content_size) const {
   gfx::Size frame = GetNonClientFrameSize();
@@ -588,7 +589,6 @@ void PanelBrowserWindowGtk::AnimationEnded(const ui::Animation* animation) {
 
 void PanelBrowserWindowGtk::AnimationProgressed(
     const ui::Animation* animation) {
-  DCHECK(!drag_widget_);
   DCHECK(window_size_known_);
 
   gfx::Rect new_bounds = bounds_animator_->CurrentValueBetween(
@@ -695,6 +695,13 @@ gboolean PanelBrowserWindowGtk::OnTitlebarButtonReleaseEvent(
 
   CleanupDragDrop();
 
+  if (event->state & GDK_CONTROL_MASK) {
+    panel_->OnTitlebarClicked(panel::APPLY_TO_ALL);
+    return TRUE;
+  }
+
+  // TODO(jennb): Move remaining titlebar click handling out of here.
+  // (http://crbug.com/118431)
   PanelStrip* panel_strip = panel_->panel_strip();
   if (!panel_strip)
     return TRUE;
@@ -796,8 +803,9 @@ class NativePanelTestingGtk : public NativePanelTesting {
 
  private:
   virtual void PressLeftMouseButtonTitlebar(
-      const gfx::Point& mouse_location) OVERRIDE;
-  virtual void ReleaseMouseButtonTitlebar() OVERRIDE;
+      const gfx::Point& mouse_location, panel::ClickModifier modifier) OVERRIDE;
+  virtual void ReleaseMouseButtonTitlebar(
+      panel::ClickModifier modifier) OVERRIDE;
   virtual void DragTitlebar(const gfx::Point& mouse_location) OVERRIDE;
   virtual void CancelDragTitlebar() OVERRIDE;
   virtual void FinishDragTitlebar() OVERRIDE;
@@ -822,7 +830,7 @@ NativePanelTestingGtk::NativePanelTestingGtk(
 }
 
 void NativePanelTestingGtk::PressLeftMouseButtonTitlebar(
-    const gfx::Point& mouse_location) {
+    const gfx::Point& mouse_location, panel::ClickModifier modifier) {
   // If there is an animation, wait for it to finish as we don't handle button
   // clicks while animation is in progress.
   while (panel_browser_window_gtk_->IsAnimatingBounds())
@@ -832,6 +840,8 @@ void NativePanelTestingGtk::PressLeftMouseButtonTitlebar(
   event->button.button = 1;
   event->button.x_root = mouse_location.x();
   event->button.y_root = mouse_location.y();
+  if (modifier == panel::APPLY_TO_ALL)
+    event->button.state |= GDK_CONTROL_MASK;
   panel_browser_window_gtk_->OnTitlebarButtonPressEvent(
       panel_browser_window_gtk_->titlebar_widget(),
       reinterpret_cast<GdkEventButton*>(event));
@@ -839,9 +849,12 @@ void NativePanelTestingGtk::PressLeftMouseButtonTitlebar(
   MessageLoopForUI::current()->RunAllPending();
 }
 
-void NativePanelTestingGtk::ReleaseMouseButtonTitlebar() {
+void NativePanelTestingGtk::ReleaseMouseButtonTitlebar(
+    panel::ClickModifier modifier) {
   GdkEvent* event = gdk_event_new(GDK_BUTTON_RELEASE);
   event->button.button = 1;
+  if (modifier == panel::APPLY_TO_ALL)
+    event->button.state |= GDK_CONTROL_MASK;
   panel_browser_window_gtk_->OnTitlebarButtonReleaseEvent(
       panel_browser_window_gtk_->titlebar_widget(),
       reinterpret_cast<GdkEventButton*>(event));

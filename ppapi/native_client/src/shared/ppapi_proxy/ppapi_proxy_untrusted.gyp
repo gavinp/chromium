@@ -28,6 +28,7 @@
           '<(DEPTH)/gpu/command_buffer/common/gles2_cmd_utils.cc',
           '<(DEPTH)/gpu/command_buffer/common/logging.cc',
 
+          '<(DEPTH)/gpu/command_buffer/client/atomicops.cc',
           '<(DEPTH)/gpu/command_buffer/client/cmd_buffer_helper.cc',
           '<(DEPTH)/gpu/command_buffer/client/fenced_allocator.cc',
           '<(DEPTH)/gpu/command_buffer/client/gles2_c_lib.cc',
@@ -38,6 +39,7 @@
           '<(DEPTH)/gpu/command_buffer/client/gles2_lib.cc',
           '<(DEPTH)/gpu/command_buffer/client/mapped_memory.cc',
           '<(DEPTH)/gpu/command_buffer/client/query_tracker.cc',
+          '<(DEPTH)/gpu/command_buffer/client/share_group.cc',
           '<(DEPTH)/gpu/command_buffer/client/ring_buffer.cc',
           '<(DEPTH)/gpu/command_buffer/common/id_allocator.cc',
 
@@ -65,6 +67,7 @@
           'plugin_ppb_gamepad.cc',
           'plugin_ppb_graphics_2d.cc',
           'plugin_ppb_graphics_3d.cc',
+          'plugin_ppb_host_resolver_private.cc',
           'plugin_ppb_image_data.cc',
           'plugin_ppb_input_event.cc',
           'plugin_ppb_instance.cc',

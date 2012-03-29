@@ -15,10 +15,13 @@ BUILDBOT_BUILDERNAME to determine whether the script is run locally
 and whether it should upload an SDK to file storage (GSTORE)
 """
 
+
 # std python includes
 import optparse
 import os
+import platform
 import sys
+import zipfile
 
 # local includes
 import buildbot_common
@@ -88,12 +91,14 @@ def GetNewlibToolchain(platform, arch):
   return os.path.join(tcdir, tcname)
 
 
-def GetPNaClToolchain(platform, arch):
+def GetPNaClToolchain(os_platform, arch):
   tcdir = os.path.join(NACL_DIR, 'toolchain', '.tars')
-  if arch == 'x86':
-    tcname = 'naclsdk_pnacl_%s_%s_64.tgz' % (platform, arch)
-  else:
-    buildbot_common.ErrorExit('Unknown architecture.')
+  # Refine the toolchain host arch.  For linux, we happen to have
+  # toolchains for 64-bit hosts.  For other OSes, we only have 32-bit binaries.
+  arch = 'x86_32'
+  if os_platform == 'linux' and platform.machine() == 'x86_64':
+    arch = 'x86_64'
+  tcname = 'naclsdk_pnacl_%s_%s.tgz' % (os_platform, arch)
   return os.path.join(tcdir, tcname)
 
 def GetScons():
@@ -185,7 +190,7 @@ def InstallHeaders(tc_dst_inc, pepper_ver, tc_name):
     src = os.path.join(NACL_DIR, tc_map[filename])
     dst = os.path.join(tc_dst_inc, filename)
     buildbot_common.MakeDir(os.path.dirname(dst))
-    oshelpers.Copy(['-v', src, dst])
+    buildbot_common.CopyFile(src, dst)
 
   # Clean out per toolchain ppapi directory
   ppapi = os.path.join(tc_dst_inc, 'ppapi')
@@ -340,6 +345,8 @@ def BuildToolchains(pepperdir, platform, arch, pepper_ver, toolchains):
 
 EXAMPLE_MAP = {
   'newlib': [
+    'debugging',
+    'file_histogram',
     'fullscreen_tumbler',
     'gamepad',
     'geturl',
@@ -393,17 +400,50 @@ def CopyExamples(pepperdir, toolchains):
 
 def BuildUpdater():
   buildbot_common.BuildStep('Create Updater')
-  tooldir = os.path.join(SRC_DIR, 'out', 'sdk_tools')
+
+  naclsdkdir = os.path.join(OUT_DIR, 'nacl_sdk')
+  tooldir = os.path.join(naclsdkdir, 'sdk_tools')
+  cachedir = os.path.join(naclsdkdir, 'sdk_cache')
+  buildtoolsdir = os.path.join(SDK_SRC_DIR, 'build_tools')
+
+  # Build SDK directory
+  buildbot_common.RemoveDir(naclsdkdir)
+  buildbot_common.MakeDir(naclsdkdir)
+  buildbot_common.MakeDir(tooldir)
+  buildbot_common.MakeDir(cachedir)
+
+  # Copy launch scripts
+  buildbot_common.CopyFile(os.path.join(buildtoolsdir, 'naclsdk'), naclsdkdir)
+  buildbot_common.CopyFile(os.path.join(buildtoolsdir, 'naclsdk.bat'), 
+                           naclsdkdir)
+
+  # Copy base manifest
+  json = os.path.join(buildtoolsdir, 'json', 'naclsdk_manifest0.json')
+  buildbot_common.CopyFile(json, 
+                           os.path.join(cachedir, 'naclsdk_manifest2.json'))
+
+  # Copy SDK tools
   sdkupdate = os.path.join(SDK_SRC_DIR, 'build_tools',
                            'sdk_tools', 'sdk_update.py')
   license = os.path.join(SDK_SRC_DIR, 'LICENSE')
-  buildbot_common.RemoveDir(tooldir)
-  buildbot_common.MakeDir(tooldir)
+  buildbot_common.CopyFile(sdkupdate, tooldir)
+  buildbot_common.CopyFile(license, tooldir)
+  buildbot_common.CopyFile(CYGTAR, tooldir)
+
+  buildbot_common.RemoveFile(os.path.join(OUT_DIR, 'nacl_sdk.zip'))
+  buildbot_common.Run(['zip', '-r', 'nacl_sdk.zip',
+                      'nacl_sdk/naclsdk',
+                      'nacl_sdk/naclsdk.bat', 
+                      'nacl_sdk/sdk_tools/LICENSE',
+                      'nacl_sdk/sdk_tools/cygtar.py',
+                      'nacl_sdk/sdk_tools/sdk_update.py',
+                      'nacl_sdk/sdk_cache/naclsdk_manifest2.json'],
+                      cwd=OUT_DIR)
   args = ['-v', sdkupdate, license, CYGTAR, tooldir]
-  oshelpers.Copy(args)
-  tarname = 'sdk_tools.tgz'
-  tarfile = os.path.join(OUT_DIR, tarname)
-  buildbot_common.Run([sys.executable, CYGTAR, '-C', tooldir, '-czf', tarfile,
+  tarname = os.path.join(OUT_DIR, 'sdk_tools.tgz')
+
+  buildbot_common.RemoveFile(tarname)
+  buildbot_common.Run([sys.executable, CYGTAR, '-C', tooldir, '-czf', tarname,
        'sdk_update.py', 'LICENSE', 'cygtar.py'], cwd=NACL_DIR)
   sys.stdout.write('\n')
 
@@ -446,7 +486,7 @@ def main(args):
 
 
   if options.examples: skip_examples = False
-  if options.update: skip_update = False
+  skip_update = not options.update
 
   if options.archive and (options.examples or options.skip_tar):
     parser.error('Incompatible arguments with archive.')
@@ -521,8 +561,8 @@ def main(args):
                             cwd=os.path.abspath(dirnode), shell=True)
 
 # Build SDK Tools
-#  if not skip_update:
-#    BuildUpdater()
+  if not skip_update:
+    BuildUpdater()
 
   return 0
 

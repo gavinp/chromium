@@ -84,7 +84,7 @@
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/extensions/extension.h"
-#include "chrome/common/extensions/extension_constants.h"
+#include "chrome/common/extensions/extension_manifest_constants.h"
 #include "chrome/common/extensions/extension_error_utils.h"
 #include "chrome/common/extensions/extension_file_util.h"
 #include "chrome/common/extensions/extension_messages.h"
@@ -106,6 +106,7 @@
 
 #if defined(OS_CHROMEOS)
 #include "chrome/browser/chromeos/cros/cros_library.h"
+#include "chrome/browser/chromeos/extensions/bluetooth_event_router.h"
 #include "chrome/browser/chromeos/extensions/file_browser_event_router.h"
 #include "chrome/browser/chromeos/extensions/input_method_event_router.h"
 #include "chrome/browser/chromeos/extensions/media_player_event_router.h"
@@ -445,6 +446,10 @@ ExtensionService::ExtensionService(Profile* profile,
   omnibox_icon_manager_.set_padding(gfx::Insets(0, kOmniboxIconPaddingLeft,
                                                 0, kOmniboxIconPaddingRight));
 
+  // Set this as the ExtensionService for extension sorting to ensure it
+  // cause syncs if required.
+  extension_prefs_->extension_sorting()->SetExtensionService(this);
+
   // How long is the path to the Extensions directory?
   UMA_HISTOGRAM_CUSTOM_COUNTS("Extensions.ExtensionRootPathLength",
                               install_directory_.value().length(), 0, 500, 100);
@@ -543,6 +548,9 @@ void ExtensionService::InitEventRouters() {
 #if defined(OS_CHROMEOS)
   FileBrowserEventRouterFactory::GetForProfile(
       profile_)->ObserveFileSystemEvents();
+
+  bluetooth_event_router_.reset(
+      new chromeos::ExtensionBluetoothEventRouter(profile_));
 
   input_method_event_router_.reset(
       new chromeos::ExtensionInputMethodEventRouter);
@@ -773,8 +781,9 @@ bool ExtensionService::UninstallExtension(
         IsIncognitoEnabled(extension_id),
         extension_prefs_->GetAppNotificationClientId(extension_id),
         extension_prefs_->IsAppNotificationDisabled(extension_id),
-        GetAppLaunchOrdinal(extension_id),
-        GetPageOrdinal(extension_id));
+        extension_prefs_->extension_sorting()->
+            GetAppLaunchOrdinal(extension_id),
+        extension_prefs_->extension_sorting()->GetPageOrdinal(extension_id));
     sync_change = extension_sync_data.GetSyncChange(SyncChange::ACTION_DELETE);
   }
 
@@ -1257,11 +1266,17 @@ namespace {
 }  // namespace
 
 ExtensionService::SyncBundle::SyncBundle()
-  : filter(IsSyncableNone),
-    sync_processor(NULL) {
+  : filter(IsSyncableNone) {
 }
 
 ExtensionService::SyncBundle::~SyncBundle() {
+}
+
+void ExtensionService::SyncBundle::Reset() {
+  filter = IsSyncableNone;
+  synced_extensions.clear();
+  pending_sync_data.clear();
+  sync_processor.reset();
 }
 
 bool ExtensionService::SyncBundle::HasExtensionId(const std::string& id) const {
@@ -1271,28 +1286,6 @@ bool ExtensionService::SyncBundle::HasExtensionId(const std::string& id) const {
 bool ExtensionService::SyncBundle::HasPendingExtensionId(const std::string& id)
     const {
   return pending_sync_data.find(id) != pending_sync_data.end();
-}
-
-void ExtensionService::SyncExtensionChangeIfNeeded(const Extension& extension) {
-  SyncBundle* sync_bundle = GetSyncBundleForExtension(extension);
-  if (sync_bundle) {
-    ExtensionSyncData extension_sync_data(
-        extension,
-        IsExtensionEnabled(extension.id()),
-        IsIncognitoEnabled(extension.id()),
-        extension_prefs_->GetAppNotificationClientId(extension.id()),
-        extension_prefs_->IsAppNotificationDisabled(extension.id()),
-        GetAppLaunchOrdinal(extension.id()),
-        GetPageOrdinal(extension.id()));
-
-    SyncChangeList sync_change_list(1, extension_sync_data.GetSyncChange(
-        sync_bundle->HasExtensionId(extension.id()) ?
-            SyncChange::ACTION_UPDATE : SyncChange::ACTION_ADD));
-    sync_bundle->sync_processor->ProcessSyncChanges(
-        FROM_HERE, sync_change_list);
-    sync_bundle->synced_extensions.insert(extension.id());
-    sync_bundle->pending_sync_data.erase(extension.id());
-  }
 }
 
 ExtensionService::SyncBundle* ExtensionService::GetSyncBundleForExtension(
@@ -1348,9 +1341,7 @@ ExtensionService::SyncBundle* ExtensionService::GetSyncBundleForModelType(
 SyncError ExtensionService::MergeDataAndStartSyncing(
     syncable::ModelType type,
     const SyncDataList& initial_sync_data,
-    SyncChangeProcessor* sync_processor) {
-  CHECK(sync_processor);
-
+    scoped_ptr<SyncChangeProcessor> sync_processor) {
   SyncBundle* bundle = NULL;
 
   switch (type) {
@@ -1367,8 +1358,9 @@ SyncError ExtensionService::MergeDataAndStartSyncing(
     default:
       LOG(FATAL) << "Got " << type << " ModelType";
   }
-
-  bundle->sync_processor = sync_processor;
+  DCHECK(!bundle->sync_processor.get());
+  DCHECK(sync_processor.get());
+  bundle->sync_processor = sync_processor.Pass();
 
   // Process extensions from sync.
   for (SyncDataList::const_iterator i = initial_sync_data.begin();
@@ -1404,8 +1396,7 @@ SyncError ExtensionService::MergeDataAndStartSyncing(
 void ExtensionService::StopSyncing(syncable::ModelType type) {
   SyncBundle* bundle = GetSyncBundleForModelType(type);
   CHECK(bundle);
-  // This is the simplest way to clear out the bundle.
-  *bundle = SyncBundle();
+  bundle->Reset();
 }
 
 SyncDataList ExtensionService::GetAllSyncData(syncable::ModelType type) const {
@@ -1459,8 +1450,10 @@ void ExtensionService::GetSyncDataListHelper(
           IsIncognitoEnabled(extension.id()),
           extension_prefs_->GetAppNotificationClientId(extension.id()),
           extension_prefs_->IsAppNotificationDisabled(extension.id()),
-          GetAppLaunchOrdinal(extension.id()),
-          GetPageOrdinal(extension.id())));
+          extension_prefs_->extension_sorting()->
+              GetAppLaunchOrdinal(extension.id()),
+          extension_prefs_->extension_sorting()->
+              GetPageOrdinal(extension.id())));
     }
   }
 }
@@ -1522,8 +1515,12 @@ void ExtensionService::ProcessExtensionSyncData(
 
   if (extension_sync_data.app_launch_ordinal().IsValid() &&
       extension_sync_data.page_ordinal().IsValid()) {
-    SetAppLaunchOrdinal(id, extension_sync_data.app_launch_ordinal());
-    SetPageOrdinal(id, extension_sync_data.page_ordinal());
+    extension_prefs_->extension_sorting()->SetAppLaunchOrdinal(
+        id,
+        extension_sync_data.app_launch_ordinal());
+    extension_prefs_->extension_sorting()->SetPageOrdinal(
+        id,
+        extension_sync_data.page_ordinal());
   }
 
   if (extension_installed) {
@@ -1657,52 +1654,6 @@ bool ExtensionService::CanLoadInIncognito(const Extension* extension) const {
   // incognito (and split mode should be set).
   return extension->incognito_split_mode() &&
          IsIncognitoEnabled(extension->id());
-}
-
-StringOrdinal ExtensionService::GetAppLaunchOrdinal(
-    const std::string& extension_id) const {
-  return
-      extension_prefs_->extension_sorting()->GetAppLaunchOrdinal(extension_id);
-}
-
-void ExtensionService::SetAppLaunchOrdinal(
-    const std::string& extension_id,
-    const StringOrdinal& app_launch_ordinal) {
-  // Only apps should set this value, so we check that it is either an app or
-  // that it is not yet installed (so we can't be sure it is an app). It is
-  // possible to be setting this value through syncing before the app is
-  // installed.
-  const Extension* ext = GetExtensionById(extension_id, true);
-  DCHECK(!ext || ext->is_app());
-
-  extension_prefs_->extension_sorting()->SetAppLaunchOrdinal(
-      extension_id, app_launch_ordinal);
-
-  const Extension* extension = GetInstalledExtension(extension_id);
-  if (extension)
-    SyncExtensionChangeIfNeeded(*extension);
-}
-
-StringOrdinal ExtensionService::GetPageOrdinal(
-    const std::string& extension_id) const {
-  return extension_prefs_->extension_sorting()->GetPageOrdinal(extension_id);
-}
-
-void ExtensionService::SetPageOrdinal(const std::string& extension_id,
-                                      const StringOrdinal& page_ordinal) {
-  // Only apps should set this value, so we check that it is either an app or
-  // that it is not yet installed (so we can't be sure it is an app). It is
-  // possible to be setting this value through syncing before the app is
-  // installed.
-  const Extension* ext = GetExtensionById(extension_id, true);
-  DCHECK(!ext || ext->is_app());
-
-  extension_prefs_->extension_sorting()->SetPageOrdinal(
-      extension_id, page_ordinal);
-
-  const Extension* extension = GetInstalledExtension(extension_id);
-  if (extension)
-    SyncExtensionChangeIfNeeded(*extension);
 }
 
 void ExtensionService::OnExtensionMoved(
@@ -2007,6 +1958,29 @@ void ExtensionService::GarbageCollectExtensions() {
   // from somewhere other than Init() (e.g., in a timer).
   if (profile_) {
     ThemeServiceFactory::GetForProfile(profile_)->RemoveUnusedThemes();
+  }
+}
+
+void ExtensionService::SyncExtensionChangeIfNeeded(const Extension& extension) {
+  SyncBundle* sync_bundle = GetSyncBundleForExtension(extension);
+  if (sync_bundle) {
+    ExtensionSyncData extension_sync_data(
+        extension,
+        IsExtensionEnabled(extension.id()),
+        IsIncognitoEnabled(extension.id()),
+        extension_prefs_->GetAppNotificationClientId(extension.id()),
+        extension_prefs_->IsAppNotificationDisabled(extension.id()),
+        extension_prefs_->extension_sorting()->
+            GetAppLaunchOrdinal(extension.id()),
+        extension_prefs_->extension_sorting()->GetPageOrdinal(extension.id()));
+
+    SyncChangeList sync_change_list(1, extension_sync_data.GetSyncChange(
+        sync_bundle->HasExtensionId(extension.id()) ?
+            SyncChange::ACTION_UPDATE : SyncChange::ACTION_ADD));
+    sync_bundle->sync_processor->ProcessSyncChanges(
+        FROM_HERE, sync_change_list);
+    sync_bundle->synced_extensions.insert(extension.id());
+    sync_bundle->pending_sync_data.erase(extension.id());
   }
 }
 
@@ -2540,8 +2514,7 @@ ExtensionIdSet ExtensionService::GetAppIds() const {
 }
 
 bool ExtensionService::IsBackgroundPageReady(const Extension* extension) {
-  return (!(extension->has_background_page() &&
-            extension->background_page_persists()) ||
+  return (!extension->has_persistent_background_page() ||
           extension_runtime_data_[extension->id()].background_page_ready);
 }
 

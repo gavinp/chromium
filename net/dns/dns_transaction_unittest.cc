@@ -8,6 +8,7 @@
 #include "base/memory/scoped_ptr.h"
 #include "base/memory/scoped_vector.h"
 #include "base/rand_util.h"
+#include "base/sys_byteorder.h"
 #include "base/test/test_timeouts.h"
 #include "net/base/big_endian.h"
 #include "net/base/dns_util.h"
@@ -150,8 +151,6 @@ class TransactionHelper {
       for (int i = 0; i < expected_answer_count_; ++i) {
         EXPECT_TRUE(parser.ReadRecord(&record));
       }
-      // Technically, there could be additional RRs, but not in our test data.
-      EXPECT_TRUE(parser.AtEnd());
     } else {
       EXPECT_EQ(expected_answer_count_, rv);
       EXPECT_EQ(NULL, response);
@@ -281,7 +280,7 @@ class DnsTransactionTest : public testing::Test {
                                             0);
     dns_protocol::Header* header =
         reinterpret_cast<dns_protocol::Header*>(response->io_buffer()->data());
-    header->flags |= htons(dns_protocol::kFlagResponse | rcode);
+    header->flags |= base::HostToNet16(dns_protocol::kFlagResponse | rcode);
     responses_.push_back(response);
 
     writes_.push_back(MockWrite(ASYNC,
@@ -678,7 +677,42 @@ TEST_F(DnsTransactionTest, DontAppendToMultiLabelName) {
   EXPECT_TRUE(helper2.Run(transaction_factory_.get()));
 }
 
+const uint8 kResponseNoData[] = {
+  0x00, 0x00, 0x81, 0x80, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+  // Question
+  0x01,  'x', 0x01,  'y', 0x01,  'z', 0x01,  'b', 0x00, 0x00, 0x01, 0x00, 0x01,
+  // Authority section, SOA record, TTL 0x3E6
+  0x01,  'z', 0x00, 0x00, 0x06, 0x00, 0x01, 0x00, 0x00, 0x03, 0xE6,
+  // Minimal RDATA, 18 bytes
+  0x00, 0x12,
+  0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00,
+};
+
+TEST_F(DnsTransactionTest, SuffixSearchStop) {
+  config_.ndots = 2;
+  config_.search.push_back("a");
+  config_.search.push_back("b");
+  config_.search.push_back("c");
+  ConfigureFactory();
+
+  AddRcode("x.y.z", dns_protocol::kTypeA, dns_protocol::kRcodeNXDOMAIN);
+  AddRcode("x.y.z.a", dns_protocol::kTypeA, dns_protocol::kRcodeNXDOMAIN);
+  AddResponse("x.y.z.b",
+              dns_protocol::kTypeA,
+              0 /* id */,
+              reinterpret_cast<const char*>(kResponseNoData),
+              arraysize(kResponseNoData));
+  PrepareSockets();
+
+  TransactionHelper helper0("x.y.z", dns_protocol::kTypeA, 0 /* answers */);
+
+  EXPECT_TRUE(helper0.Run(transaction_factory_.get()));
+}
+
 }  // namespace
 
 }  // namespace net
-

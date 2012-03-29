@@ -56,5 +56,47 @@ chrome.test.runTests([
       chrome.test.assertEq('string', typeof(value[0].fontName), message);
       chrome.test.assertEq('string', typeof(value[0].localizedName), message);
     }));
+  },
+
+  function setDefaultFontSize() {
+    fs.setDefaultFontSize({
+      pixelSize: 22
+    }, chrome.test.callbackPass());
+  },
+
+  function setDefaultFixedFontSize() {
+    fs.setDefaultFixedFontSize({
+      pixelSize: 42
+    }, chrome.test.callbackPass());
+  },
+
+  function setMinimumFontSize() {
+    fs.setMinimumFontSize({
+      pixelSize: 7
+    }, chrome.test.callbackPass());
+  },
+
+  function getDefaultFontSize() {
+    var expected = 22;
+    var message = 'Setting for default font size should be ' + expected;
+    fs.getDefaultFontSize({}, expect({pixelSize: expected}, message));
+  },
+
+  function getDefaultFontSizeOmitDetails() {
+    var expected = 22;
+    var message = 'Setting for default font size should be ' + expected;
+    fs.getDefaultFontSize(expect({pixelSize: expected}, message));
+  },
+
+  function getDefaultFixedFontSize() {
+    var expected = 42;
+    var message = 'Setting for default fixed font size should be ' + expected;
+    fs.getDefaultFixedFontSize({}, expect({pixelSize: expected}, message));
+  },
+
+  function getMinimumFontSize() {
+    var expected = 7;
+    var message = 'Setting for minimum font size should be ' + expected;
+    fs.getMinimumFontSize({}, expect({pixelSize: expected}, message));
   }
 ]);

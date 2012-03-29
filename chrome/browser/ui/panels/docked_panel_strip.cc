@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "base/auto_reset.h"
 #include "base/bind.h"
 #include "base/logging.h"
 #include "base/message_loop.h"
@@ -60,6 +61,7 @@ DockedPanelStrip::DockedPanelStrip(PanelManager* panel_manager)
       panel_manager_(panel_manager),
       minimized_panel_count_(0),
       are_titlebars_up_(false),
+      minimizing_all_(false),
       delayed_titlebar_action_(NO_ACTION),
       titlebar_action_factory_(this) {
   dragging_panel_current_iterator_ = panels_.end();
@@ -101,17 +103,6 @@ void DockedPanelStrip::AddPanel(Panel* panel,
   } else {
     InsertExistingPanelAtDefaultPosition(panel, update_bounds);
   }
-
-  // Always update limits, even on existing panels, in case the limits changed
-  // while panel was out of the strip.
-  int max_panel_width = GetMaxPanelWidth();
-  int max_panel_height = GetMaxPanelHeight();
-  panel->SetSizeRange(gfx::Size(kPanelMinWidth, kPanelMinHeight),
-                      gfx::Size(max_panel_width, max_panel_height));
-
-  panel->set_attention_mode(Panel::USE_PANEL_ATTENTION);
-  panel->SetAppIconVisibility(true);
-  panel->SetAlwaysOnTop(true);
 }
 
 void DockedPanelStrip::InsertNewlyCreatedPanel(Panel* panel) {
@@ -361,23 +352,30 @@ void DockedPanelStrip::StartDraggingPanelWithinStrip(Panel* panel) {
 void DockedPanelStrip::DragPanelWithinStrip(Panel* panel,
                                             int delta_x,
                                             int delta_y) {
-  if (!delta_x)
-    return;
-
   // Moves this panel to the dragging position.
+  // Note that we still allow the panel to be moved vertically until it gets
+  // aligned to the bottom area.
   gfx::Rect new_bounds(panel->GetBounds());
   new_bounds.set_x(new_bounds.x() + delta_x);
-  panel->SetPanelBounds(new_bounds);
+  int bottom = GetBottomPositionForExpansionState(panel->expansion_state());
+  if (new_bounds.bottom() != bottom) {
+    new_bounds.set_y(new_bounds.y() + delta_y);
+    if (new_bounds.bottom() > bottom)
+      new_bounds.set_y(bottom - new_bounds.height());
+  }
+  panel->SetPanelBoundsInstantly(new_bounds);
 
-  // Checks and processes other affected panels.
-  if (delta_x > 0)
-    DragRight(panel);
-  else
-    DragLeft(panel);
+  if (delta_x) {
+    // Checks and processes other affected panels.
+    if (delta_x > 0)
+      DragRight(panel);
+    else
+      DragLeft(panel);
 
-  // Layout refresh will automatically recompute the bounds of all affected
-  // panels due to their position changes.
-  RefreshLayout();
+    // Layout refresh will automatically recompute the bounds of all affected
+    // panels due to their position changes.
+    RefreshLayout();
+  }
 }
 
 void DockedPanelStrip::DragLeft(Panel* dragging_panel) {
@@ -445,6 +443,17 @@ void DockedPanelStrip::EndDraggingPanelWithinStrip(Panel* panel, bool aborted) {
     RefreshLayout();
 }
 
+bool DockedPanelStrip::CanResizePanel(const Panel* panel) const {
+  return false;
+}
+
+void DockedPanelStrip::SetPanelBounds(Panel* panel,
+                                      const gfx::Rect& new_bounds) {
+  DCHECK_EQ(this, panel->panel_strip());
+  NOTREACHED();
+}
+
+
 void DockedPanelStrip::OnPanelExpansionStateChanged(Panel* panel) {
   gfx::Size size = panel->restored_size();
   Panel::ExpansionState expansion_state = panel->expansion_state();
@@ -473,6 +482,13 @@ void DockedPanelStrip::OnPanelExpansionStateChanged(Panel* panel) {
                 bottom - size.height(),
                 size.width(),
                 size.height()));
+
+  // Ensure minimized panel does not get the focus. If minimizing all,
+  // the active panel will be deactivated once when all panels are minimized
+  // rather than per minimized panel.
+  if (expansion_state != Panel::EXPANDED && !minimizing_all_ &&
+      panel->IsActive())
+    panel->Deactivate();
 }
 
 void DockedPanelStrip::OnPanelAttentionStateChanged(Panel* panel) {
@@ -486,6 +502,16 @@ void DockedPanelStrip::OnPanelAttentionStateChanged(Panel* panel) {
     if (panel->expansion_state() == Panel::TITLE_ONLY && !are_titlebars_up_)
       panel->SetExpansionState(Panel::MINIMIZED);
   }
+}
+
+void DockedPanelStrip::OnPanelTitlebarClicked(Panel* panel,
+                                              panel::ClickModifier modifier) {
+  DCHECK_EQ(this, panel->panel_strip());
+  if (modifier == panel::APPLY_TO_ALL)
+    ToggleMinimizeAll(panel);
+
+  // TODO(jennb): Move all other titlebar click handling here.
+  // (http://crbug.com/118431)
 }
 
 void DockedPanelStrip::ActivatePanel(Panel* panel) {
@@ -522,7 +548,7 @@ void DockedPanelStrip::UpdateMinimizedPanelCount() {
         panel_iter != panels_.end(); ++panel_iter) {
     if ((*panel_iter)->expansion_state() != Panel::EXPANDED)
       minimized_panel_count_++;
-    }
+  }
 
   if (prev_minimized_panel_count == 0 && minimized_panel_count_ > 0)
     panel_manager_->mouse_watcher()->AddObserver(this);
@@ -532,45 +558,56 @@ void DockedPanelStrip::UpdateMinimizedPanelCount() {
   DCHECK_LE(minimized_panel_count_, num_panels());
 }
 
+void DockedPanelStrip::ToggleMinimizeAll(Panel* panel) {
+  DCHECK_EQ(this, panel->panel_strip());
+  AutoReset<bool> pin(&minimizing_all_, IsPanelMinimized(panel) ? false : true);
+  Panel* minimized_active_panel = NULL;
+  for (Panels::const_iterator iter = panels_.begin();
+       iter != panels_.end(); ++iter) {
+    if (minimizing_all_) {
+      if ((*iter)->IsActive())
+        minimized_active_panel = *iter;
+      MinimizePanel(*iter);
+    } else {
+      RestorePanel(*iter);
+    }
+  }
+
+  // When a single panel is minimized, it is deactivated to ensure that
+  // a minimized panel does not have focus. However, when minimizing all,
+  // the deactivation is only done once after all panels are minimized,
+  // rather than per minimized panel, both for efficiency and to avoid
+  // temporary activations of random not-yet-minimized panels.
+  if (minimized_active_panel)
+    minimized_active_panel->Deactivate();
+}
+
 void DockedPanelStrip::ResizePanelWindow(
     Panel* panel,
     const gfx::Size& preferred_window_size) {
-  // The panel width:
-  // * cannot grow or shrink to go beyond [min_width, max_width]
-  int new_width = preferred_window_size.width();
-  if (new_width > panel->max_size().width())
-    new_width = panel->max_size().width();
-  if (new_width < panel->min_size().width())
-    new_width = panel->min_size().width();
+  // Make sure the new size does not violate panel's size restrictions.
+  gfx::Size new_size(preferred_window_size.width(),
+                     preferred_window_size.height());
+  panel->ClampSize(&new_size);
 
-  // The panel height:
-  // * cannot grow or shrink to go beyond [min_height, max_height]
-  int new_height = preferred_window_size.height();
-  if (new_height > panel->max_size().height())
-    new_height = panel->max_size().height();
-  if (new_height < panel->min_size().height())
-    new_height = panel->min_size().height();
-
-  // Update restored size.
-  gfx::Size new_size(new_width, new_height);
   if (new_size != panel->restored_size())
     panel->set_restored_size(new_size);
 
   gfx::Rect bounds = panel->GetBounds();
-  int delta_x = bounds.width() - new_width;
+  int delta_x = bounds.width() - new_size.width();
 
   // Only need to adjust current bounds if panel is in the dock.
   if (panel->panel_strip() == this) {
     // Only need to adjust bounds height when panel is expanded.
     Panel::ExpansionState expansion_state = panel->expansion_state();
-    if (new_height != bounds.height() &&
+    if (new_size.height() != bounds.height() &&
         expansion_state == Panel::EXPANDED) {
-      bounds.set_y(bounds.bottom() - new_height);
-      bounds.set_height(new_height);
+      bounds.set_y(bounds.bottom() - new_size.height());
+      bounds.set_height(new_size.height());
     }
 
     if (delta_x != 0) {
-      bounds.set_width(new_width);
+      bounds.set_width(new_size.width());
       bounds.set_x(bounds.x() + delta_x);
     }
 
@@ -845,4 +882,18 @@ void DockedPanelStrip::CloseAll() {
   for (Panels::reverse_iterator iter = panels_copy.rbegin();
        iter != panels_copy.rend(); ++iter)
     (*iter)->Close();
+}
+
+void DockedPanelStrip::UpdatePanelOnStripChange(Panel* panel) {
+  // Always update limits, even on existing panels, in case the limits changed
+  // while panel was out of the strip.
+  int max_panel_width = GetMaxPanelWidth();
+  int max_panel_height = GetMaxPanelHeight();
+  panel->SetSizeRange(gfx::Size(kPanelMinWidth, kPanelMinHeight),
+                      gfx::Size(max_panel_width, max_panel_height));
+
+  panel->set_attention_mode(Panel::USE_PANEL_ATTENTION);
+  panel->SetAppIconVisibility(true);
+  panel->SetAlwaysOnTop(true);
+  panel->EnableResizeByMouse(false);
 }

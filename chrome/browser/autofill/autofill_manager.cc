@@ -37,6 +37,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_list.h"
+#include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/tab_contents/tab_contents_wrapper.h"
 #include "chrome/common/autofill_messages.h"
 #include "chrome/common/chrome_notification_types.h"
@@ -167,82 +168,6 @@ void DeterminePossibleFieldTypesForUpload(
   }
 }
 
-// Check for unidentified forms among those with the most query or upload
-// requests.  If found, present an infobar prompting the user to send Google
-// Feedback identifying these forms.  Only executes if the appropriate flag is
-// set in about:flags.
-const char* kPopularFormSignatures[] = {
-  "10135289994685082173",
-  "7883844738557049416",
-  "14651966297402649464",
-  "17177862793067325164",
-  "15222964025577790589",
-  "14138834153984647462",
-  "1522221299769735301",
-  "8604254969743383026",
-  "1080809576396139601",
-  "10591138561307360539",
-  "3483444043750493124",
-  "3764098888295731941",
-  "957190629194980629",
-  "11314948061179499915",
-  "2226179674176240706",
-  "9886974103926218264",
-  "16089161644523512553",
-  "17395441333004474813",
-  "7131540066857838464",
-  "1799736626243038725",
-  "4314535457620699296",
-  "16597101416150066076",
-  "11571064402466920341",
-  "17529644200058912705",
-  "17442663271235869548",
-  "10423886468225016833",
-  "8205718441232482003",
-  "12566467866837059201",
-  "14998753650075003914",
-  "8463873542596795823",
-  "3341181348270175432",
-  "12047213380448477438",
-  "7626117232464424739",
-  "6755316823149690927",
-  "17343480863386343671",
-  "4345267765838738360"
-};
-
-void CheckForPopularForms(const std::vector<FormStructure*>& forms,
-                          TabContentsWrapper* tab_contents_wrapper,
-                          TabContents* tab_contents) {
-  if (!CommandLine::ForCurrentProcess()->HasSwitch(kEnableAutofillFeedback))
-    return;
-
-  for (std::vector<FormStructure*>::const_iterator it = forms.begin();
-       it != forms.end();
-       ++it) {
-    std::string form_signature = (*it)->FormSignature();
-    for (size_t i = 0; i < arraysize(kPopularFormSignatures); ++i) {
-      if (form_signature != kPopularFormSignatures[i])
-        continue;
-
-      string16 text =
-          l10n_util::GetStringUTF16(IDS_AUTOFILL_FEEDBACK_INFOBAR_TEXT);
-      string16 link =
-          l10n_util::GetStringUTF16(IDS_AUTOFILL_FEEDBACK_INFOBAR_LINK_TEXT);
-      std::string message =
-          l10n_util::GetStringFUTF8(IDS_AUTOFILL_FEEDBACK_POPULAR_FORM_MESSAGE,
-                                    ASCIIToUTF16(form_signature),
-                                    UTF8ToUTF16((*it)->source_url().spec()));
-
-      InfoBarTabHelper* infobar_helper =
-          tab_contents_wrapper->infobar_tab_helper();
-      infobar_helper->AddInfoBar(
-          new AutofillFeedbackInfoBarDelegate(infobar_helper, text, link,
-                                              message));
-      break;
-    }
-  }
-}
-
 }  // namespace
 
 AutofillManager::AutofillManager(TabContentsWrapper* tab_contents)
@@ -259,7 +184,7 @@ AutofillManager::AutofillManager(TabContentsWrapper* tab_contents)
       user_did_autofill_(false),
       user_did_edit_autofilled_field_(false),
       external_delegate_(NULL) {
-  // |personal_data_| is NULL when using TestTabContents.
+  // |personal_data_| is NULL when using test-enabled WebContents.
   personal_data_ = PersonalDataManagerFactory::GetForProfile(
       tab_contents->profile()->GetOriginalProfile());
 }
@@ -318,6 +243,8 @@ bool AutofillManager::OnMessageReceived(const IPC::Message& message) {
                         OnDidEndTextFieldEditing)
     IPC_MESSAGE_HANDLER(AutofillHostMsg_HideAutofillPopup,
                         OnHideAutofillPopup)
+    IPC_MESSAGE_HANDLER(AutofillHostMsg_ShowPasswordGenerationPopup,
+                        OnShowPasswordGenerationPopup)
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP()
 
@@ -640,10 +567,14 @@ void AutofillManager::OnFillAutofillFormData(int query_id,
 }
 
 void AutofillManager::OnShowAutofillDialog() {
+#if defined(OS_ANDROID)
+  NOTIMPLEMENTED();
+#else
   Browser* browser = BrowserList::GetLastActiveWithProfile(
       Profile::FromBrowserContext(web_contents()->GetBrowserContext()));
   if (browser)
     browser->ShowOptionsTab(chrome::kAutofillSubPage);
+#endif  // #if defined(OS_ANDROID)
 }
 
 void AutofillManager::OnDidPreviewAutofillFormData() {
@@ -689,6 +620,16 @@ void AutofillManager::OnDidShowAutofillSuggestions(bool is_new_popup) {
 void AutofillManager::OnHideAutofillPopup() {
   if (external_delegate_)
     external_delegate_->HideAutofillPopup();
+}
+
+void AutofillManager::OnShowPasswordGenerationPopup(const gfx::Rect& bounds) {
+#if defined(OS_ANDROID)
+  NOTIMPLEMENTED();
+#else
+  Browser* browser = BrowserList::GetLastActiveWithProfile(
+      Profile::FromBrowserContext(web_contents()->GetBrowserContext()));
+  browser->window()->ShowPasswordGenerationBubble(bounds);
+#endif  // #if defined(OS_ANDROID)
 }
 
 void AutofillManager::OnLoadedServerPredictions(

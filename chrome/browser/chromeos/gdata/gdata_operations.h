@@ -117,6 +117,12 @@ class UrlFetchOperationBase : public GDataOperationInterface,
   // authentication error. Must be implemented by a derived class.
   virtual bool ProcessURLFetchResults(const content::URLFetcher* source) = 0;
 
+  // Invoked when it needs to notify the status. Chunked operations that
+  // constructs a logically single operation from multiple physical operations
+  // should notify resume/suspend instead of start/finish.
+  virtual void NotifyStartToOperationRegistry();
+  virtual void NotifySuccessToOperationRegistry();
+
   // Invoked by this base class upon an authentication error or cancel by
   // an user operation. Must be implemented by a derived class.
   virtual void RunCallbackOnPrematureFailure(GDataErrorCode code) = 0;
@@ -138,7 +144,9 @@ class UrlFetchOperationBase : public GDataOperationInterface,
   scoped_refptr<base::MessageLoopProxy> relay_proxy_;
   int re_authenticate_count_;
   bool save_temp_file_;
+  FilePath output_file_path_;
   scoped_ptr<content::URLFetcher> url_fetcher_;
+  bool started_;
 };
 
 //============================ EntryActionOperation ============================
@@ -179,14 +187,14 @@ class GetDataOperation : public UrlFetchOperationBase {
                    const GetDataCallback& callback);
   virtual ~GetDataOperation();
 
+  // Parse GData JSON response.
+  static base::Value* ParseResponse(const std::string& data);
+
  protected:
   // Overridden from UrlFetchOperationBase.
   virtual bool ProcessURLFetchResults(const content::URLFetcher* source)
       OVERRIDE;
   virtual void RunCallbackOnPrematureFailure(GDataErrorCode code) OVERRIDE;
-
-  // Parse GData JSON response.
-  static base::Value* ParseResponse(const std::string& data);
 
  private:
   GetDataCallback callback_;
@@ -244,7 +252,8 @@ class DownloadFileOperation : public UrlFetchOperationBase {
                         Profile* profile,
                         const DownloadActionCallback& callback,
                         const GURL& document_url,
-                        const FilePath& virtual_path);
+                        const FilePath& virtual_path,
+                        const FilePath& output_file_path);
   virtual ~DownloadFileOperation();
 
  protected:
@@ -322,7 +331,7 @@ class CopyDocumentOperation : public GetDataOperation {
   CopyDocumentOperation(GDataOperationRegistry* registry,
                         Profile* profile,
                         const GetDataCallback& callback,
-                        const GURL& document_url,
+                        const std::string& resource_id,
                         const FilePath::StringType& new_name);
   virtual ~CopyDocumentOperation();
 
@@ -336,7 +345,7 @@ class CopyDocumentOperation : public GetDataOperation {
                               std::string* upload_content) OVERRIDE;
 
  private:
-  GURL document_url_;
+  std::string resource_id_;
   FilePath::StringType new_name_;
 
   DISALLOW_COPY_AND_ASSIGN(CopyDocumentOperation);
@@ -442,6 +451,7 @@ class InitiateUploadOperation : public UrlFetchOperationBase {
   virtual GURL GetURL() const OVERRIDE;
   virtual bool ProcessURLFetchResults(const content::URLFetcher* source)
       OVERRIDE;
+  virtual void NotifySuccessToOperationRegistry() OVERRIDE;
   virtual void RunCallbackOnPrematureFailure(GDataErrorCode code) OVERRIDE;
 
   // Overridden from UrlFetchOperationBase.
@@ -474,6 +484,8 @@ class ResumeUploadOperation : public UrlFetchOperationBase {
   virtual GURL GetURL() const OVERRIDE;
   virtual bool ProcessURLFetchResults(const content::URLFetcher* source)
       OVERRIDE;
+  virtual void NotifyStartToOperationRegistry() OVERRIDE;
+  virtual void NotifySuccessToOperationRegistry() OVERRIDE;
   virtual void RunCallbackOnPrematureFailure(GDataErrorCode code) OVERRIDE;
 
   // Overridden from UrlFetchOperationBase.
@@ -489,6 +501,7 @@ class ResumeUploadOperation : public UrlFetchOperationBase {
  private:
   ResumeUploadCallback callback_;
   ResumeUploadParams params_;
+  bool last_chunk_completed_;
 
   DISALLOW_COPY_AND_ASSIGN(ResumeUploadOperation);
 };

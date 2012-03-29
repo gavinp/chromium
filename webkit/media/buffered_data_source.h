@@ -12,7 +12,10 @@
 #include "base/synchronization/lock.h"
 #include "googleurl/src/gurl.h"
 #include "media/base/data_source.h"
+#include "media/base/pipeline_status.h"
 #include "webkit/media/buffered_resource_loader.h"
+
+class MessageLoop;
 
 namespace media {
 class MediaLog;
@@ -20,9 +23,12 @@ class MediaLog;
 
 namespace webkit_media {
 
-// This class may be created on any thread, and is callable from the render
-// thread as well as media-specific threads.
-class BufferedDataSource : public WebDataSource {
+// A data source capable of loading URLs and buffering the data using an
+// in-memory sliding window.
+//
+// BufferedDataSource must be created and initialized on the render thread
+// before being passed to other threads. It may be deleted on any thread.
+class BufferedDataSource : public media::DataSource {
  public:
   BufferedDataSource(MessageLoop* render_loop,
                      WebKit::WebFrame* frame,
@@ -30,27 +36,38 @@ class BufferedDataSource : public WebDataSource {
 
   virtual ~BufferedDataSource();
 
+  // Initialize this object using |url|. This object calls |status_cb| when
+  // initialization has completed.
+  //
+  // Method called on the render thread.
+  void Initialize(const GURL& url,
+                  const media::PipelineStatusCB& status_cb);
+
+  // Returns true if the media resource has a single origin, false otherwise.
+  // Only valid to call after Initialize() has completed.
+  //
+  // Method called on the render thread.
+  bool HasSingleOrigin();
+
+  // Cancels initialization, any pending loaders, and any pending read calls
+  // from the demuxer. The caller is expected to release its reference to this
+  // object and never call it again.
+  //
+  // Method called on the render thread.
+  void Abort();
+
   // media::DataSource implementation.
   // Called from demuxer thread.
   virtual void set_host(media::DataSourceHost* host) OVERRIDE;
   virtual void Stop(const base::Closure& closure) OVERRIDE;
   virtual void SetPlaybackRate(float playback_rate) OVERRIDE;
 
-  virtual void Read(
-      int64 position,
-      size_t size,
-      uint8* data,
-      const media::DataSource::ReadCB& read_cb) OVERRIDE;
+  virtual void Read(int64 position, int size, uint8* data,
+                    const media::DataSource::ReadCB& read_cb) OVERRIDE;
   virtual bool GetSize(int64* size_out) OVERRIDE;
   virtual bool IsStreaming() OVERRIDE;
   virtual void SetPreload(media::Preload preload) OVERRIDE;
   virtual void SetBitrate(int bitrate) OVERRIDE;
-
-  // webkit_glue::WebDataSource implementation.
-  virtual void Initialize(
-      const GURL& url, const media::PipelineStatusCB& initialize_cb) OVERRIDE;
-  virtual bool HasSingleOrigin() OVERRIDE;
-  virtual void Abort() OVERRIDE;
 
  protected:
   // A factory method to create a BufferedResourceLoader based on the read

@@ -6,8 +6,8 @@
 
 #include "base/bind.h"
 #include "base/chromeos/chromeos_version.h"
+#include "base/message_loop.h"
 #include "base/synchronization/waitable_event.h"
-#include "content/public/browser/browser_thread.h"
 #include "dbus/bus.h"
 #include "dbus/message.h"
 #include "dbus/object_path.h"
@@ -99,6 +99,12 @@ class CryptohomeClientImpl : public CryptohomeClient {
   }
 
   // CryptohomeClient override.
+  virtual bool Unmount(bool *success) OVERRIDE {
+    INITIALIZE_METHOD_CALL(method_call, cryptohome::kCryptohomeUnmount);
+    return CallMethodAndBlock(&method_call, base::Bind(&PopBool, success));
+  }
+
+  // CryptohomeClient override.
   virtual void AsyncCheckKey(const std::string& username,
                              const std::string& key,
                              AsyncMethodCallback callback) OVERRIDE {
@@ -182,8 +188,23 @@ class CryptohomeClientImpl : public CryptohomeClient {
   }
 
   // CryptohomeClient override.
-  virtual bool TpmIsEnabled(bool* enabled) OVERRIDE {
+  virtual void TpmIsEnabled(BoolMethodCallback callback) OVERRIDE {
     INITIALIZE_METHOD_CALL(method_call, cryptohome::kCryptohomeTpmIsEnabled);
+    proxy_->CallMethod(
+        &method_call, dbus::ObjectProxy::TIMEOUT_USE_DEFAULT,
+        base::Bind(
+            &CryptohomeClientImpl::OnBoolMethod,
+            weak_ptr_factory_.GetWeakPtr(),
+            callback));
+  }
+
+  // CryptohomeClient override.
+  // TODO(hashimoto): Remove this method. crosbug.com/28500
+  virtual bool CallTpmIsEnabledAndBlock(bool* enabled) OVERRIDE {
+    // We don't use INITIALIZE_METHOD_CALL here because the C++ method name is
+    // different from the D-Bus method name (TpmIsEnabled).
+    dbus::MethodCall method_call(cryptohome::kCryptohomeInterface,
+                                 cryptohome::kCryptohomeTpmIsEnabled);
     return CallMethodAndBlock(&method_call, base::Bind(&PopBool, enabled));
   }
 
@@ -220,14 +241,14 @@ class CryptohomeClientImpl : public CryptohomeClient {
   }
 
   // CryptohomeClient override.
-  virtual void Pkcs11IsTpmTokenReady(Pkcs11IsTpmTokenReadyCallback callback)
+  virtual void Pkcs11IsTpmTokenReady(BoolMethodCallback callback)
       OVERRIDE {
     INITIALIZE_METHOD_CALL(method_call,
                            cryptohome::kCryptohomePkcs11IsTpmTokenReady);
     proxy_->CallMethod(
         &method_call, dbus::ObjectProxy::TIMEOUT_USE_DEFAULT,
         base::Bind(
-            &CryptohomeClientImpl::OnPkcs11IsTpmTokenReady,
+            &CryptohomeClientImpl::OnBoolMethod,
             weak_ptr_factory_.GetWeakPtr(),
             callback));
   }
@@ -361,28 +382,28 @@ class CryptohomeClientImpl : public CryptohomeClient {
       bool* success,
       dbus::MethodCall* method_call,
       base::Callback<bool(dbus::MessageReader*)> callback) {
-    dbus::Response* response = proxy_->CallMethodAndBlock(
-        method_call, dbus::ObjectProxy::TIMEOUT_USE_DEFAULT);
-    if (response) {
-      dbus::MessageReader reader(response);
+    scoped_ptr<dbus::Response> response(proxy_->CallMethodAndBlock(
+        method_call, dbus::ObjectProxy::TIMEOUT_USE_DEFAULT));
+    if (response.get()) {
+      dbus::MessageReader reader(response.get());
       *success = callback.Run(&reader);
     }
   }
 
-  // Handles responses for Pkcs11IsTpmTokenReady.
-  void OnPkcs11IsTpmTokenReady(Pkcs11IsTpmTokenReadyCallback callback,
-                               dbus::Response* response) {
+  // Handles responses for methods with a bool value result.
+  void OnBoolMethod(BoolMethodCallback callback,
+                    dbus::Response* response) {
     if (!response) {
       callback.Run(FAILURE, false);
       return;
     }
     dbus::MessageReader reader(response);
-    bool ready = false;
-    if (!reader.PopBool(&ready)) {
+    bool result = false;
+    if (!reader.PopBool(&result)) {
       callback.Run(FAILURE, false);
       return;
     }
-    callback.Run(SUCCESS, ready);
+    callback.Run(SUCCESS, result);
   }
 
   // Handles responses for Pkcs11GetTpmtTokenInfo.
@@ -465,6 +486,12 @@ class CryptohomeClientStubImpl : public CryptohomeClient {
   }
 
   // CryptohomeClient override.
+  virtual bool Unmount(bool* success) OVERRIDE {
+    *success = true;
+    return true;
+  }
+
+  // CryptohomeClient override.
   virtual void AsyncCheckKey(const std::string& username,
                              const std::string& key,
                              AsyncMethodCallback callback) OVERRIDE {
@@ -513,7 +540,13 @@ class CryptohomeClientStubImpl : public CryptohomeClient {
   }
 
   // CryptohomeClient override.
-  virtual bool TpmIsEnabled(bool* enabled) OVERRIDE {
+  virtual void TpmIsEnabled(BoolMethodCallback callback) OVERRIDE {
+    MessageLoop::current()->PostTask(FROM_HERE,
+                                     base::Bind(callback, SUCCESS, true));
+  }
+
+  // CryptohomeClient override.
+  virtual bool CallTpmIsEnabledAndBlock(bool* enabled) OVERRIDE {
     *enabled = true;
     return true;
   }
@@ -547,7 +580,7 @@ class CryptohomeClientStubImpl : public CryptohomeClient {
   virtual void Pkcs11IsTpmTokenReady(base::Callback<void(CallStatus call_status,
                                                          bool ready)> callback)
       OVERRIDE {
-    content::BrowserThread::PostTask(content::BrowserThread::UI, FROM_HERE,
+    MessageLoop::current()->PostTask(FROM_HERE,
                                      base::Bind(callback, SUCCESS, true));
   }
 
@@ -558,9 +591,8 @@ class CryptohomeClientStubImpl : public CryptohomeClient {
                           const std::string& user_pin)> callback) OVERRIDE {
     const char kStubLabel[] = "Stub TPM Token";
     const char kStubUserPin[] = "012345";
-    content::BrowserThread::PostTask(
-        content::BrowserThread::UI, FROM_HERE,
-        base::Bind(callback, SUCCESS, kStubLabel, kStubUserPin));
+    MessageLoop::current()->PostTask(
+        FROM_HERE, base::Bind(callback, SUCCESS, kStubLabel, kStubUserPin));
   }
 
   // CryptohomeClient override.
@@ -615,8 +647,8 @@ class CryptohomeClientStubImpl : public CryptohomeClient {
  private:
   // Posts tasks which return fake results to the UI thread.
   void ReturnAsyncMethodResult(AsyncMethodCallback callback) {
-    content::BrowserThread::PostTask(
-        content::BrowserThread::UI, FROM_HERE,
+    MessageLoop::current()->PostTask(
+        FROM_HERE,
         base::Bind(&CryptohomeClientStubImpl::ReturnAsyncMethodResultInternal,
                    weak_ptr_factory_.GetWeakPtr(),
                    callback));
@@ -626,8 +658,8 @@ class CryptohomeClientStubImpl : public CryptohomeClient {
   void ReturnAsyncMethodResultInternal(AsyncMethodCallback callback) {
     callback.Run(async_call_id_);
     if (!async_call_status_handler_.is_null()) {
-      content::BrowserThread::PostTask(
-          content::BrowserThread::UI, FROM_HERE,
+      MessageLoop::current()->PostTask(
+          FROM_HERE,
           base::Bind(async_call_status_handler_,
                      async_call_id_,
                      true,

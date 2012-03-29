@@ -16,6 +16,7 @@
 #include "ui/aura/window.h"
 #include "ui/aura/window_delegate.h"
 #include "ui/base/ui_base_types.h"
+#include "ui/gfx/compositor/layer.h"
 
 namespace ash {
 namespace internal {
@@ -25,10 +26,11 @@ namespace {
 // that need to be activated in the order that they should be activated.
 const int kWindowContainerIds[] = {
     kShellWindowId_LockSystemModalContainer,
+    kShellWindowId_SettingBubbleContainer,
     kShellWindowId_LockScreenContainer,
     kShellWindowId_SystemModalContainer,
     kShellWindowId_AlwaysOnTopContainer,
-    kShellWindowId_SettingBubbleContainer,
+    kShellWindowId_AppListContainer,
     kShellWindowId_DefaultContainer,
 
     // Panel, launcher and status are intentionally checked after other
@@ -53,12 +55,24 @@ bool SupportsChildActivation(aura::Window* window) {
   return false;
 }
 
+bool HasModalTransientChild(aura::Window* window) {
+  aura::Window::Windows::const_iterator it;
+  for (it = window->transient_children().begin();
+       it != window->transient_children().end();
+       ++it) {
+    if ((*it)->GetProperty(aura::client::kModalKey) == ui::MODAL_TYPE_WINDOW)
+      return true;
+  }
+  return false;
+}
+
 // Returns true if |window| can be activated or deactivated.
 // A window manager typically defines some notion of "top level window" that
 // supports activation/deactivation.
-bool CanActivateWindow(aura::Window* window, const aura::Event* event) {
+bool CanActivateWindowWithEvent(aura::Window* window,
+                                const aura::Event* event) {
   return window &&
-      window->IsVisible() &&
+      (window->IsVisible() || wm::IsWindowMinimized(window)) &&
       (!aura::client::GetActivationDelegate(window) ||
         aura::client::GetActivationDelegate(window)->ShouldActivate(event)) &&
       SupportsChildActivation(window->parent());
@@ -102,7 +116,7 @@ aura::Window* ActivationController::GetActivatableWindow(
   aura::Window* parent = window->parent();
   aura::Window* child = window;
   while (parent) {
-    if (CanActivateWindow(child, event))
+    if (CanActivateWindowWithEvent(child, event))
       return child;
     // If |child| isn't activatable, but has transient parent, trace
     // that path instead.
@@ -112,6 +126,11 @@ aura::Window* ActivationController::GetActivatableWindow(
     child = child->parent();
   }
   return NULL;
+}
+
+bool ActivationController::CanActivateWindow(aura::Window* window) const {
+  return CanActivateWindowWithEvent(window, NULL) &&
+         !HasModalTransientChild(window);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -133,7 +152,7 @@ aura::Window* ActivationController::GetActiveWindow() {
 
 bool ActivationController::OnWillFocusWindow(aura::Window* window,
                                              const aura::Event* event) {
-  return CanActivateWindow(GetActivatableWindow(window, event), event);
+  return CanActivateWindowWithEvent(GetActivatableWindow(window, event), event);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -141,8 +160,15 @@ bool ActivationController::OnWillFocusWindow(aura::Window* window,
 
 void ActivationController::OnWindowVisibilityChanged(aura::Window* window,
                                                      bool visible) {
-  if (!visible)
-    ActivateNextWindow(window);
+  if (!visible) {
+    aura::Window* next_window = ActivateNextWindow(window);
+    if (next_window && next_window->parent() == window->parent()) {
+      // Despite the activation change, we need to keep the window being hidden
+      // stacked above the new window so it stays on top as it animates away.
+      window->layer()->parent()->StackAbove(window->layer(),
+                                            next_window->layer());
+    }
+  }
 }
 
 void ActivationController::OnWindowDestroying(aura::Window* window) {
@@ -193,8 +219,14 @@ void ActivationController::ActivateWindowWithEvent(aura::Window* window,
     return;
   // The stacking client may impose rules on what window configurations can be
   // activated or deactivated.
-  if (window && !CanActivateWindow(window, event))
+  if (window && !CanActivateWindowWithEvent(window, event))
     return;
+
+  // Restore minimized window. This needs to be done before CanReceiveEvents()
+  // is called as that function checks window visibility.
+  if (window && wm::IsWindowMinimized(window))
+    window->Show();
+
   // If the screen is locked, just bring the window to top so that
   // it will be activated when the lock window is destroyed.
   if (window && !window->CanReceiveEvents()) {
@@ -222,9 +254,13 @@ void ActivationController::ActivateWindowWithEvent(aura::Window* window,
   }
 }
 
-void ActivationController::ActivateNextWindow(aura::Window* window) {
-  if (wm::IsActiveWindow(window))
-    ActivateWindow(GetTopmostWindowToActivate(window));
+aura::Window* ActivationController::ActivateNextWindow(aura::Window* window) {
+  aura::Window* next_window = NULL;
+  if (wm::IsActiveWindow(window)) {
+    next_window = GetTopmostWindowToActivate(window);
+    ActivateWindow(next_window);
+  }
+  return next_window;
 }
 
 aura::Window* ActivationController::GetTopmostWindowToActivate(
@@ -259,7 +295,9 @@ aura::Window* ActivationController::GetTopmostWindowToActivateInContainer(
            container->children().rbegin();
        i != container->children().rend();
        ++i) {
-    if (*i != ignore && CanActivateWindow(*i, NULL))
+    if (*i != ignore &&
+        CanActivateWindowWithEvent(*i, NULL) &&
+        !wm::IsWindowMinimized(*i))
       return *i;
   }
   return NULL;

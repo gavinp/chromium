@@ -56,13 +56,16 @@ class ProviderTypeComboboxModel : public ui::ComboboxModel {
  public:
   ProviderTypeComboboxModel() {}
   virtual ~ProviderTypeComboboxModel() {}
-  virtual int GetItemCount() {
+
+  // Overridden from ui::ComboboxModel:
+  virtual int GetItemCount() const OVERRIDE {
     return chromeos::PROVIDER_TYPE_MAX;
   }
-  virtual string16 GetItemAt(int index) {
+  virtual string16 GetItemAt(int index) OVERRIDE {
     ProviderType type = static_cast<ProviderType>(index);
     return ProviderTypeToString(type);
   }
+
  private:
   DISALLOW_COPY_AND_ASSIGN(ProviderTypeComboboxModel);
 };
@@ -73,25 +76,28 @@ class ServerCACertComboboxModel : public ui::ComboboxModel {
       : cert_library_(cert_library) {
   }
   virtual ~ServerCACertComboboxModel() {}
-  virtual int GetItemCount() {
+
+  // Overridden from ui::ComboboxModel:
+  virtual int GetItemCount() const OVERRIDE {
     if (cert_library_->CertificatesLoading())
       return 1;  // "Loading"
     // "Default" + certs.
     return cert_library_->GetCACertificates().Size() + 1;
   }
-  virtual string16 GetItemAt(int combo_index) {
+  virtual string16 GetItemAt(int index) OVERRIDE {
     if (cert_library_->CertificatesLoading())
       return l10n_util::GetStringUTF16(
           IDS_OPTIONS_SETTINGS_INTERNET_OPTIONS_CERT_LOADING);
-    if (combo_index == 0)
+    if (index == 0)
       return l10n_util::GetStringUTF16(
           IDS_OPTIONS_SETTINGS_INTERNET_OPTIONS_CERT_SERVER_CA_DEFAULT);
-    int cert_index = combo_index - 1;
+    int cert_index = index - 1;
     return cert_library_->GetCACertificates().GetDisplayStringAt(cert_index);
   }
 
  private:
   CertLibrary* cert_library_;
+
   DISALLOW_COPY_AND_ASSIGN(ServerCACertComboboxModel);
 };
 
@@ -101,7 +107,9 @@ class UserCertComboboxModel : public ui::ComboboxModel {
       : cert_library_(cert_library) {
   }
   virtual ~UserCertComboboxModel() {}
-  virtual int GetItemCount() {
+
+  // Overridden from ui::ComboboxModel:
+  virtual int GetItemCount() const OVERRIDE {
     if (cert_library_->CertificatesLoading())
       return 1;  // "Loading"
     int num_certs = cert_library_->GetUserCertificates().Size();
@@ -109,7 +117,7 @@ class UserCertComboboxModel : public ui::ComboboxModel {
       return 1;  // "None installed"
     return num_certs;
   }
-  virtual string16 GetItemAt(int combo_index) {
+  virtual string16 GetItemAt(int index) OVERRIDE {
     if (cert_library_->CertificatesLoading()) {
       return l10n_util::GetStringUTF16(
           IDS_OPTIONS_SETTINGS_INTERNET_OPTIONS_CERT_LOADING);
@@ -118,7 +126,7 @@ class UserCertComboboxModel : public ui::ComboboxModel {
       return l10n_util::GetStringUTF16(
           IDS_OPTIONS_SETTINGS_INTERNET_OPTIONS_USER_CERT_NONE_INSTALLED);
     }
-    return cert_library_->GetUserCertificates().GetDisplayStringAt(combo_index);
+    return cert_library_->GetUserCertificates().GetDisplayStringAt(index);
   }
 
  private:
@@ -355,15 +363,15 @@ const std::string VPNConfigView::GetOTP() const {
 
 const std::string VPNConfigView::GetServerCACertNssNickname() const {
   DCHECK(cert_library_);
-  int selected =
-      server_ca_cert_combobox_ ? server_ca_cert_combobox_->selected_item() : 0;
-  if (selected == 0) {
+  int index = server_ca_cert_combobox_ ?
+      server_ca_cert_combobox_->selected_index() : 0;
+  if (index == 0) {
     // First item is "Default".
     return std::string();
   } else {
     DCHECK(cert_library_);
     DCHECK_GT(cert_library_->GetCACertificates().Size(), 0);
-    int cert_index = selected - 1;
+    int cert_index = index - 1;
     return cert_library_->GetCACertificates().GetNicknameAt(cert_index);
   }
 }
@@ -374,9 +382,8 @@ const std::string VPNConfigView::GetUserCertID() const {
     return std::string();  // "None installed"
   } else {
     // Certificates are listed in the order they appear in the model.
-    int selected =
-        user_cert_combobox_ ? user_cert_combobox_->selected_item() : 0;
-    return cert_library_->GetUserCertificates().GetPkcs11IdAt(selected);
+    int index = user_cert_combobox_ ? user_cert_combobox_->selected_index() : 0;
+    return cert_library_->GetUserCertificates().GetPkcs11IdAt(index);
   }
 }
 
@@ -630,12 +637,12 @@ void VPNConfigView::Refresh() {
           vpn->ca_cert_nss());
       if (cert_index >= 0) {
         // Skip item for "Default"
-        server_ca_cert_combobox_->SetSelectedItem(1 + cert_index);
+        server_ca_cert_combobox_->SetSelectedIndex(1 + cert_index);
       } else {
-        server_ca_cert_combobox_->SetSelectedItem(0);
+        server_ca_cert_combobox_->SetSelectedIndex(0);
       }
     } else {
-      server_ca_cert_combobox_->SetSelectedItem(0);
+      server_ca_cert_combobox_->SetSelectedIndex(0);
     }
   }
 
@@ -646,11 +653,11 @@ void VPNConfigView::Refresh() {
       int cert_index = cert_library_->GetUserCertificates().FindCertByPkcs11Id(
           vpn->client_cert_id());
       if (cert_index >= 0)
-        user_cert_combobox_->SetSelectedItem(cert_index);
+        user_cert_combobox_->SetSelectedIndex(cert_index);
       else
-        user_cert_combobox_->SetSelectedItem(0);
+        user_cert_combobox_->SetSelectedIndex(0);
     } else {
-      user_cert_combobox_->SetSelectedItem(0);
+      user_cert_combobox_->SetSelectedIndex(0);
     }
   }
 
@@ -767,18 +774,18 @@ bool VPNConfigView::HaveUserCerts() const {
 bool VPNConfigView::IsUserCertValid() const {
   if (!user_cert_combobox_ || !enable_user_cert_)
     return false;
-  int selected = user_cert_combobox_->selected_item();
-  if (selected < 0)
+  int index = user_cert_combobox_->selected_index();
+  if (index < 0)
     return false;
   // Currently only hardware-backed user certificates are valid.
   if (cert_library_->IsHardwareBacked() &&
-      !cert_library_->GetUserCertificates().IsHardwareBackedAt(selected))
+      !cert_library_->GetUserCertificates().IsHardwareBackedAt(index))
     return false;
   return true;
 }
 
-const std::string VPNConfigView::GetTextFromField(
-    views::Textfield* textfield, bool trim_whitespace) const {
+const std::string VPNConfigView::GetTextFromField(views::Textfield* textfield,
+                                                  bool trim_whitespace) const {
   if (!textfield)
     return std::string();
   std::string untrimmed = UTF16ToUTF8(textfield->text());

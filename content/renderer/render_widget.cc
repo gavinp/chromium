@@ -17,7 +17,6 @@
 #include "content/common/swapped_out_messages.h"
 #include "content/common/view_messages.h"
 #include "content/public/common/content_switches.h"
-#include "content/renderer/gpu/compositor_thread.h"
 #include "content/renderer/render_process.h"
 #include "content/renderer/render_thread_impl.h"
 #include "content/renderer/renderer_webkitplatformsupport_impl.h"
@@ -555,11 +554,15 @@ void RenderWidget::OnHandleInputEvent(const IPC::Message& message) {
   IPC::Message* response =
       new ViewHostMsg_HandleInputEvent_ACK(routing_id_, input_event->type,
                                            processed);
+  bool event_type_gets_rate_limited =
+      input_event->type == WebInputEvent::MouseMove ||
+      input_event->type == WebInputEvent::MouseWheel ||
+      WebInputEvent::isTouchEventType(input_event->type);
+  bool is_input_throttled =
+      webwidget_->isInputThrottled() ||
+      paint_aggregator_.HasPendingUpdate();
 
-  if ((input_event->type == WebInputEvent::MouseMove ||
-       input_event->type == WebInputEvent::MouseWheel ||
-       WebInputEvent::isTouchEventType(input_event->type)) &&
-      paint_aggregator_.HasPendingUpdate()) {
+  if (event_type_gets_rate_limited && is_input_throttled) {
     // We want to rate limit the input events in this case, so we'll wait for
     // painting to finish before ACKing this message.
     if (pending_input_event_ack_.get()) {
@@ -1075,11 +1078,6 @@ void RenderWidget::didAutoResize(const WebSize& new_size) {
 void RenderWidget::didActivateCompositor(int input_handler_identifier) {
   TRACE_EVENT0("gpu", "RenderWidget::didActivateCompositor");
 
-  CompositorThread* compositor_thread =
-      RenderThreadImpl::current()->compositor_thread();
-  if (compositor_thread)
-    compositor_thread->AddInputHandler(routing_id_, input_handler_identifier);
-
   if (!is_accelerated_compositing_active_) {
     // When not in accelerated compositing mode, in certain cases (e.g. waiting
     // for a resize or if no backing store) the RenderWidgetHost is blocking the
@@ -1108,6 +1106,26 @@ void RenderWidget::didDeactivateCompositor() {
     using_asynchronous_swapbuffers_ = false;
 }
 
+void RenderWidget::willBeginCompositorFrame() {
+  TRACE_EVENT0("gpu", "RenderWidget::willBeginCompositorFrame");
+
+  DCHECK(RenderThreadImpl::current()->compositor_thread());
+
+  // The following two can result in further layout and possibly
+  // enable GPU acceleration so they need to be called before any painting
+  // is done.
+  UpdateTextInputState();
+  UpdateSelectionBounds();
+
+  WillInitiatePaint();
+}
+
+void RenderWidget::didBecomeReadyForAdditionalInput() {
+  TRACE_EVENT0("renderer", "RenderWidget::didBecomeReadyForAdditionalInput");
+  if (pending_input_event_ack_.get())
+    Send(pending_input_event_ack_.release());
+}
+
 void RenderWidget::didCommitAndDrawCompositorFrame() {
   TRACE_EVENT0("gpu", "RenderWidget::didCommitAndDrawCompositorFrame");
   // Accelerated FPS tick for performance tests. See throughput_tests.cc.
@@ -1118,6 +1136,8 @@ void RenderWidget::didCommitAndDrawCompositorFrame() {
 }
 
 void RenderWidget::didCompleteSwapBuffers() {
+  DidFlushPaint();
+
   if (update_reply_pending_)
     return;
 

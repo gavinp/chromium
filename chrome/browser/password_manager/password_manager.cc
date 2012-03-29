@@ -87,6 +87,8 @@ void PasswordManager::ProvisionallySavePassword(const PasswordForm& form) {
            pending_login_managers_.begin();
        iter != pending_login_managers_.end(); ++iter) {
     if ((*iter)->DoesManage(form)) {
+      // Transfer ownership of the manager from |pending_login_managers_| to
+      // |manager|.
       manager.reset(*iter);
       pending_login_managers_.weak_erase(iter);
       break;
@@ -122,27 +124,6 @@ void PasswordManager::SetObserver(LoginModelObserver* observer) {
   observer_ = observer;
 }
 
-void PasswordManager::DidStopLoading() {
-  if (!provisional_save_manager_.get())
-    return;
-
-  DCHECK(IsEnabled());
-
-  // Form is not completely valid - we do not support it.
-  if (!provisional_save_manager_->HasValidPasswordForm())
-    return;
-
-  provisional_save_manager_->SubmitPassed();
-  if (provisional_save_manager_->IsNewLogin()) {
-    delegate_->AddSavePasswordInfoBar(provisional_save_manager_.release());
-  } else {
-    // If the save is not a new username entry, then we just want to save this
-    // data (since the user already has related data saved), so don't prompt.
-    provisional_save_manager_->Save();
-    provisional_save_manager_.reset();
-  }
-}
-
 void PasswordManager::DidNavigateAnyFrame(
       const content::LoadCommittedDetails& details,
       const content::FrameNavigateParams& params) {
@@ -162,16 +143,16 @@ void PasswordManager::DidNavigateAnyFrame(
 bool PasswordManager::OnMessageReceived(const IPC::Message& message) {
   bool handled = true;
   IPC_BEGIN_MESSAGE_MAP(PasswordManager, message)
-    IPC_MESSAGE_HANDLER(AutofillHostMsg_PasswordFormsFound,
-                        OnPasswordFormsFound)
-    IPC_MESSAGE_HANDLER(AutofillHostMsg_PasswordFormsVisible,
-                        OnPasswordFormsVisible)
+    IPC_MESSAGE_HANDLER(AutofillHostMsg_PasswordFormsParsed,
+                        OnPasswordFormsParsed)
+    IPC_MESSAGE_HANDLER(AutofillHostMsg_PasswordFormsRendered,
+                        OnPasswordFormsRendered)
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP()
   return handled;
 }
 
-void PasswordManager::OnPasswordFormsFound(
+void PasswordManager::OnPasswordFormsParsed(
     const std::vector<PasswordForm>& forms) {
   if (!IsEnabled())
     return;
@@ -190,11 +171,14 @@ void PasswordManager::OnPasswordFormsFound(
   }
 }
 
-void PasswordManager::OnPasswordFormsVisible(
+void PasswordManager::OnPasswordFormsRendered(
     const std::vector<PasswordForm>& visible_forms) {
   if (!provisional_save_manager_.get())
     return;
 
+  DCHECK(IsEnabled());
+
+  // First, check for a failed login attempt.
   for (std::vector<PasswordForm>::const_iterator iter = visible_forms.begin();
        iter != visible_forms.end(); ++iter) {
     if (provisional_save_manager_->DoesManage(*iter)) {
@@ -204,8 +188,28 @@ void PasswordManager::OnPasswordFormsVisible(
       // and we want to be able to save in that case.
       provisional_save_manager_->SubmitFailed();
       provisional_save_manager_.reset();
-      break;
+      return;
     }
+  }
+
+  if (!provisional_save_manager_->HasValidPasswordForm()) {
+    // Form is not completely valid - we do not support it.
+    NOTREACHED();
+    provisional_save_manager_.reset();
+    return;
+  }
+
+  // Looks like a successful login attempt. Either show an infobar or update
+  // the previously saved login data.
+  provisional_save_manager_->SubmitPassed();
+  if (provisional_save_manager_->IsNewLogin()) {
+    delegate_->AddSavePasswordInfoBarIfPermitted(
+        provisional_save_manager_.release());
+  } else {
+    // If the save is not a new username entry, then we just want to save this
+    // data (since the user already has related data saved), so don't prompt.
+    provisional_save_manager_->Save();
+    provisional_save_manager_.reset();
   }
 }
 

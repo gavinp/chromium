@@ -16,7 +16,6 @@
 namespace browser_sync {
 
 AllStatus::AllStatus() {
-  status_.summary = sync_api::SyncManager::Status::OFFLINE;
   status_.initial_sync_ended = true;
   status_.notifications_enabled = false;
   status_.cryptographer_ready = false;
@@ -72,6 +71,8 @@ sync_api::SyncManager::Status AllStatus::CalcSyncing(
         snapshot->syncer_status.num_updates_downloaded_total;
     status.tombstone_updates_received +=
         snapshot->syncer_status.num_tombstone_updates_downloaded_total;
+    status.reflected_updates_received +=
+        snapshot->syncer_status.num_reflected_updates_downloaded_total;
     status.num_local_overwrites_total +=
         snapshot->syncer_status.num_local_overwrites;
     status.num_server_overwrites_total +=
@@ -94,27 +95,6 @@ sync_api::SyncManager::Status AllStatus::CalcSyncing(
     }
   }
   return status;
-}
-
-void AllStatus::CalcStatusChanges() {
-  const bool unsynced_changes = status_.unsynced_count > 0;
-  // TODO(rlarocque): Hard-coding online to true is a hack that patches over
-  // crbug.com/112229, and limits the fallout from some ServerConnectionManager
-  // changes.  We will be making more drastic changes to the summary value in
-  // the near future.  See crbug.com/98346.
-  const bool online = true;
-  if (online) {
-    if (status_.syncing)
-      status_.summary = sync_api::SyncManager::Status::SYNCING;
-    else
-      status_.summary = sync_api::SyncManager::Status::READY;
-  } else if (!status_.initial_sync_ended) {
-    status_.summary = sync_api::SyncManager::Status::OFFLINE_UNUSABLE;
-  } else if (unsynced_changes) {
-    status_.summary = sync_api::SyncManager::Status::OFFLINE_UNSYNCED;
-  } else {
-    status_.summary = sync_api::SyncManager::Status::OFFLINE;
-  }
 }
 
 void AllStatus::OnSyncEngineEvent(const SyncEngineEvent& event) {
@@ -181,7 +161,6 @@ ScopedStatusLock::ScopedStatusLock(AllStatus* allstatus)
 }
 
 ScopedStatusLock::~ScopedStatusLock() {
-  allstatus_->CalcStatusChanges();
   allstatus_->mutex_.Release();
 }
 

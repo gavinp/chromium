@@ -18,6 +18,7 @@
 #include "chrome/browser/chromeos/cros_settings.h"
 #include "chrome/browser/chromeos/dbus/dbus_thread_manager.h"
 #include "chrome/browser/chromeos/dbus/update_engine_client.h"
+#include "chrome/browser/chromeos/login/authenticator.h"
 #include "chrome/browser/chromeos/login/ownership_service.h"
 #include "chrome/browser/chromeos/login/signed_settings_helper.h"
 #include "chrome/browser/policy/app_pack_updater.h"
@@ -169,7 +170,10 @@ bool DevicePolicyCache::SetPolicy(const em::PolicyFetchResponse& policy) {
     return false;
   }
 
-  if (registration_user != policy_data.username()) {
+  // Existing installations may not have a canonicalized version of the
+  // registration user name in install attributes, so re-canonicalize here.
+  if (chromeos::Authenticator::Canonicalize(registration_user) !=
+      chromeos::Authenticator::Canonicalize(policy_data.username())) {
     LOG(WARNING) << "Refusing policy blob for " << policy_data.username()
                  << " which doesn't match " << registration_user;
     UMA_HISTOGRAM_ENUMERATION(kMetricPolicy, kMetricPolicyFetchUserMismatch,
@@ -201,10 +205,7 @@ void DevicePolicyCache::OnRetrievePolicyCompleted(
   if (!IsReady()) {
     std::string device_token;
     InstallInitialPolicy(code, policy, &device_token);
-    // We need to call SetDeviceToken unconditionally to indicate the cache has
-    // finished loading.
-    data_store_->SetDeviceToken(device_token, true);
-    SetReady();
+    SetTokenAndFlagReady(device_token);
   } else {  // In other words, IsReady() == true
     if (code != chromeos::SignedSettings::SUCCESS) {
       if (code == chromeos::SignedSettings::BAD_SIGNATURE) {
@@ -310,6 +311,21 @@ void DevicePolicyCache::InstallInitialPolicy(
   base::Time timestamp;
   if (SetPolicyInternal(policy, &timestamp, true))
     set_last_policy_refresh_time(timestamp);
+}
+
+void DevicePolicyCache::SetTokenAndFlagReady(const std::string& device_token) {
+  // Wait for device settings to become available.
+  if (!chromeos::CrosSettings::Get()->PrepareTrustedValues(
+          base::Bind(&DevicePolicyCache::SetTokenAndFlagReady,
+                     weak_ptr_factory_.GetWeakPtr(),
+                     device_token))) {
+    return;
+  }
+
+  // We need to call SetDeviceToken unconditionally to indicate the cache has
+  // finished loading.
+  data_store_->SetDeviceToken(device_token, true);
+  SetReady();
 }
 
 // static

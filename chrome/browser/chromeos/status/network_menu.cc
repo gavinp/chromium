@@ -19,8 +19,8 @@
 #include "chrome/browser/chromeos/status/network_menu_icon.h"
 #include "chrome/browser/chromeos/status/status_area_view_chromeos.h"
 #include "chrome/browser/defaults.h"
+#include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/browser.h"
-#include "chrome/browser/ui/browser_list.h"
 #include "chrome/browser/ui/dialog_style.h"
 #include "chrome/browser/ui/views/window.h"
 #include "chrome/common/chrome_switches.h"
@@ -90,10 +90,17 @@ void SetMenuMargins(views::MenuItemView* menu_item_view, int top, int bottom) {
 // Activate a cellular network.
 void ActivateCellular(const chromeos::CellularNetwork* cellular) {
   DCHECK(cellular);
-  Browser* browser = BrowserList::GetLastActive();
-  if (!browser)
-    return;
+  Browser* browser = Browser::GetOrCreateTabbedBrowser(
+      ProfileManager::GetDefaultProfileOrOffTheRecord());
   browser->OpenMobilePlanTabAndActivate();
+}
+
+// Decides whether a network should be highlighted in the UI.
+bool ShouldHighlightNetwork(const chromeos::Network* network) {
+  chromeos::NetworkLibrary* cros =
+      chromeos::CrosLibrary::Get()->GetNetworkLibrary();
+  return cros->connected_network() ? network == cros->connected_network() :
+                                     network == cros->connecting_network();
 }
 
 }  // namespace
@@ -209,8 +216,6 @@ class NetworkMenuModel : public ui::MenuModel {
   std::string carrier_id_;
 
  private:
-  // Show a NetworkConfigView modal dialog instance.
-  void ShowNetworkConfigView(NetworkConfigView* view) const;
   // Open a dialog to set up and connect to a network.
   void ShowOther(ConnectionType type) const;
 
@@ -483,9 +488,9 @@ void NetworkMenuModel::ActivatedAt(int index) {
     if (active_vpn)
       cros->DisconnectFromNetwork(active_vpn);
   } else if (flags & FLAG_VIEW_ACCOUNT) {
-    Browser* browser = BrowserList::GetLastActive();
-    if (browser)
-      browser->ShowSingletonTab(GURL(top_up_url_));
+    Browser* browser = Browser::GetOrCreateTabbedBrowser(
+        ProfileManager::GetDefaultProfileOrOffTheRecord());
+    browser->ShowSingletonTab(GURL(top_up_url_));
   }
 }
 
@@ -495,20 +500,11 @@ void NetworkMenuModel::SetMenuModelDelegate(ui::MenuModelDelegate* delegate) {
 ////////////////////////////////////////////////////////////////////////////////
 // NetworkMenuModel, private methods:
 
-void NetworkMenuModel::ShowNetworkConfigView(NetworkConfigView* view) const {
-  views::Widget* window = browser::CreateViewsWindow(
-      owner_->delegate()->GetNativeWindow(), view, STYLE_GENERIC);
-  window->SetAlwaysOnTop(true);
-  window->Show();
-}
-
 void NetworkMenuModel::ShowOther(ConnectionType type) const {
-  if (type == TYPE_CELLULAR) {
-    ChooseMobileNetworkDialog::ShowDialog(
-        owner_->delegate()->GetNativeWindow());
-  } else {
-    ShowNetworkConfigView(new NetworkConfigView(type));
-  }
+  if (type == TYPE_CELLULAR)
+    owner_->ShowOtherCellular();
+  else
+    owner_->ShowOtherWifi();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -538,7 +534,6 @@ void MainMenuModel::InitMenuItems(bool should_open_button_options) {
   bool ethernet_enabled = cros->ethernet_enabled();
   const chromeos::EthernetNetwork* ethernet_network = cros->ethernet_network();
   if (ethernet_enabled && ethernet_network) {
-    bool ethernet_connected = cros->ethernet_connected();
     bool ethernet_connecting = cros->ethernet_connecting();
 
     if (ethernet_connecting) {
@@ -550,11 +545,11 @@ void MainMenuModel::InitMenuItems(bool should_open_button_options) {
       label = l10n_util::GetStringUTF16(IDS_STATUSBAR_NETWORK_DEVICE_ETHERNET);
     }
     int flag = FLAG_ETHERNET;
-    if (ethernet_connecting || ethernet_connected)
+    if (ShouldHighlightNetwork(ethernet_network))
       flag |= FLAG_ASSOCIATED;
     SkBitmap icon;
     icon = NetworkMenuIcon::GetBitmap(ethernet_network,
-                                      NetworkMenuIcon::SIZE_SMALL);
+                                      NetworkMenuIcon::COLOR_DARK);
     menu_items_.push_back(MenuItem(ui::MenuModel::TYPE_COMMAND,
                                    label, icon, std::string(), flag));
   }
@@ -564,7 +559,6 @@ void MainMenuModel::InitMenuItems(bool should_open_button_options) {
   bool wifi_enabled = cros->wifi_enabled();
   if (wifi_available && wifi_enabled) {
     const WifiNetworkVector& wifi_networks = cros->wifi_networks();
-    const WifiNetwork* active_wifi = cros->wifi_network();
 
     bool separator_added = false;
     // List Wifi networks.
@@ -594,11 +588,10 @@ void MainMenuModel::InitMenuItems(bool should_open_button_options) {
       // the user is not logged in), we disable it.
       if (!cros->CanConnectToNetwork(wifi_networks[i]))
         flag |= FLAG_DISABLED;
-      if (active_wifi
-          && wifi_networks[i]->service_path() == active_wifi->service_path())
+      if (ShouldHighlightNetwork(wifi_networks[i]))
         flag |= FLAG_ASSOCIATED;
       const SkBitmap icon = NetworkMenuIcon::GetBitmap(wifi_networks[i],
-          NetworkMenuIcon::SIZE_SMALL);
+          NetworkMenuIcon::COLOR_DARK);
       menu_items_.push_back(
           MenuItem(ui::MenuModel::TYPE_COMMAND,
                    label, icon, wifi_networks[i]->service_path(), flag));
@@ -609,7 +602,7 @@ void MainMenuModel::InitMenuItems(bool should_open_button_options) {
         ui::MenuModel::TYPE_COMMAND,
         l10n_util::GetStringUTF16(IDS_OPTIONS_SETTINGS_OTHER_WIFI_NETWORKS),
         NetworkMenuIcon::GetConnectedBitmap(NetworkMenuIcon::ARCS,
-                                            NetworkMenuIcon::SIZE_SMALL),
+                                            NetworkMenuIcon::COLOR_DARK),
         std::string(), FLAG_ADD_WIFI));
   }
 
@@ -663,15 +656,13 @@ void MainMenuModel::InitMenuItems(bool should_open_button_options) {
 
       int flag = FLAG_CELLULAR;
       // If wifi is associated, then cellular is not active.
-      bool isActive = !cros->wifi_network() && active_cellular &&
-          cell_networks[i]->service_path() == active_cellular->service_path() &&
-          (cell_networks[i]->connecting() || cell_networks[i]->connected());
+      bool isActive = ShouldHighlightNetwork(cell_networks[i]);
       bool supports_data_plan =
           active_cellular && active_cellular->SupportsDataPlan();
       if (isActive)
         flag |= FLAG_ASSOCIATED;
       const SkBitmap icon = NetworkMenuIcon::GetBitmap(cell_networks[i],
-          NetworkMenuIcon::SIZE_SMALL);
+          NetworkMenuIcon::COLOR_DARK);
       menu_items_.push_back(
           MenuItem(ui::MenuModel::TYPE_COMMAND,
                    label, icon, cell_networks[i]->service_path(), flag));
@@ -727,7 +718,7 @@ void MainMenuModel::InitMenuItems(bool should_open_button_options) {
             l10n_util::GetStringUTF16(
                 IDS_OPTIONS_SETTINGS_OTHER_CELLULAR_NETWORKS),
             NetworkMenuIcon::GetDisconnectedBitmap(NetworkMenuIcon::BARS,
-                                                   NetworkMenuIcon::SIZE_SMALL),
+                                                   NetworkMenuIcon::COLOR_DARK),
             std::string(), FLAG_ADD_CELLULAR));
       }
     }
@@ -746,8 +737,7 @@ void MainMenuModel::InitMenuItems(bool should_open_button_options) {
   if (StatusAreaViewChromeos::IsBrowserMode()) {
     if (cros->connected_network() || cros->virtual_network_connected()) {
       menu_items_.push_back(MenuItem());  // Separator
-      const SkBitmap icon = NetworkMenuIcon::GetVpnBitmap(
-          NetworkMenuIcon::SIZE_SMALL);
+      const SkBitmap icon = NetworkMenuIcon::GetVpnBitmap();
       menu_items_.push_back(MenuItem(
           ui::MenuModel::TYPE_SUBMENU,
           l10n_util::GetStringUTF16(IDS_STATUSBAR_NETWORK_PRIVATE_NETWORKS),
@@ -878,10 +868,10 @@ void VPNMenuModel::InitMenuItems(bool should_open_button_options) {
     int flag = FLAG_VPN;
     if (!cros->CanConnectToNetwork(vpn))
       flag |= FLAG_DISABLED;
-    if (active_vpn && vpn->service_path() == active_vpn->service_path())
+    if (ShouldHighlightNetwork(vpn))
       flag |= FLAG_ASSOCIATED;
     const SkBitmap icon = NetworkMenuIcon::GetBitmap(vpn,
-        NetworkMenuIcon::SIZE_SMALL);
+        NetworkMenuIcon::COLOR_DARK);
     menu_items_.push_back(
         MenuItem(ui::MenuModel::TYPE_COMMAND,
                  label, icon, vpn->service_path(), flag));
@@ -1000,10 +990,6 @@ NetworkMenu::NetworkMenu(Delegate* delegate)
       new views::MenuModelAdapter(main_menu_model_.get()));
   menu_item_view_ = new views::MenuItemView(menu_model_adapter_.get());
   menu_item_view_->set_has_icons(true);
-#if !defined(USE_AURA)
-  menu_item_view_->set_menu_position(
-      views::MenuItemView::POSITION_BELOW_BOUNDS);
-#endif
   menu_runner_.reset(new views::MenuRunner(menu_item_view_));
 }
 
@@ -1049,9 +1035,8 @@ void NetworkMenu::RunMenu(views::View* source) {
 
 void NetworkMenu::ShowTabbedNetworkSettings(const Network* network) const {
   DCHECK(network);
-  Browser* browser = BrowserList::GetLastActive();
-  if (!browser)
-    return;
+  Browser* browser = Browser::GetOrCreateTabbedBrowser(
+      ProfileManager::GetDefaultProfileOrOffTheRecord());
 
   // In case of a VPN, show the config settings for the connected network.
   if (network->type() == chromeos::TYPE_VPN) {
@@ -1081,8 +1066,8 @@ void NetworkMenu::DoConnect(Network* network) {
     if (vpn->NeedMoreInfoToConnect()) {
       // Show the connection UI if info for a field is missing.
       NetworkConfigView* view = new NetworkConfigView(vpn);
-      views::Widget* window = browser::CreateViewsWindow(
-          delegate()->GetNativeWindow(), view, STYLE_GENERIC);
+      views::Widget* window = views::Widget::CreateWindowWithParent(
+          view, delegate()->GetNativeWindow());
       window->SetAlwaysOnTop(true);
       window->Show();
     } else {
@@ -1096,8 +1081,8 @@ void NetworkMenu::DoConnect(Network* network) {
     if (wifi->IsPassphraseRequired()) {
       // Show the connection UI if we require a passphrase.
       NetworkConfigView* view = new NetworkConfigView(wifi);
-      views::Widget* window = browser::CreateViewsWindow(
-          delegate()->GetNativeWindow(), view, STYLE_GENERIC);
+      views::Widget* window = views::Widget::CreateWindowWithParent(
+          view, delegate()->GetNativeWindow());
       window->SetAlwaysOnTop(true);
       window->Show();
     } else {
@@ -1126,6 +1111,22 @@ void NetworkMenu::ToggleCellular() {
     SimDialogDelegate::ShowDialog(delegate()->GetNativeWindow(),
                                   SimDialogDelegate::SIM_DIALOG_UNLOCK);
   }
+}
+
+void NetworkMenu::ShowOtherWifi() {
+  NetworkConfigView* view = new NetworkConfigView(TYPE_WIFI);
+  views::Widget* window = views::Widget::CreateWindowWithParent(
+      view, delegate_->GetNativeWindow());
+  window->SetAlwaysOnTop(true);
+  window->Show();
+}
+
+void NetworkMenu::ShowOtherCellular() {
+  ChooseMobileNetworkDialog::ShowDialog(delegate_->GetNativeWindow());
+}
+
+bool NetworkMenu::ShouldHighlightNetwork(const Network* network) {
+  return ::ShouldHighlightNetwork(network);
 }
 
 }  // namespace chromeos

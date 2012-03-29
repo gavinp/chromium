@@ -30,6 +30,7 @@
 #include "chrome/browser/ui/webui/gpu_internals_ui.h"
 #include "chrome/browser/ui/webui/history_ui.h"
 #include "chrome/browser/ui/webui/html_dialog_ui.h"
+#include "chrome/browser/ui/webui/inspect_ui.h"
 #include "chrome/browser/ui/webui/media/media_internals_ui.h"
 #include "chrome/browser/ui/webui/net_internals/net_internals_ui.h"
 #include "chrome/browser/ui/webui/network_action_predictor/network_action_predictor_ui.h"
@@ -47,7 +48,6 @@
 #include "chrome/browser/ui/webui/test_chrome_web_ui_controller_factory.h"
 #include "chrome/browser/ui/webui/tracing_ui.h"
 #include "chrome/browser/ui/webui/uber/uber_ui.h"
-#include "chrome/browser/ui/webui/workers_ui.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/common/pref_names.h"
@@ -60,6 +60,7 @@
 #if defined(OS_CHROMEOS)
 #include "chrome/browser/ui/webui/chromeos/active_downloads_ui.h"
 #include "chrome/browser/ui/webui/chromeos/choose_mobile_network_ui.h"
+#include "chrome/browser/ui/webui/chromeos/gdata_ui.h"
 #include "chrome/browser/ui/webui/chromeos/imageburner/imageburner_ui.h"
 #include "chrome/browser/ui/webui/chromeos/keyboard_overlay_ui.h"
 #include "chrome/browser/ui/webui/chromeos/login/oobe_ui.h"
@@ -182,16 +183,10 @@ WebUIFactoryFunction GetWebUIFactoryFunction(content::WebUI* web_ui,
     return &NewWebUI<ConstrainedHtmlUI>;
   if (url.host() == chrome::kChromeUIExtensionsFrameHost)
     return &NewWebUI<ExtensionsUI>;
-  if (url.host() == chrome::kChromeUIFeedbackHost)
-    return &NewWebUI<FeedbackUI>;
-  if (url.host() == chrome::kChromeUIFlagsHost)
-    return &NewWebUI<FlagsUI>;
   if (url.host() == chrome::kChromeUIFlashHost)
     return &NewWebUI<FlashUI>;
   if (url.host() == chrome::kChromeUIGpuInternalsHost)
     return &NewWebUI<GpuInternalsUI>;
-  if (url.host() == chrome::kChromeUIHelpFrameHost)
-    return &NewWebUI<HelpUI>;
   if (url.host() == chrome::kChromeUIHistoryFrameHost)
     return &NewWebUI<HistoryUI>;
   if (url.host() == chrome::kChromeUIMediaInternalsHost)
@@ -222,22 +217,29 @@ WebUIFactoryFunction GetWebUIFactoryFunction(content::WebUI* web_ui,
     return &NewWebUI<UberFrameUI>;
   if (url.host() == chrome::kChromeUIUberHost)
     return &NewWebUI<UberUI>;
-  if (url.host() == chrome::kChromeUIWorkersHost)
-    return &NewWebUI<WorkersUI>;
 
   /****************************************************************************
    * OS Specific #defines
    ***************************************************************************/
 #if !defined(OS_ANDROID)
-  // Android uses the native download manager.
+  // These pages are implemented with native UI elements on Android.
   if (url.host() == chrome::kChromeUIDownloadsHost)
     return &NewWebUI<DownloadsUI>;
-  // Android doesn't use the Options/Options2 pages.
+  if (url.host() == chrome::kChromeUIFeedbackHost)
+    return &NewWebUI<FeedbackUI>;
+  if (url.host() == chrome::kChromeUIHelpFrameHost)
+    return &NewWebUI<HelpUI>;
   if (url.host() == chrome::kChromeUISettingsFrameHost)
     return &NewWebUI<options2::OptionsUI>;
-  if (url.host() == chrome::kChromeUISettingsHost)
-    return &NewWebUI<OptionsUI>;
-  // Android doesn't support print/print-preview
+  // chrome://flags is currently unsupported on Android.
+  if (url.host() == chrome::kChromeUIFlagsHost)
+    return &NewWebUI<FlagsUI>;
+  // chrome://inspect isn't supported on Android. Page debugging is handled by a
+  // remote devtools on the host machine, and other elements (Shared Workers,
+  // extensions, etc) aren't supported.
+  if (url.host() == chrome::kChromeUIInspectHost)
+    return &NewWebUI<InspectUI>;
+  // Android doesn't support print/print-preview.
   if (url.host() == chrome::kChromeUIPrintHost &&
       !g_browser_process->local_state()->GetBoolean(
           prefs::kPrintPreviewDisabled)) {
@@ -257,6 +259,8 @@ WebUIFactoryFunction GetWebUIFactoryFunction(content::WebUI* web_ui,
     return &NewWebUI<ActiveDownloadsUI>;
   if (url.host() == chrome::kChromeUIChooseMobileNetworkHost)
     return &NewWebUI<chromeos::ChooseMobileNetworkUI>;
+  if (url.host() == chrome::kChromeUIGDataHost)
+    return &NewWebUI<GDataUI>;
   if (url.host() == chrome::kChromeUIImageBurnerHost)
     return &NewWebUI<ImageBurnUI>;
   if (url.host() == chrome::kChromeUIKeyboardOverlayHost)
@@ -330,6 +334,7 @@ WebUIFactoryFunction GetWebUIFactoryFunction(content::WebUI* web_ui,
       || url.host() == chrome::kChromeUIDiscardsHost
       || url.host() == chrome::kChromeUINetworkHost
       || url.host() == chrome::kChromeUIOSCreditsHost
+      || url.host() == chrome::kChromeUITransparencyHost
 #endif
       ) {
     return &NewWebUI<AboutUI>;
@@ -472,9 +477,6 @@ RefCountedMemory* ChromeWebUIControllerFactory::GetFaviconResourceBytes(
   if (page_url.host() == chrome::kChromeUIHistoryHost)
     return HistoryUI::GetFaviconResourceBytes();
 
-  if (page_url.host() == chrome::kChromeUIFlagsHost)
-    return FlagsUI::GetFaviconResourceBytes();
-
   if (page_url.host() == chrome::kChromeUISessionsHost)
     return SessionsUI::GetFaviconResourceBytes();
 
@@ -482,14 +484,15 @@ RefCountedMemory* ChromeWebUIControllerFactory::GetFaviconResourceBytes(
     return FlashUI::GetFaviconResourceBytes();
 
 #if !defined(OS_ANDROID)
-  // Android uses the native download manager
+  // Android uses the native download manager.
   if (page_url.host() == chrome::kChromeUIDownloadsHost)
     return DownloadsUI::GetFaviconResourceBytes();
 
-  // Android doesn't use the Options/Options2 pages
-  if (page_url.host() == chrome::kChromeUISettingsHost)
-    return OptionsUI::GetFaviconResourceBytes();
+  // chrome://flags is currently unsupported on Android.
+  if (page_url.host() == chrome::kChromeUIFlagsHost)
+    return FlagsUI::GetFaviconResourceBytes();
 
+  // Android doesn't use the Options pages.
   if (page_url.host() == chrome::kChromeUISettingsFrameHost)
     return options2::OptionsUI::GetFaviconResourceBytes();
 #endif

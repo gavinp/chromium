@@ -10,6 +10,7 @@
 
 namespace views {
 class ImageView;
+class View;
 }
 
 namespace ash {
@@ -18,7 +19,8 @@ class ASH_EXPORT CapsLockObserver {
  public:
   virtual ~CapsLockObserver() {}
 
-  virtual void OnCapsLockChanged(bool enabled) = 0;
+  virtual void OnCapsLockChanged(bool enabled,
+                                 int string_id) = 0;
 };
 
 namespace internal {
@@ -31,10 +33,16 @@ class TrayCapsLock : public TrayImageItem,
 
  private:
   // Overridden from TrayImageItem.
-  virtual bool ShouldDisplay() OVERRIDE;
+  virtual bool GetInitialVisibility() OVERRIDE;
+  virtual views::View* CreateDetailedView(user::LoginStatus status) OVERRIDE;
+  virtual void DestroyDetailedView() OVERRIDE;
 
   // Overridden from CapsLockObserver.
-  virtual void OnCapsLockChanged(bool enabled) OVERRIDE;
+  virtual void OnCapsLockChanged(bool enabled,
+                                 int string_id) OVERRIDE;
+
+  scoped_ptr<views::View> detailed_;
+  int string_id_;  // String ID for the string to show in the popup.
 
   DISALLOW_COPY_AND_ASSIGN(TrayCapsLock);
 };
@@ -43,5 +51,3 @@ class TrayCapsLock : public TrayImageItem,
 }  // namespace ash
 
 #endif  // ASH_SYSTEM_TRAY_CAPS_LOCK_H_
-
-

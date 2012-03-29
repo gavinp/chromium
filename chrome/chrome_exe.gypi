@@ -24,6 +24,8 @@
         'app/client_util.h',
         'app/hard_error_handler_win.cc',
         'app/hard_error_handler_win.h',
+        'app/metro_driver_win.cc',
+        'app/metro_driver_win.h',
         '../content/app/startup_helper_win.cc',
       ],
       'mac_bundle_resources': [
@@ -531,6 +533,7 @@
             '../base/base.gyp:base_nacl_win64',
             '../base/base.gyp:base_static_win64',
             '../base/third_party/dynamic_annotations/dynamic_annotations.gyp:dynamic_annotations_win64',
+            '../crypto/crypto.gyp:crypto_nacl_win64',
             '../ipc/ipc.gyp:ipc_win64',
             '../sandbox/sandbox.gyp:sandbox_win64',
           ],

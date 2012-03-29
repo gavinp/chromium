@@ -67,6 +67,7 @@ class SyncData;
 class Version;
 
 namespace chromeos {
+class ExtensionBluetoothEventRouter;
 class ExtensionInputMethodEventRouter;
 }
 
@@ -89,6 +90,7 @@ class ExtensionServiceInterface : public SyncableService {
 
   virtual ~ExtensionServiceInterface() {}
   virtual const ExtensionSet* extensions() const = 0;
+  virtual const ExtensionSet* disabled_extensions() const = 0;
   virtual PendingExtensionManager* pending_extension_manager() = 0;
 
   // Install an update.  Return true if the install can be started.
@@ -123,6 +125,8 @@ class ExtensionServiceInterface : public SyncableService {
   virtual void UnloadExtension(
       const std::string& extension_id,
       extension_misc::UnloadedExtensionReason reason) = 0;
+
+  virtual void SyncExtensionChangeIfNeeded(const Extension& extension) = 0;
 
   virtual bool is_ready() = 0;
 };
@@ -196,7 +200,7 @@ class ExtensionService
 
   // Gets the list of currently installed extensions.
   virtual const ExtensionSet* extensions() const OVERRIDE;
-  const ExtensionSet* disabled_extensions() const;
+  virtual const ExtensionSet* disabled_extensions() const OVERRIDE;
   const ExtensionSet* terminated_extensions() const;
 
   // Retuns a set of all installed, disabled, and terminated extensions and
@@ -225,17 +229,6 @@ class ExtensionService
 
   virtual void SetAppNotificationDisabled(const std::string& extension_id,
       bool value);
-
-  // Getters and setters for the position of Apps in the NTP. The setters
-  // will trigger a sync if needed.
-  // The getters return invalid StringOridinals for non-app extensions and
-  // setting ordinals for non-apps is an error.
-  StringOrdinal GetAppLaunchOrdinal(const std::string& extension_id) const;
-  void SetAppLaunchOrdinal(const std::string& extension_id,
-                           const StringOrdinal& app_launch_ordinal);
-  StringOrdinal GetPageOrdinal(const std::string& extension_id) const;
-  void SetPageOrdinal(const std::string& extension_id,
-                      const StringOrdinal& page_ordinal);
 
   // Updates the app launcher value for the moved extension so that it is now
   // located after the given predecessor and before the successor. This will
@@ -374,6 +367,10 @@ class ExtensionService
   // Scan the extension directory and clean up the cruft.
   void GarbageCollectExtensions();
 
+  // Notifies Sync (if needed) of a newly-installed extension or a change to
+  // an existing extension.
+  virtual void SyncExtensionChangeIfNeeded(const Extension& extension) OVERRIDE;
+
   // The App that represents the web store.
   const Extension* GetWebStoreApp();
 
@@ -423,7 +420,7 @@ class ExtensionService
   virtual SyncError MergeDataAndStartSyncing(
       syncable::ModelType type,
       const SyncDataList& initial_sync_data,
-      SyncChangeProcessor* sync_processor) OVERRIDE;
+      scoped_ptr<SyncChangeProcessor> sync_processor) OVERRIDE;
   virtual void StopSyncing(syncable::ModelType type) OVERRIDE;
   virtual SyncDataList GetAllSyncData(syncable::ModelType type) const OVERRIDE;
   virtual SyncError ProcessSyncChanges(
@@ -476,6 +473,9 @@ class ExtensionService
   }
 
 #if defined(OS_CHROMEOS)
+  chromeos::ExtensionBluetoothEventRouter* bluetooth_event_router() {
+    return bluetooth_event_router_.get();
+  }
   chromeos::ExtensionInputMethodEventRouter* input_method_event_router() {
     return input_method_event_router_.get();
   }
@@ -592,13 +592,16 @@ class ExtensionService
     SyncBundle();
     ~SyncBundle();
 
+    void Reset();
+
     bool HasExtensionId(const std::string& id) const;
     bool HasPendingExtensionId(const std::string& id) const;
 
+    // Note: all members of the struct need to be explicitly cleared in Reset().
     ExtensionFilter filter;
     std::set<std::string> synced_extensions;
     std::map<std::string, ExtensionSyncData> pending_sync_data;
-    SyncChangeProcessor* sync_processor;
+    scoped_ptr<SyncChangeProcessor> sync_processor;
   };
 
   // Contains Extension data that can change during the life of the process,
@@ -629,10 +632,6 @@ class ExtensionService
     std::string mime_type;
   };
   typedef std::list<NaClModuleInfo> NaClModuleInfoList;
-
-  // Notifies Sync (if needed) of a newly-installed extension or a change to
-  // an existing extension.
-  void SyncExtensionChangeIfNeeded(const Extension& extension);
 
   // Get the appropriate SyncBundle, given some representation of Sync data.
   SyncBundle* GetSyncBundleForExtension(const Extension& extension);
@@ -810,6 +809,7 @@ class ExtensionService
   scoped_ptr<ExtensionWebNavigationEventRouter> web_navigation_event_router_;
 
 #if defined(OS_CHROMEOS)
+  scoped_ptr<chromeos::ExtensionBluetoothEventRouter> bluetooth_event_router_;
   scoped_ptr<chromeos::ExtensionInputMethodEventRouter>
       input_method_event_router_;
 #endif

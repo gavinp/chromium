@@ -20,7 +20,6 @@
 #include "chrome/browser/profiles/profile_metrics.h"
 #include "chrome/browser/sync/profile_sync_service.h"
 #include "chrome/browser/sync/profile_sync_service_factory.h"
-#include "chrome/browser/sync/sync_setup_flow.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_list.h"
 #include "chrome/browser/ui/browser_window.h"
@@ -53,16 +52,16 @@ namespace {
 SkBitmap GetGAIAPictureForNTP(const gfx::Image& image) {
   // This value must match the width and height value of login-status-icon
   // in new_tab.css.
-  const int length = 27;
-  SkBitmap bmp = skia::ImageOperations::Resize(
-      image, skia::ImageOperations::RESIZE_BEST, length, length);
+  const int kLength = 27;
+  SkBitmap bmp = skia::ImageOperations::Resize(*image.ToSkBitmap(),
+      skia::ImageOperations::RESIZE_BEST, kLength, kLength);
 
-  gfx::Canvas canvas(gfx::Size(length, length), false);
+  gfx::Canvas canvas(gfx::Size(kLength, kLength), false);
   canvas.DrawBitmapInt(bmp, 0, 0);
 
   // Draw a gray border on the inside of the icon.
   SkColor color = SkColorSetARGB(83, 0, 0, 0);
-  canvas.DrawRect(gfx::Rect(0, 0, length - 1, length - 1), color);
+  canvas.DrawRect(gfx::Rect(0, 0, kLength - 1, kLength - 1), color);
 
   return canvas.ExtractBitmap();
 }
@@ -134,7 +133,7 @@ void NTPLoginHandler::HandleShowSyncLoginUI(const ListValue* args) {
 #if !defined(OS_ANDROID)
     // The user isn't signed in, show the sync promo.
     if (SyncPromoUI::ShouldShowSyncPromo(profile)) {
-      browser->ShowSyncSetup();
+      browser->ShowSyncSetup(SyncPromoUI::SOURCE_NTP_LINK);
       RecordInHistogram(NTP_SIGN_IN_PROMO_CLICKED);
     }
 #endif
@@ -181,8 +180,10 @@ void NTPLoginHandler::HandleLoginMessageSeen(const ListValue* args) {
 }
 
 void NTPLoginHandler::HandleShowAdvancedLoginUI(const ListValue* args) {
-  ProfileSyncServiceFactory::GetInstance()->GetForProfile(
-      Profile::FromWebUI(web_ui()))->ShowConfigure(false);
+  Browser* browser =
+      BrowserList::FindBrowserWithWebContents(web_ui()->GetWebContents());
+  if (browser)
+    browser->ShowSyncSetup(SyncPromoUI::SOURCE_NTP_LINK);
 }
 
 void NTPLoginHandler::UpdateLogin() {
@@ -233,8 +234,9 @@ void NTPLoginHandler::UpdateLogin() {
   StringValue header_value(header);
   StringValue sub_header_value(sub_header);
   StringValue icon_url_value(icon_url);
-  web_ui()->CallJavascriptFunction(
-      "ntp.updateLogin", header_value, sub_header_value, icon_url_value);
+  base::FundamentalValue is_user_signed_in(!username.empty());
+  web_ui()->CallJavascriptFunction("ntp.updateLogin",
+      header_value, sub_header_value, icon_url_value, is_user_signed_in);
 }
 
 // static

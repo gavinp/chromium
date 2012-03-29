@@ -36,6 +36,9 @@ struct SessionStartupPref {
 
   static void RegisterUserPrefs(PrefService* prefs);
 
+  // Returns the default value for |type|.
+  static Type GetDefaultStartupType();
+
   // What should happen on startup for the specified profile.
   static void SetStartupPref(Profile* profile, const SessionStartupPref& pref);
   static void SetStartupPref(PrefService* prefs,
@@ -49,6 +52,13 @@ struct SessionStartupPref {
 
   // Converts an integer pref value to a SessionStartupPref::Type.
   static SessionStartupPref::Type PrefValueToType(int pref_value);
+
+  // Returns |true| if a change to startup type or URLS was detected by
+  // ProtectorService.
+  static bool DidStartupPrefChange(Profile* profile);
+
+  // Returns the protected backup of startup type and URLS.
+  static SessionStartupPref GetStartupPrefBackup(Profile* profile);
 
   explicit SessionStartupPref(Type type);
 

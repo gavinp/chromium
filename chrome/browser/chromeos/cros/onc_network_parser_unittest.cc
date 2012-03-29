@@ -20,7 +20,7 @@
 #include "chrome/browser/chromeos/cros/cros_library.h"
 #include "chrome/browser/chromeos/cros/network_library.h"
 #include "chrome/browser/chromeos/dbus/dbus_thread_manager.h"
-#include "chrome/browser/chromeos/login/user_manager.h"
+#include "chrome/browser/chromeos/login/mock_user_manager.h"
 #include "chrome/browser/net/pref_proxy_config_tracker_impl.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/test/base/testing_browser_process.h"
@@ -35,6 +35,9 @@
 #include "net/third_party/mozilla_security_manager/nsNSSCertTrust.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/cros_system_api/dbus/service_constants.h"
+
+using ::testing::AnyNumber;
+using ::testing::Return;
 
 namespace msm = mozilla_security_manager;
 namespace chromeos {
@@ -224,8 +227,8 @@ TEST_F(OncNetworkParserTest, TestCreateNetworkWifi) {
   EXPECT_EQ("ssid", wifi->name());
   CheckStringProperty(wifi, PROPERTY_INDEX_SSID, "ssid");
   EXPECT_EQ(false, wifi->auto_connect());
-  EXPECT_EQ("z123456789012", wifi->passphrase());
-  CheckStringProperty(wifi, PROPERTY_INDEX_PASSPHRASE, "z123456789012");
+  EXPECT_EQ("0x1234567890", wifi->passphrase());
+  CheckStringProperty(wifi, PROPERTY_INDEX_PASSPHRASE, "0x1234567890");
 }
 
 TEST_F(OncNetworkParserTest, TestCreateNetworkEthernet) {
@@ -279,14 +282,14 @@ TEST_F(OncNetworkParserTest, TestLoadWifiCertificatePattern) {
   EXPECT_EQ(false, wifi->auto_connect());
   EXPECT_EQ("", wifi->passphrase());
   EXPECT_EQ(chromeos::EAP_METHOD_TLS, wifi->eap_method());
-  EXPECT_EQ(chromeos::CLIENT_CERT_TYPE_PATTERN, wifi->eap_client_cert_type());
+  EXPECT_EQ(chromeos::CLIENT_CERT_TYPE_PATTERN, wifi->client_cert_type());
   EXPECT_EQ("Google, Inc.",
-            wifi->client_cert_pattern()->issuer().organization());
-  ASSERT_EQ(2ul, wifi->client_cert_pattern()->enrollment_uri_list().size());
+            wifi->client_cert_pattern().issuer().organization());
+  ASSERT_EQ(2ul, wifi->client_cert_pattern().enrollment_uri_list().size());
   EXPECT_EQ("http://youtu.be/dQw4w9WgXcQ",
-            wifi->client_cert_pattern()->enrollment_uri_list()[0]);
+            wifi->client_cert_pattern().enrollment_uri_list()[0]);
   EXPECT_EQ("chrome-extension://abc/keygen-cert.html",
-            wifi->client_cert_pattern()->enrollment_uri_list()[1]);
+            wifi->client_cert_pattern().enrollment_uri_list()[1]);
 }
 
 
@@ -304,14 +307,14 @@ TEST_F(OncNetworkParserTest, TestLoadVPNCertificatePattern) {
   VirtualNetwork* vpn = static_cast<VirtualNetwork*>(network.get());
   EXPECT_EQ("MyVPN", vpn->name());
   EXPECT_EQ(false, vpn->auto_connect());
-  EXPECT_EQ(chromeos::CLIENT_CERT_TYPE_PATTERN, vpn->client_cert_type_);
+  EXPECT_EQ(chromeos::CLIENT_CERT_TYPE_PATTERN, vpn->client_cert_type());
   EXPECT_EQ("Google, Inc.",
-            vpn->client_cert_pattern()->issuer().organization());
-  ASSERT_EQ(2ul, vpn->client_cert_pattern()->enrollment_uri_list().size());
+            vpn->client_cert_pattern().issuer().organization());
+  ASSERT_EQ(2ul, vpn->client_cert_pattern().enrollment_uri_list().size());
   EXPECT_EQ("http://youtu.be/dQw4w9WgXcQ",
-            vpn->client_cert_pattern()->enrollment_uri_list()[0]);
+            vpn->client_cert_pattern().enrollment_uri_list()[0]);
   EXPECT_EQ("chrome-extension://abc/keygen-cert.html",
-            vpn->client_cert_pattern()->enrollment_uri_list()[1]);
+            vpn->client_cert_pattern().enrollment_uri_list()[1]);
 }
 
 TEST_F(OncNetworkParserTest, TestCreateNetworkWifiEAP1) {
@@ -882,6 +885,13 @@ TEST_F(OncNetworkParserTest, TestProxySettingsManual) {
 }
 
 TEST(OncNetworkParserUserExpansionTest, GetUserExpandedValue) {
+  ScopedMockUserManagerEnabler mock_user_manager;
+  mock_user_manager.user_manager()->SetLoggedInUser("onc@example.com", false);
+
+  EXPECT_CALL(*mock_user_manager.user_manager(), IsUserLoggedIn())
+      .Times(2)
+      .WillRepeatedly(Return(false));
+
   NetworkUIData::ONCSource source = NetworkUIData::ONC_SOURCE_USER_IMPORT;
 
   // Setup environment needed by UserManager.
@@ -903,7 +913,10 @@ TEST(OncNetworkParserUserExpansionTest, GetUserExpandedValue) {
                 login_email_pattern, source));
 
   // Log in a user and check that the expansions work as expected.
-  UserManager::Get()->UserLoggedIn("onc@example.com");
+  EXPECT_CALL(*mock_user_manager.user_manager(), IsUserLoggedIn())
+      .Times(2)
+      .WillRepeatedly(Return(true));
+
   EXPECT_EQ("a onc b",
             chromeos::OncNetworkParser::GetUserExpandedValue(
                 login_id_pattern, source));

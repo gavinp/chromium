@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -42,7 +42,7 @@ ACTION_P2(RunCallback, region, data) {
 ACTION(FinishEncode) {
   scoped_ptr<VideoPacket> packet(new VideoPacket());
   packet->set_flags(VideoPacket::LAST_PACKET | VideoPacket::LAST_PARTITION);
-  arg2.Run(packet.release());
+  arg2.Run(packet.Pass());
 }
 
 ACTION(FinishSend) {
@@ -143,12 +143,12 @@ TEST_F(ScreenRecorderTest, StartAndStop) {
       .WillRepeatedly(Return(&video_stub));
 
   // By default delete the arguments when ProcessVideoPacket is received.
-  EXPECT_CALL(video_stub, ProcessVideoPacket(_, _))
+  EXPECT_CALL(video_stub, ProcessVideoPacketPtr(_, _))
       .WillRepeatedly(FinishSend());
 
   // For the first time when ProcessVideoPacket is received we stop the
   // ScreenRecorder.
-  EXPECT_CALL(video_stub, ProcessVideoPacket(_, _))
+  EXPECT_CALL(video_stub, ProcessVideoPacketPtr(_, _))
       .WillOnce(DoAll(
           FinishSend(),
           StopScreenRecorder(record_,

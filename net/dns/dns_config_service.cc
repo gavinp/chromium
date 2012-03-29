@@ -5,6 +5,7 @@
 #include "net/dns/dns_config_service.h"
 
 #include "base/logging.h"
+#include "base/values.h"
 #include "net/base/ip_endpoint.h"
 
 namespace net {
@@ -44,6 +45,30 @@ void DnsConfig::CopyIgnoreHosts(const DnsConfig& d) {
   attempts = d.attempts;
   rotate = d.rotate;
   edns0 = d.edns0;
+}
+
+base::Value* DnsConfig::ToValue() const {
+  DictionaryValue* dict = new DictionaryValue();
+
+  ListValue* list = new ListValue();
+  for (size_t i = 0; i < nameservers.size(); ++i)
+    list->Append(Value::CreateStringValue(nameservers[i].ToString()));
+  dict->Set("nameservers", list);
+
+  list = new ListValue();
+  for (size_t i = 0; i < search.size(); ++i)
+    list->Append(Value::CreateStringValue(search[i]));
+  dict->Set("search", list);
+
+  dict->SetBoolean("append_to_multi_label_name", append_to_multi_label_name);
+  dict->SetInteger("ndots", ndots);
+  dict->SetDouble("timeout", timeout.InSecondsF());
+  dict->SetInteger("attempts", attempts);
+  dict->SetBoolean("rotate", rotate);
+  dict->SetBoolean("edns0", edns0);
+  dict->SetInteger("num_hosts", hosts.size());
+
+  return dict;
 }
 
 
@@ -100,7 +125,18 @@ void DnsConfigService::OnHostsRead(const DnsHosts& hosts) {
 void DnsConfigService::StartTimer() {
   DCHECK(CalledOnValidThread());
   timer_.Stop();
+
+  // Give it a short timeout to come up with a valid config. Otherwise withdraw
+  // the config from the receiver. The goal is to avoid perceivable network
+  // outage (when using the wrong config) but at the same time avoid
+  // unnecessary Job aborts in HostResolverImpl. The signals come from multiple
+  // sources so it might receive multiple events during a config change.
+
+  // DHCP and user-induced changes are on the order of seconds, so 100ms should
+  // not add perceivable delay. On the other hand, config readers should finish
+  // within 100ms with the rare exception of I/O block or extra large HOSTS.
   const base::TimeDelta kTimeout = base::TimeDelta::FromMilliseconds(100);
+
   timer_.Start(FROM_HERE,
                kTimeout,
                this,
@@ -112,6 +148,7 @@ void DnsConfigService::OnTimeout() {
   // Indicate that even if there is no change in On*Read, we will need to
   // update the receiver when the config becomes complete.
   need_update_ = true;
+  // Empty config is considered invalid.
   callback_.Run(DnsConfig());
 }
 

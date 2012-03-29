@@ -91,6 +91,10 @@ class BluetoothAdapter : private BluetoothManagerClient::Observer,
   // is called, in the success case the callback is simply not called.
   typedef base::Callback<void()> ErrorCallback;
 
+  // The address of this adapter.  The address format is "XX:XX:XX:XX:XX:XX",
+  // where each XX is a hexadecimal number.
+  const std::string& address() const { return address_; }
+
   // Indicates whether the adapter is actually present on the system, for
   // the default adapter this indicates whether any adapter is present.
   bool IsPresent() const;
@@ -115,15 +119,17 @@ class BluetoothAdapter : private BluetoothManagerClient::Observer,
   void SetDiscovering(bool discovering, ErrorCallback callback);
 
   // Requests the list of devices from the adapter, all are returned
-  // including those currently connected, those that have been connected or
-  // paired in the past and those that have only been discovered. Use the
+  // including those currently connected and those paired. Use the
   // returned device pointers to determine which they are.
   typedef std::vector<BluetoothDevice*> DeviceList;
   DeviceList GetDevices();
+  typedef std::vector<const BluetoothDevice*> ConstDeviceList;
+  ConstDeviceList GetDevices() const;
 
   // Returns a pointer to the device with the given address |address| or
   // NULL if no such device is known.
   BluetoothDevice* GetDevice(const std::string& address);
+  const BluetoothDevice* GetDevice(const std::string& address) const;
 
   // Creates the instance for the default adapter, whichever that may
   // be at the time. Use IsPresent() and the AdapterPresentChanged() observer
@@ -275,15 +281,18 @@ class BluetoothAdapter : private BluetoothManagerClient::Observer,
   bool track_default_;
   dbus::ObjectPath object_path_;
 
+  // Address of the adapter.
+  std::string address_;
+
   // Tracked adapter state, cached locally so we only send change notifications
   // to observers on a genuine change.
   bool powered_;
   bool discovering_;
 
-  // Devices paired with, connected to, previously connected to, discovered
-  // and visible to the adapter. The key is the Bluetooth address of the device
-  // and the value is the BluetoothDevice object whose lifetime is managed
-  // by the adapter instance.
+  // Devices paired with, connected to, discovered by, or visible to the
+  // adapter. The key is the Bluetooth address of the device and the value
+  // is the BluetoothDevice object whose lifetime is managed by the adapter
+  // instance.
   typedef std::map<const std::string, BluetoothDevice*> DevicesMap;
   DevicesMap devices_;
 

@@ -9,7 +9,7 @@
 
 using namespace net::test_spdy3;
 
-namespace spdy {
+namespace net {
 
 namespace {
 
@@ -30,7 +30,7 @@ class TestBufferedSpdyVisitor : public BufferedSpdyFramerVisitorInterface {
     error_count_++;
   }
 
-  void OnStreamError(spdy::SpdyStreamId stream_id,
+  void OnStreamError(SpdyStreamId stream_id,
                      const std::string& description) {
     LOG(INFO) << "SpdyFramer Error on stream: " << stream_id  << " "
               << description;
@@ -95,11 +95,11 @@ class TestBufferedSpdyVisitor : public BufferedSpdyFramerVisitorInterface {
     }
   }
 
-  void OnRstStream(const spdy::SpdyRstStreamControlFrame& frame) {}
-  void OnGoAway(const spdy::SpdyGoAwayControlFrame& frame) {}
-  void OnPing(const spdy::SpdyPingControlFrame& frame) {}
-  void OnWindowUpdate(const spdy::SpdyWindowUpdateControlFrame& frame) {}
-  void OnCredential(const spdy::SpdyCredentialControlFrame& frame) {}
+  void OnRstStream(const SpdyRstStreamControlFrame& frame) {}
+  void OnGoAway(const SpdyGoAwayControlFrame& frame) {}
+  void OnPing(const SpdyPingControlFrame& frame) {}
+  void OnWindowUpdate(const SpdyWindowUpdateControlFrame& frame) {}
+  void OnCredential(const SpdyCredentialControlFrame& frame) {}
 
   // Convenience function which runs a framer simulation with particular input.
   void SimulateInFramer(const unsigned char* input, size_t size) {
@@ -143,10 +143,6 @@ class TestBufferedSpdyVisitor : public BufferedSpdyFramerVisitorInterface {
 
 class BufferedSpdyFramerSpdy3Test : public PlatformTest {
  protected:
-  void EnableCompression(bool enabled) {
-    SpdyFramer::set_enable_compression_default(enabled);
-  }
-
   // Returns true if the two header blocks have equivalent content.
   bool CompareHeaderBlocks(const SpdyHeaderBlock* expected,
                            const SpdyHeaderBlock* actual) {
@@ -173,11 +169,12 @@ class BufferedSpdyFramerSpdy3Test : public PlatformTest {
     }
     return true;
   }
+
+ private:
+  SpdyTestStateHelper spdy_state_;
 };
 
 TEST_F(BufferedSpdyFramerSpdy3Test, OnSetting) {
-  EnableCompression(false);
-
   SpdyFramer framer(3);
   SpdySettings settings;
   settings.push_back(SpdySetting(SettingsFlagsAndId(0, 1), 0x00000002));
@@ -194,8 +191,6 @@ TEST_F(BufferedSpdyFramerSpdy3Test, OnSetting) {
 }
 
 TEST_F(BufferedSpdyFramerSpdy3Test, ReadSynStreamHeaderBlock) {
-  EnableCompression(false);
-
   SpdyHeaderBlock headers;
   headers["aa"] = "vv";
   headers["bb"] = "ww";
@@ -204,6 +199,7 @@ TEST_F(BufferedSpdyFramerSpdy3Test, ReadSynStreamHeaderBlock) {
       framer.CreateSynStream(1,                        // stream_id
                              0,                        // associated_stream_id
                              1,                        // priority
+                             0,                        // credential_slot
                              CONTROL_FLAG_NONE,
                              true,                     // compress
                              &headers));
@@ -221,8 +217,6 @@ TEST_F(BufferedSpdyFramerSpdy3Test, ReadSynStreamHeaderBlock) {
 }
 
 TEST_F(BufferedSpdyFramerSpdy3Test, ReadSynReplyHeaderBlock) {
-  EnableCompression(false);
-
   SpdyHeaderBlock headers;
   headers["alpha"] = "beta";
   headers["gamma"] = "delta";
@@ -246,8 +240,6 @@ TEST_F(BufferedSpdyFramerSpdy3Test, ReadSynReplyHeaderBlock) {
 }
 
 TEST_F(BufferedSpdyFramerSpdy3Test, ReadHeadersHeaderBlock) {
-  EnableCompression(false);
-
   SpdyHeaderBlock headers;
   headers["alpha"] = "beta";
   headers["gamma"] = "delta";
@@ -269,4 +261,4 @@ TEST_F(BufferedSpdyFramerSpdy3Test, ReadHeadersHeaderBlock) {
   EXPECT_EQ(1, visitor.headers_frame_count_);
   EXPECT_TRUE(CompareHeaderBlocks(&headers, &visitor.headers_));
 }
-}  // namespace spdy
+}  // namespace net

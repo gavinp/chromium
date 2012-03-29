@@ -10,33 +10,32 @@
 
 #include "base/basictypes.h"
 #include "base/command_line.h"
-#include "base/linux_util.h"
+#include "base/memory/scoped_ptr.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/core/SkUnPreMultiply.h"
 #include "ui/gfx/rect.h"
 
 namespace {
 
-// A process wide singleton that manages our usage of gdk
-// cursors. gdk_cursor_new() hits the disk in several places and GdkCursor
-// instances can be reused throughout the process.
+// A process wide singleton that manages our usage of gdk cursors.
+// gdk_cursor_new() hits the disk in several places and GdkCursor instances can
+// be reused throughout the process.
 class GdkCursorCache {
  public:
-   GdkCursorCache() {}
+  GdkCursorCache() {}
   ~GdkCursorCache() {
-    for (std::map<GdkCursorType, GdkCursor*>::iterator it =
-        cursor_cache_.begin(); it != cursor_cache_.end(); ++it) {
-      gdk_cursor_unref(it->second);
+    for (GdkCursorMap::iterator i(cursors_.begin()); i != cursors_.end(); ++i) {
+      gdk_cursor_unref(i->second);
     }
-    cursor_cache_.clear();
+    cursors_.clear();
   }
 
   GdkCursor* GetCursorImpl(GdkCursorType type) {
-    std::map<GdkCursorType, GdkCursor*>::iterator it = cursor_cache_.find(type);
+    GdkCursorMap::iterator it = cursors_.find(type);
     GdkCursor* cursor = NULL;
-    if (it == cursor_cache_.end()) {
+    if (it == cursors_.end()) {
       cursor = gdk_cursor_new(type);
-      cursor_cache_.insert(std::make_pair(type, cursor));
+      cursors_.insert(std::make_pair(type, cursor));
     } else {
       cursor = it->second;
     }
@@ -46,7 +45,9 @@ class GdkCursorCache {
     return cursor;
   }
 
-  std::map<GdkCursorType, GdkCursor*> cursor_cache_;
+ private:
+  typedef std::map<GdkCursorType, GdkCursor*> GdkCursorMap;
+  GdkCursorMap cursors_;
 
   DISALLOW_COPY_AND_ASSIGN(GdkCursorCache);
 };
@@ -81,7 +82,7 @@ GdkPixbuf* GdkPixbufFromSkBitmap(const SkBitmap* bitmap) {
   if (bitmap->isNull())
     return NULL;
 
-  bitmap->lockPixels();
+  SkAutoLockPixels lock_pixels(*bitmap);
 
   int width = bitmap->width();
   int height = bitmap->height();
@@ -121,7 +122,6 @@ GdkPixbuf* GdkPixbufFromSkBitmap(const SkBitmap* bitmap) {
       8,
       width, height, stride, &FreePixels, divided);
 
-  bitmap->unlockPixels();
   return pixbuf;
 }
 

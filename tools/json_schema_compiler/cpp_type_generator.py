@@ -28,10 +28,12 @@ class CppTypeGenerator(object):
     beneath the root namespace.
     """
     for type_ in namespace.types:
-      if self._type_namespaces.get(type_, namespace) != namespace:
+      qualified_name = self._QualifyName(namespace, type_)
+      if qualified_name in self._type_namespaces:
         raise ValueError('Type %s is declared in both %s and %s' %
-            (type_, namespace.name, self._type_namespaces[type_].name))
-      self._type_namespaces[type_] = namespace
+            (qualified_name, namespace.name,
+             self._type_namespaces[qualified_name].name))
+      self._type_namespaces[qualified_name] = namespace
     self._cpp_namespaces[namespace] = cpp_namespace
 
   def GetExpandedChoicesInParams(self, params):
@@ -118,7 +120,7 @@ class CppTypeGenerator(object):
     """
     cpp_type = None
     if prop.type_ == PropertyType.REF:
-      dependency_namespace = self._type_namespaces.get(prop.ref_type)
+      dependency_namespace = self._ResolveTypeNamespace(prop.ref_type)
       if not dependency_namespace:
         raise KeyError('Cannot find referenced type: %s' % prop.ref_type)
       if self._namespace != dependency_namespace:
@@ -173,6 +175,11 @@ class CppTypeGenerator(object):
       for type_ in types:
         c.Append('struct %s;' % type_)
       c.Append('}')
+    c.Concat(self.GetNamespaceStart())
+    for (name, type_) in self._namespace.types.items():
+      if not type_.functions:
+        c.Append('struct %s;' % name)
+    c.Concat(self.GetNamespaceEnd())
     return c
 
   def GenerateIncludes(self):
@@ -184,6 +191,29 @@ class CppTypeGenerator(object):
             dependency.source_file_dir,
             self._cpp_namespaces[dependency]))
     return c
+
+  def _QualifyName(self, namespace, name):
+    return '.'.join([namespace.name, name])
+
+  def _ResolveTypeNamespace(self, ref_type):
+    """Resolves a type name to its enclosing namespace.
+
+    Searches for the ref_type first as an explicitly qualified name, then within
+    the enclosing namespace, then within other namespaces that the current
+    namespace depends upon.
+    """
+    if ref_type in self._type_namespaces:
+      return self._type_namespaces[ref_type]
+
+    qualified_name = self._QualifyName(self._namespace, ref_type)
+    if qualified_name in self._type_namespaces:
+      return self._type_namespaces[qualified_name]
+
+    for (type_name, namespace) in self._type_namespaces.items():
+      if type_name == self._QualifyName(namespace, ref_type):
+        return namespace
+
+    return None
 
   def _NamespaceTypeDependencies(self):
     """Returns a dict containing a mapping of model.Namespace to the C++ type
@@ -202,7 +232,7 @@ class CppTypeGenerator(object):
 
     dependency_namespaces = dict()
     for dependency in dependencies:
-      namespace = self._type_namespaces[dependency]
+      namespace = self._ResolveTypeNamespace(dependency)
       if namespace != self._namespace:
         dependency_namespaces.setdefault(namespace, [])
         dependency_namespaces[namespace].append(dependency)

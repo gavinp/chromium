@@ -532,6 +532,12 @@ body {
   background-image: url(../images/gallery/icon_share_selected.png);
 }
 
+.gallery[error] > .toolbar .button.edit,
+.gallery[error] > .toolbar .button.share {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
 .gallery > .toolbar > .button:last-child {
   margin-right: 8px;
 }
@@ -692,8 +698,19 @@ body {
 
   display: -webkit-box;
   -webkit-box-orient: horizontal;
-  -webkit-box-align: center;
   -webkit-box-pack: center;
+}
+
+.gallery .prompt-wrapper[pos=top] {
+  -webkit-box-align: start;
+}
+
+.gallery .prompt-wrapper[pos=center] {
+  -webkit-box-align: center;
+}
+
+.gallery .prompt-wrapper[pos=center] .close {
+  display: none;
 }
 
 .gallery .prompt-wrapper > div.dimmable {
@@ -727,6 +744,27 @@ body {
   top: 0;
   opacity: 0;
 }
+
+.gallery .prompt-wrapper[pos=top] .prompt {
+  padding-right: 10px;
+}
+
+.gallery .prompt .close {
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  margin-left: 16px;
+  opacity: 0.65;
+  background-image: url(../images/gallery/butterbar_close_x.png);
+  background-repeat: no-repeat;
+  background-position: center center;
+}
+
+.gallery .prompt .close:hover {
+  opacity: 1.0;
+  background-color: rgba(81,81,81,1);
+}
+
 
 .gallery .share-menu {
   position: absolute;
@@ -778,6 +816,46 @@ body {
 .gallery .share-menu > div > img {
   margin-right: 5px;
   display: block;
+}
+
+/* Load spinner and error banner */
+
+.gallery .spinner {
+  width: 32px;
+  height: 32px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin-left: -16px;
+  margin-top: -16px;
+  opacity: 0.5;
+  background-size: 100%;
+  background-image: url(../images/gallery/spinner_white.svg);
+}
+
+.gallery:not([spinner]) .spinner {
+  display: none;
+}
+
+.gallery .error-banner {
+  color: white;
+  background-color: rgba(24, 24, 24, 1);
+  height: 54px;
+  padding-left: 70px;
+  padding-right: 35px;
+
+  display: -webkit-box;
+  -webkit-box-orient: horizontal;
+  -webkit-box-align: center;
+  -webkit-box-pack: center;
+
+  background-image: url(../images/media/error.png);
+  background-repeat: no-repeat;
+  background-position: 25px center;
+}
+
+.gallery:not([error]) .error-banner {
+  display: none;
 }
 
 /* Video playback support. */

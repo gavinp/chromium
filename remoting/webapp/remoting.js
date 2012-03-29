@@ -21,6 +21,7 @@ remoting.Error = {
   INCOMPATIBLE_PROTOCOL: /*i18n-content*/'ERROR_INCOMPATIBLE_PROTOCOL',
   BAD_PLUGIN_VERSION: /*i18n-content*/'ERROR_BAD_PLUGIN_VERSION',
   NETWORK_FAILURE: /*i18n-content*/'ERROR_NETWORK_FAILURE',
+  HOST_OVERLOAD: /*i18n-content*/'ERROR_HOST_OVERLOAD',
   GENERIC: /*i18n-content*/'ERROR_GENERIC',
   UNEXPECTED: /*i18n-content*/'ERROR_UNEXPECTED',
   SERVICE_UNAVAILABLE: /*i18n-content*/'ERROR_SERVICE_UNAVAILABLE'
@@ -32,8 +33,6 @@ remoting.Error = {
 remoting.init = function() {
   remoting.logExtensionInfoAsync_();
   l10n.localize();
-  var button = document.getElementById('toggle-scaling');
-  button.title = chrome.i18n.getMessage(/*i18n-content*/'TOOLTIP_SCALING');
   // Create global objects.
   remoting.oauth2 = new remoting.OAuth2();
   remoting.stats = new remoting.ConnectionStats(
@@ -52,8 +51,8 @@ remoting.init = function() {
     document.getElementById('current-email').innerText = email;
   }
 
-  window.addEventListener('focus', pluginGotFocus_, false);
-  window.addEventListener('blur', pluginLostFocus_, false);
+  // The plugin's onFocus handler sends a paste command to |window|, because
+  // it can't send one to the plugin element itself.
   window.addEventListener('paste', pluginGotPaste_, false);
 
   if (isHostModeSupported_()) {
@@ -79,7 +78,7 @@ remoting.init = function() {
 };
 
 // initDaemonUi is called if the app is not starting up in session mode, and
-// also if the user cancels the connection in session mode.
+// also if the user cancels pin entry or the connection in session mode.
 remoting.initDaemonUi = function () {
   remoting.daemonPlugin = new remoting.DaemonPlugin();
   remoting.daemonPlugin.updateDom();
@@ -134,15 +133,6 @@ remoting.clearOAuth2 = function() {
 };
 
 /**
- * Callback function called when the browser window gets focus.
- */
-function pluginGotFocus_() {
-  /** @type {function(string): void} */
-  document.execCommand;
-  document.execCommand("paste");
-}
-
-/**
  * Callback function called when the browser window gets a paste operation.
  *
  * @param {Event} eventUncast
@@ -154,16 +144,6 @@ function pluginGotPaste_(eventUncast) {
     remoting.clipboard.toHost(event.clipboardData);
   }
   return false;
-}
-
-/**
- * Callback function called when the browser window loses focus. In this case,
- * release all keys to prevent them becoming 'stuck down' on the host.
- */
-function pluginLostFocus_() {
-  if (remoting.clientSession && remoting.clientSession.plugin) {
-    remoting.clientSession.plugin.releaseAllKeys();
-  }
 }
 
 /**

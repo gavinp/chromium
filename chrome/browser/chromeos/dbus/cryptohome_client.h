@@ -33,9 +33,9 @@ class CryptohomeClient {
                          > AsyncCallStatusHandler;
   // A callback to handle responses of AsyncXXX methods.
   typedef base::Callback<void(int async_id)> AsyncMethodCallback;
-  // A callback to handle responses of Pkcs11IsTpmTokenReady method.
-  typedef base::Callback<void(CallStatus call_status, bool ready)>
-      Pkcs11IsTpmTokenReadyCallback;
+  // A callback to handle responses of methods returning a bool value.
+  typedef base::Callback<void(CallStatus call_status,
+                              bool result)> BoolMethodCallback;
   // A callback to handle responses of Pkcs11GetTpmTokenInfo method.
   typedef base::Callback<void(
       CallStatus call_status,
@@ -60,6 +60,10 @@ class CryptohomeClient {
   // Calls IsMounted method and returns true when the call succeeds.
   // This method blocks until the call returns.
   virtual bool IsMounted(bool* is_mounted) = 0;
+
+  // Calls Unmount method and returns true when the call succeeds.
+  // This method blocks until the call returns.
+  virtual bool Unmount(bool* success) = 0;
 
   // Calls AsyncCheckKey method.  |callback| is called after the method call
   // succeeds.
@@ -98,9 +102,13 @@ class CryptohomeClient {
   // This method blocks until the call returns.
   virtual bool TpmIsReady(bool* ready) = 0;
 
+  // Calls TpmIsEnabled method.
+  virtual void TpmIsEnabled(BoolMethodCallback callback) = 0;
+
   // Calls TpmIsEnabled method and returns true when the call succeeds.
   // This method blocks until the call returns.
-  virtual bool TpmIsEnabled(bool* enabled) = 0;
+  // TODO(hashimoto): Remove this method. crosbug.com/28500
+  virtual bool CallTpmIsEnabledAndBlock(bool* enabled) = 0;
 
   // Calls TpmGetPassword method and returns true when the call succeeds.
   // This method blocks until the call returns.
@@ -124,8 +132,7 @@ class CryptohomeClient {
   virtual bool TpmClearStoredPassword() = 0;
 
   // Calls Pkcs11IsTpmTokenReady method.
-  virtual void Pkcs11IsTpmTokenReady(
-      Pkcs11IsTpmTokenReadyCallback callback) = 0;
+  virtual void Pkcs11IsTpmTokenReady(BoolMethodCallback callback) = 0;
 
   // Calls Pkcs11GetTpmTokenInfo method.
   virtual void Pkcs11GetTpmTokenInfo(

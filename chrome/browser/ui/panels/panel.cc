@@ -85,6 +85,10 @@ bool Panel::draggable() const {
   return panel_strip_ && panel_strip_->CanDragPanel(this);
 }
 
+bool Panel::CanResizeByMouse() const {
+  return panel_strip_ && panel_strip_->CanResizePanel(this);
+}
+
 const Extension* Panel::GetExtension() const {
   return GetExtensionFromBrowser(browser());
 }
@@ -154,6 +158,28 @@ void Panel::SetSizeRange(const gfx::Size& min_size, const gfx::Size& max_size) {
   ConfigureAutoResize(browser()->GetSelectedWebContents());
 }
 
+void Panel::ClampSize(gfx::Size* size) const {
+
+  // The panel width:
+  // * cannot grow or shrink to go beyond [min_width, max_width]
+  int new_width = size->width();
+  if (new_width > max_size_.width())
+    new_width = max_size_.width();
+  if (new_width < min_size_.width())
+    new_width = min_size_.width();
+
+  // The panel height:
+  // * cannot grow or shrink to go beyond [min_height, max_height]
+  int new_height = size->height();
+  if (new_height > max_size_.height())
+    new_height = max_size_.height();
+  if (new_height < min_size_.height())
+    new_height = min_size_.height();
+
+  size->SetSize(new_width, new_height);
+}
+
+
 void Panel::SetAppIconVisibility(bool visible) {
   native_panel_->SetPanelAppIconVisibility(visible);
 }
@@ -163,6 +189,11 @@ void Panel::SetAlwaysOnTop(bool on_top) {
     return;
   always_on_top_ = on_top;
   native_panel_->SetPanelAlwaysOnTop(on_top);
+}
+
+void Panel::EnableResizeByMouse(bool enable) {
+  DCHECK(native_panel_);
+  native_panel_->EnableResizeByMouse(enable);
 }
 
 void Panel::SetPreviewMode(bool in_preview) {
@@ -182,10 +213,6 @@ void Panel::SetExpansionState(ExpansionState new_state) {
   expansion_state_ = new_state;
 
   manager()->OnPanelExpansionStateChanged(this);
-
-  // The minimized panel should not get the focus.
-  if (expansion_state_ == MINIMIZED)
-    Deactivate();
 
   DCHECK(initialized_ && panel_strip_ != NULL);
   native_panel_->PreventActivationByOS(panel_strip_->IsPanelMinimized(this));
@@ -497,6 +524,14 @@ void Panel::ShowChromeToMobileBubble() {
   NOTIMPLEMENTED();
 }
 
+#if defined(ENABLE_ONE_CLICK_SIGNIN)
+void Panel::ShowOneClickSigninBubble(
+      const base::Closure& learn_more_callback,
+      const base::Closure& advanced_callback) {
+  NOTIMPLEMENTED();
+}
+#endif
+
 bool Panel::IsDownloadShelfVisible() const {
   return false;
 }
@@ -712,6 +747,11 @@ void Panel::ConfigureAutoResize(WebContents* web_contents) {
 
 void Panel::OnWindowSizeAvailable() {
   ConfigureAutoResize(browser()->GetSelectedWebContents());
+}
+
+void Panel::OnTitlebarClicked(panel::ClickModifier modifier) {
+  if (panel_strip_)
+    panel_strip_->OnPanelTitlebarClicked(this, modifier);
 }
 
 void Panel::DestroyBrowser() {

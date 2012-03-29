@@ -12,6 +12,7 @@
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/process_util.h"
+#include "base/threading/sequenced_worker_pool.h"
 #include "base/threading/worker_pool.h"
 #include "base/values.h"
 #include "content/browser/renderer_host/pepper_lookup_request.h"
@@ -33,21 +34,12 @@
 #include "net/base/host_port_pair.h"
 #include "net/base/sys_addrinfo.h"
 #include "ppapi/c/pp_errors.h"
-#include "ppapi/c/private/ppb_flash_net_connector.h"
 #include "ppapi/c/private/ppb_host_resolver_private.h"
 #include "ppapi/c/private/ppb_net_address_private.h"
 #include "ppapi/proxy/ppapi_messages.h"
+#include "ppapi/shared_impl/api_id.h"
 #include "ppapi/shared_impl/private/net_address_private_impl.h"
 #include "ppapi/shared_impl/private/ppb_host_resolver_shared.h"
-#include "webkit/plugins/ppapi/ppb_flash_net_connector_impl.h"
-
-#if defined(ENABLE_FLAPPER_HACKS)
-#include <sys/types.h>
-#include <unistd.h>
-
-#include "net/base/net_log.h"
-#include "net/base/sys_addrinfo.h"
-#endif  // ENABLE_FLAPPER_HACKS
 
 using content::BrowserThread;
 using content::RenderViewHostImpl;
@@ -84,7 +76,10 @@ PepperMessageFilter::PepperMessageFilter(ProcessType type,
   DCHECK(host_resolver);
 }
 
-PepperMessageFilter::~PepperMessageFilter() {}
+PepperMessageFilter::~PepperMessageFilter() {
+  if (!network_monitor_ids_.empty())
+    net::NetworkChangeNotifier::RemoveIPAddressObserver(this);
+}
 
 void PepperMessageFilter::OverrideThreadForMessage(
     const IPC::Message& message,
@@ -102,10 +97,6 @@ bool PepperMessageFilter::OnMessageReceived(const IPC::Message& msg,
                                             bool* message_was_ok) {
   bool handled = true;
   IPC_BEGIN_MESSAGE_MAP_EX(PepperMessageFilter, msg, *message_was_ok)
-#if defined(ENABLE_FLAPPER_HACKS)
-    IPC_MESSAGE_HANDLER(PepperMsg_ConnectTcp, OnConnectTcp)
-    IPC_MESSAGE_HANDLER(PepperMsg_ConnectTcpAddress, OnConnectTcpAddress)
-#endif  // ENABLE_FLAPPER_HACKS
     IPC_MESSAGE_HANDLER(PepperMsg_GetLocalTimeZoneOffset,
                         OnGetLocalTimeZoneOffset)
     IPC_MESSAGE_HANDLER_DELAY_REPLY(PpapiHostMsg_PPBInstance_GetFontFamilies,
@@ -140,9 +131,19 @@ bool PepperMessageFilter::OnMessageReceived(const IPC::Message& msg,
     IPC_MESSAGE_HANDLER(PpapiHostMsg_PPBHostResolver_Resolve,
                         OnHostResolverResolve)
 
+    // NetworkMonitor messages.
+    IPC_MESSAGE_HANDLER(PpapiHostMsg_PPBNetworkMonitor_Start,
+                        OnNetworkMonitorStart)
+    IPC_MESSAGE_HANDLER(PpapiHostMsg_PPBNetworkMonitor_Stop,
+                        OnNetworkMonitorStop)
+
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP_EX()
   return handled;
+}
+
+void PepperMessageFilter::OnIPAddressChanged() {
+  GetAndSendNetworkList();
 }
 
 net::HostResolver* PepperMessageFilter::GetHostResolver() {
@@ -152,7 +153,7 @@ net::HostResolver* PepperMessageFilter::GetHostResolver() {
 
 net::CertVerifier* PepperMessageFilter::GetCertVerifier() {
   if (!cert_verifier_.get())
-    cert_verifier_.reset(new net::CertVerifier());
+    cert_verifier_.reset(net::CertVerifier::CreateDefault());
 
   return cert_verifier_.get();
 }
@@ -187,170 +188,6 @@ void PepperMessageFilter::RemoveTCPServerSocket(uint32 socket_id) {
   // this socket sent to the plugin side.
   tcp_server_sockets_.erase(iter);
 }
-
-#if defined(ENABLE_FLAPPER_HACKS)
-
-namespace {
-
-int ConnectTcpSocket(const PP_NetAddress_Private& addr,
-                     PP_NetAddress_Private* local_addr_out,
-                     PP_NetAddress_Private* remote_addr_out) {
-  *local_addr_out = NetAddressPrivateImpl::kInvalidNetAddress;
-  *remote_addr_out = NetAddressPrivateImpl::kInvalidNetAddress;
-
-  const struct sockaddr* sa =
-      reinterpret_cast<const struct sockaddr*>(addr.data);
-  socklen_t sa_len = addr.size;
-  int fd = socket(sa->sa_family, SOCK_STREAM, IPPROTO_TCP);
-  if (fd == -1)
-    return -1;
-  if (connect(fd, sa, sa_len) != 0) {
-    close(fd);
-    return -1;
-  }
-
-  // Get the local address.
-  socklen_t local_length = sizeof(local_addr_out->data);
-  if (getsockname(fd, reinterpret_cast<struct sockaddr*>(local_addr_out->data),
-                  &local_length) == -1 ||
-      local_length > sizeof(local_addr_out->data)) {
-    close(fd);
-    return -1;
-  }
-
-  // The remote address is just the address we connected to.
-  *remote_addr_out = addr;
-
-  return fd;
-}
-
-}  // namespace
-
-void PepperMessageFilter::OnConnectTcp(int routing_id,
-                                       int request_id,
-                                       const std::string& host,
-                                       uint16 port) {
-  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
-
-  net::HostResolver::RequestInfo request_info(net::HostPortPair(host, port));
-
-  scoped_ptr<OnConnectTcpBoundInfo> bound_info(new OnConnectTcpBoundInfo);
-  bound_info->routing_id = routing_id;
-  bound_info->request_id = request_id;
-
-  // The lookup request will delete itself on completion.
-  PepperLookupRequest<OnConnectTcpBoundInfo>* lookup_request =
-      new PepperLookupRequest<OnConnectTcpBoundInfo>(
-          GetHostResolver(),
-          request_info,
-          bound_info.release(),
-          base::Bind(&PepperMessageFilter::ConnectTcpLookupFinished,
-                     this));
-  lookup_request->Start();
-}
-
-void PepperMessageFilter::OnConnectTcpAddress(
-    int routing_id,
-    int request_id,
-    const PP_NetAddress_Private& addr) {
-  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
-
-  // Validate the address and then continue (doing |connect()|) on a worker
-  // thread.
-  if (!NetAddressPrivateImpl::ValidateNetAddress(addr) ||
-      !base::WorkerPool::PostTask(
-          FROM_HERE,
-          base::Bind(
-              &PepperMessageFilter::ConnectTcpAddressOnWorkerThread, this,
-              routing_id, request_id, addr),
-          true)) {
-    SendConnectTcpACKError(routing_id, request_id);
-  }
-}
-
-bool PepperMessageFilter::SendConnectTcpACKError(int routing_id,
-                                                 int request_id) {
-  return Send(new PepperMsg_ConnectTcpACK(
-      routing_id, request_id, IPC::InvalidPlatformFileForTransit(),
-      NetAddressPrivateImpl::kInvalidNetAddress,
-      NetAddressPrivateImpl::kInvalidNetAddress));
-}
-
-void PepperMessageFilter::ConnectTcpLookupFinished(
-    int result,
-    const net::AddressList& addresses,
-    const OnConnectTcpBoundInfo& bound_info) {
-  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
-
-  // If the lookup returned addresses, continue (doing |connect()|) on a worker
-  // thread.
-  if (!addresses.head() ||
-      !base::WorkerPool::PostTask(
-          FROM_HERE,
-          base::Bind(
-              &PepperMessageFilter::ConnectTcpOnWorkerThread, this,
-              bound_info.routing_id, bound_info.request_id, addresses),
-          true)) {
-    SendConnectTcpACKError(bound_info.routing_id, bound_info.request_id);
-  }
-}
-
-void PepperMessageFilter::ConnectTcpOnWorkerThread(int routing_id,
-                                                   int request_id,
-                                                   net::AddressList addresses) {
-  IPC::PlatformFileForTransit socket_for_transit =
-      IPC::InvalidPlatformFileForTransit();
-  PP_NetAddress_Private local_addr = NetAddressPrivateImpl::kInvalidNetAddress;
-  PP_NetAddress_Private remote_addr = NetAddressPrivateImpl::kInvalidNetAddress;
-  PP_NetAddress_Private addr = NetAddressPrivateImpl::kInvalidNetAddress;
-
-  for (const struct addrinfo* ai = addresses.head(); ai; ai = ai->ai_next) {
-    if (NetAddressPrivateImpl::SockaddrToNetAddress(ai->ai_addr, ai->ai_addrlen,
-                                                    &addr)) {
-      int fd = ConnectTcpSocket(addr, &local_addr, &remote_addr);
-      if (fd != -1) {
-        socket_for_transit = base::FileDescriptor(fd, true);
-        break;
-      }
-    }
-  }
-
-  BrowserThread::PostTask(
-      BrowserThread::IO,
-      FROM_HERE,
-      base::Bind(
-          base::IgnoreResult(&PepperMessageFilter::Send), this,
-          new PepperMsg_ConnectTcpACK(
-              routing_id, request_id,
-              socket_for_transit, local_addr, remote_addr)));
-}
-
-// TODO(vluu): Eliminate duplication between this and
-// |ConnectTcpOnWorkerThread()|.
-void PepperMessageFilter::ConnectTcpAddressOnWorkerThread(
-    int routing_id,
-    int request_id,
-    PP_NetAddress_Private addr) {
-  IPC::PlatformFileForTransit socket_for_transit =
-      IPC::InvalidPlatformFileForTransit();
-  PP_NetAddress_Private local_addr = NetAddressPrivateImpl::kInvalidNetAddress;
-  PP_NetAddress_Private remote_addr = NetAddressPrivateImpl::kInvalidNetAddress;
-
-  int fd = ConnectTcpSocket(addr, &local_addr, &remote_addr);
-  if (fd != -1)
-    socket_for_transit = base::FileDescriptor(fd, true);
-
-  BrowserThread::PostTask(
-      BrowserThread::IO,
-      FROM_HERE,
-      base::Bind(
-          base::IgnoreResult(&PepperMessageFilter::Send), this,
-          new PepperMsg_ConnectTcpACK(
-              routing_id, request_id,
-              socket_for_transit, local_addr, remote_addr)));
-}
-
-#endif  // ENABLE_FLAPPER_HACKS
 
 void PepperMessageFilter::OnGetLocalTimeZoneOffset(base::Time t,
                                                    double* result) {
@@ -738,6 +575,20 @@ bool PepperMessageFilter::SendHostResolverResolveACKError(
       ppapi::NetAddressList()));
 }
 
+void PepperMessageFilter::OnNetworkMonitorStart(uint32 plugin_dispatcher_id) {
+  if (network_monitor_ids_.empty())
+    net::NetworkChangeNotifier::AddIPAddressObserver(this);
+
+  network_monitor_ids_.insert(plugin_dispatcher_id);
+  GetAndSendNetworkList();
+}
+
+void PepperMessageFilter::OnNetworkMonitorStop(uint32 plugin_dispatcher_id) {
+  network_monitor_ids_.erase(plugin_dispatcher_id);
+  if (network_monitor_ids_.empty())
+    net::NetworkChangeNotifier::RemoveIPAddressObserver(this);
+}
+
 void PepperMessageFilter::GetFontFamiliesComplete(
     IPC::Message* reply_msg,
     scoped_ptr<base::ListValue> result) {
@@ -817,4 +668,51 @@ bool PepperMessageFilter::CanUseSocketAPIs(int32 render_id) {
   }
 
   return true;
+}
+
+void PepperMessageFilter::GetAndSendNetworkList() {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
+
+  BrowserThread::PostBlockingPoolTask(
+      FROM_HERE, base::Bind(&PepperMessageFilter::DoGetNetworkList, this));
+}
+
+void PepperMessageFilter::DoGetNetworkList() {
+  scoped_ptr<net::NetworkInterfaceList> list(new net::NetworkInterfaceList());
+  net::GetNetworkList(list.get());
+  BrowserThread::PostTask(
+      BrowserThread::IO, FROM_HERE,
+      base::Bind(&PepperMessageFilter::SendNetworkList,
+                 this, base::Passed(&list)));
+}
+
+void PepperMessageFilter::SendNetworkList(
+    scoped_ptr<net::NetworkInterfaceList> list) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
+
+  scoped_ptr< ::ppapi::NetworkList> list_copy(
+      new ::ppapi::NetworkList(list->size()));
+  for (size_t i = 0; i < list->size(); ++i) {
+    const net::NetworkInterface& network = list->at(i);
+    ::ppapi::NetworkInfo& network_copy = list_copy->at(i);
+    network_copy.name = network.name;
+
+    network_copy.addresses.resize(1, NetAddressPrivateImpl::kInvalidNetAddress);
+    bool result = NetAddressPrivateImpl::IPEndPointToNetAddress(
+        net::IPEndPoint(network.address, 0), &(network_copy.addresses[0]));
+    DCHECK(result);
+
+    // TODO(sergeyu): Currently net::NetworkInterfaceList provides
+    // only name and one IP address. Add all other fields and copy
+    // them here.
+    network_copy.type = PP_NETWORKLIST_UNKNOWN;
+    network_copy.state = PP_NETWORKLIST_UP;
+    network_copy.display_name = network.name;
+    network_copy.mtu = 0;
+  }
+  for (NetworkMonitorIdSet::iterator it = network_monitor_ids_.begin();
+       it != network_monitor_ids_.end(); ++it) {
+    Send(new PpapiMsg_PPBNetworkMonitor_NetworkList(
+        ppapi::API_ID_PPB_NETWORKMANAGER_PRIVATE, *it, *list_copy));
+  }
 }

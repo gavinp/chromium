@@ -11,7 +11,7 @@
 #include "base/memory/ref_counted_memory.h"
 #include "base/values.h"
 #include "chrome/browser/browser_about_handler.h"
-#include "chrome/browser/chromeos/kiosk_mode/kiosk_mode_helper.h"
+#include "chrome/browser/chromeos/kiosk_mode/kiosk_mode_settings.h"
 #include "chrome/browser/chromeos/login/enrollment/enterprise_enrollment_screen_actor.h"
 #include "chrome/browser/chromeos/login/screen_locker.h"
 #include "chrome/browser/chromeos/login/user_manager.h"
@@ -28,7 +28,7 @@
 #include "chrome/browser/ui/webui/chromeos/login/signin_screen_handler.h"
 #include "chrome/browser/ui/webui/chromeos/login/update_screen_handler.h"
 #include "chrome/browser/ui/webui/chromeos/login/user_image_screen_handler.h"
-#include "chrome/browser/ui/webui/options/chromeos/user_image_source.h"
+#include "chrome/browser/ui/webui/options2/chromeos/user_image_source2.h"
 #include "chrome/browser/ui/webui/theme_source.h"
 #include "chrome/common/jstemplate_builder.h"
 #include "chrome/common/url_constants.h"
@@ -84,6 +84,7 @@ void OobeUIHTMLSource::StartDataRequest(const std::string& path,
                                         bool is_incognito,
                                         int request_id) {
   if (UserManager::Get()->IsUserLoggedIn() &&
+      !UserManager::Get()->IsLoggedInAsStub() &&
       !ScreenLocker::default_screen_locker()) {
     scoped_refptr<RefCountedBytes> empty_bytes(new RefCountedBytes());
     SendResponse(request_id, empty_bytes);
@@ -91,7 +92,7 @@ void OobeUIHTMLSource::StartDataRequest(const std::string& path,
   }
 
   std::string response;
-  if (chromeos::KioskModeHelper::Get()->IsKioskModeEnabled())
+  if (chromeos::KioskModeSettings::Get()->IsKioskModeEnabled())
     response = GetDataResource(IDR_DEMO_USER_LOGIN_HTML);
   else if (path.empty())
     response = GetDataResource(IDR_OOBE_HTML);
@@ -169,7 +170,8 @@ OobeUI::OobeUI(content::WebUI* web_ui)
   profile->GetChromeURLDataManager()->AddDataSource(html_source);
 
   // Set up the chrome://userimage/ source.
-  UserImageSource* user_image_source = new UserImageSource();
+  options2::UserImageSource* user_image_source =
+      new options2::UserImageSource();
   profile->GetChromeURLDataManager()->AddDataSource(user_image_source);
 }
 

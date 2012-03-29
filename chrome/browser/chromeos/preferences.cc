@@ -4,6 +4,7 @@
 
 #include "chrome/browser/chromeos/preferences.h"
 
+#include "ash/ash_switches.h"
 #include "base/chromeos/chromeos_version.h"
 #include "base/command_line.h"
 #include "base/i18n/time_formatting.h"
@@ -28,6 +29,7 @@
 #include "content/public/browser/notification_details.h"
 #include "content/public/browser/notification_source.h"
 #include "googleurl/src/gurl.h"
+#include "ui/base/events.h"
 #include "unicode/timezone.h"
 
 namespace chromeos {
@@ -57,6 +59,9 @@ void Preferences::RegisterUserPrefs(PrefService* prefs) {
   const bool enable_tap_to_click_default = IsLumpy();
   prefs->RegisterBooleanPref(prefs::kTapToClickEnabled,
                              enable_tap_to_click_default,
+                             PrefService::SYNCABLE_PREF);
+  prefs->RegisterBooleanPref(prefs::kNaturalScroll,
+                             false,
                              PrefService::SYNCABLE_PREF);
   prefs->RegisterBooleanPref(prefs::kPrimaryMouseButtonRight,
                              false,
@@ -95,6 +100,15 @@ void Preferences::RegisterUserPrefs(PrefService* prefs) {
                              PrefService::UNSYNCABLE_PREF);
   prefs->RegisterBooleanPref(prefs::kUse24HourClock,
                              base::GetHourClockType() == base::k24HourClock,
+                             PrefService::SYNCABLE_PREF);
+  prefs->RegisterBooleanPref(prefs::kDisableGData,
+                             false,
+                             PrefService::SYNCABLE_PREF);
+  prefs->RegisterBooleanPref(prefs::kDisableGDataOverCellular,
+                             true,
+                             PrefService::SYNCABLE_PREF);
+  prefs->RegisterBooleanPref(prefs::kDisableGDataHostedFiles,
+                             false,
                              PrefService::SYNCABLE_PREF);
   // We don't sync prefs::kLanguageCurrentInputMethod and PreviousInputMethod
   // because they're just used to track the logout state of the device.
@@ -237,9 +251,15 @@ void Preferences::RegisterUserPrefs(PrefService* prefs) {
 
 void Preferences::Init(PrefService* prefs) {
   tap_to_click_enabled_.Init(prefs::kTapToClickEnabled, prefs, this);
+  natural_scroll_.Init(prefs::kNaturalScroll, prefs, this);
   accessibility_enabled_.Init(prefs::kSpokenFeedbackEnabled, prefs, this);
   sensitivity_.Init(prefs::kTouchpadSensitivity, prefs, this);
   use_24hour_clock_.Init(prefs::kUse24HourClock, prefs, this);
+  disable_gdata_.Init(prefs::kDisableGData, prefs, this);
+  disable_gdata_over_cellular_.Init(prefs::kDisableGDataOverCellular,
+                                   prefs, this);
+  disable_gdata_hosted_files_.Init(prefs::kDisableGDataHostedFiles,
+                                   prefs, this);
   primary_mouse_button_right_.Init(prefs::kPrimaryMouseButtonRight,
                                    prefs, this);
   hotkey_next_engine_in_menu_.Init(
@@ -247,8 +267,11 @@ void Preferences::Init(PrefService* prefs) {
   hotkey_previous_engine_.Init(
       prefs::kLanguageHotkeyPreviousEngine, prefs, this);
   preferred_languages_.Init(prefs::kLanguagePreferredLanguages,
-                                     prefs, this);
+                            prefs, this);
   preload_engines_.Init(prefs::kLanguagePreloadEngines, prefs, this);
+  current_input_method_.Init(prefs::kLanguageCurrentInputMethod, prefs, this);
+  previous_input_method_.Init(prefs::kLanguagePreviousInputMethod, prefs, this);
+
   for (size_t i = 0; i < language_prefs::kNumChewingBooleanPrefs; ++i) {
     chewing_boolean_prefs_[i].Init(
         language_prefs::kChewingBooleanPrefs[i].pref_name, prefs, this);
@@ -325,15 +348,23 @@ void Preferences::Observe(int type,
 
 void Preferences::NotifyPrefChanged(const std::string* pref_name) {
   if (!pref_name || *pref_name == prefs::kTapToClickEnabled) {
-    bool enabled = tap_to_click_enabled_.GetValue();
+    const bool enabled = tap_to_click_enabled_.GetValue();
     system::touchpad_settings::SetTapToClick(enabled);
     if (pref_name)
       UMA_HISTOGRAM_BOOLEAN("Touchpad.TapToClick.Changed", enabled);
     else
       UMA_HISTOGRAM_BOOLEAN("Touchpad.TapToClick.Started", enabled);
   }
+  if (!pref_name || *pref_name == prefs::kNaturalScroll) {
+    const bool enabled = natural_scroll_.GetValue();
+    ui::SetNaturalScroll(enabled);
+    if (pref_name)
+      UMA_HISTOGRAM_BOOLEAN("Touchpad.NaturalScroll.Changed", enabled);
+    else
+      UMA_HISTOGRAM_BOOLEAN("Touchpad.NaturalScroll.Started", enabled);
+  }
   if (!pref_name || *pref_name == prefs::kTouchpadSensitivity) {
-    int sensitivity = sensitivity_.GetValue();
+    const int sensitivity = sensitivity_.GetValue();
     system::pointer_settings::SetSensitivity(sensitivity);
     if (pref_name) {
       UMA_HISTOGRAM_CUSTOM_COUNTS(
@@ -396,6 +427,27 @@ void Preferences::NotifyPrefChanged(const std::string* pref_name) {
                                      language_prefs::kPreloadEnginesConfigName,
                                      preload_engines_.GetValue());
   }
+
+  // Do not check |*pref_name| for the two prefs. We're only interested in
+  // initial values of the prefs.
+  // TODO(yusukes): Remove the second condition on R20.
+  if (!pref_name && !CommandLine::ForCurrentProcess()->HasSwitch(
+          ash::switches::kDisableAshUberTray)) {
+    const std::string previous_input_method_id =
+        previous_input_method_.GetValue();
+    const std::string current_input_method_id =
+        current_input_method_.GetValue();
+    // NOTICE: ChangeInputMethod() has to be called AFTER the value of
+    // |preload_engines_| is sent to the InputMethodManager. Otherwise, the
+    // ChangeInputMethod request might be ignored as an invalid input method ID.
+    input_method::InputMethodManager* manager =
+        input_method::InputMethodManager::GetInstance();
+    if (!previous_input_method_id.empty())
+      manager->ChangeInputMethod(previous_input_method_id);
+    if (!current_input_method_id.empty())
+      manager->ChangeInputMethod(current_input_method_id);
+  }
+
   for (size_t i = 0; i < language_prefs::kNumChewingBooleanPrefs; ++i) {
     if (!pref_name ||
         *pref_name == language_prefs::kChewingBooleanPrefs[i].pref_name) {

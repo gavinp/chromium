@@ -21,7 +21,7 @@
 #include "content/browser/tab_contents/navigation_controller_impl.h"
 #include "content/browser/tab_contents/navigation_entry_impl.h"
 #include "content/browser/tab_contents/tab_contents.h"
-#include "content/browser/tab_contents/test_tab_contents.h"
+#include "content/browser/tab_contents/test_web_contents.h"
 #include "content/common/view_messages.h"
 #include "content/public/browser/navigation_details.h"
 #include "content/public/browser/notification_registrar.h"
@@ -41,6 +41,7 @@ using content::NavigationEntryImpl;
 using content::RenderViewHostImplTestHarness;
 using content::SiteInstance;
 using content::TestRenderViewHost;
+using content::TestWebContents;
 using content::WebContents;
 
 // NavigationControllerTest ----------------------------------------------------
@@ -165,7 +166,7 @@ TEST_F(NavigationControllerTest, LoadURL) {
   // commit.
   test_rvh()->SendShouldCloseACK(true);
   static_cast<TestRenderViewHost*>(
-      contents()->pending_rvh())->SendNavigate(1, url2);
+      contents()->GetPendingRenderViewHost())->SendNavigate(1, url2);
   EXPECT_TRUE(notifications.Check1AndReset(
       content::NOTIFICATION_NAV_ENTRY_COMMITTED));
 
@@ -301,7 +302,7 @@ TEST_F(NavigationControllerTest, LoadURL_NewPending) {
   test_rvh()->SendShouldCloseACK(true);
   const GURL kNewURL("http://see");
   static_cast<TestRenderViewHost*>(
-      contents()->pending_rvh())->SendNavigate(3, kNewURL);
+      contents()->GetPendingRenderViewHost())->SendNavigate(3, kNewURL);
 
   // There should no longer be any pending entry, and the third navigation we
   // just made should be committed.
@@ -475,7 +476,7 @@ TEST_F(NavigationControllerTest, LoadURL_AbortCancelsPending) {
   params.error_description = string16();
   params.url = kNewURL;
   params.showing_repost_interstitial = false;
-  test_rvh()->TestOnMessageReceived(
+  test_rvh()->OnMessageReceived(
           ViewHostMsg_DidFailProvisionalLoadWithError(0,  // routing_id
                                                       params));
 
@@ -517,7 +518,7 @@ TEST_F(NavigationControllerTest, LoadURL_RedirectAbortCancelsPending) {
 
   // Now the navigation redirects.
   const GURL kRedirectURL("http://bee");
-  test_rvh()->TestOnMessageReceived(
+  test_rvh()->OnMessageReceived(
       ViewHostMsg_DidRedirectProvisionalLoad(0,  // routing_id
                                              -1,  // pending page_id
                                              GURL(),  // opener
@@ -537,7 +538,7 @@ TEST_F(NavigationControllerTest, LoadURL_RedirectAbortCancelsPending) {
   params.error_description = string16();
   params.url = kRedirectURL;
   params.showing_repost_interstitial = false;
-  test_rvh()->TestOnMessageReceived(
+  test_rvh()->OnMessageReceived(
           ViewHostMsg_DidFailProvisionalLoadWithError(0,  // routing_id
                                                       params));
 
@@ -1646,9 +1647,9 @@ TEST_F(NavigationControllerTest, RestoreNavigateAfterFailure) {
   fail_load_params.error_description = string16();
   fail_load_params.url = url;
   fail_load_params.showing_repost_interstitial = false;
-  rvh->TestOnMessageReceived(
-          ViewHostMsg_DidFailProvisionalLoadWithError(0,  // routing_id
-                                                      fail_load_params));
+  rvh->OnMessageReceived(
+      ViewHostMsg_DidFailProvisionalLoadWithError(0,  // routing_id
+                                                  fail_load_params));
 
   // Now the pending restored entry commits.
   ViewHostMsg_FrameNavigate_Params params;
@@ -2083,7 +2084,8 @@ TEST_F(NavigationControllerTest, CopyStateFromAndPrune) {
   EXPECT_EQ(1, controller.GetEntryAtIndex(1)->GetPageID());
   EXPECT_EQ(1, contents()->GetMaxPageIDForSiteInstance(instance1));
 
-  scoped_ptr<TestTabContents> other_contents(CreateTestTabContents());
+  scoped_ptr<TestWebContents> other_contents(
+      static_cast<TestWebContents*>(CreateTestWebContents()));
   NavigationControllerImpl& other_controller =
       other_contents->GetControllerImpl();
   other_contents->NavigateAndCommit(url3);
@@ -2128,7 +2130,8 @@ TEST_F(NavigationControllerTest, CopyStateFromAndPrune2) {
   NavigateAndCommit(url2);
   controller.GoBack();
 
-  scoped_ptr<TestTabContents> other_contents(CreateTestTabContents());
+  scoped_ptr<TestWebContents> other_contents(
+      static_cast<TestWebContents*>(CreateTestWebContents()));
   NavigationControllerImpl& other_controller =
       other_contents->GetControllerImpl();
   other_contents->ExpectSetHistoryLengthAndPrune(NULL, 1, -1);
@@ -2162,7 +2165,8 @@ TEST_F(NavigationControllerTest, CopyStateFromAndPrune3) {
   NavigateAndCommit(url2);
   controller.GoBack();
 
-  scoped_ptr<TestTabContents> other_contents(CreateTestTabContents());
+  scoped_ptr<TestWebContents> other_contents(
+      static_cast<TestWebContents*>(CreateTestWebContents()));
   NavigationControllerImpl& other_controller =
       other_contents->GetControllerImpl();
   other_controller.LoadURL(
@@ -2212,7 +2216,8 @@ TEST_F(NavigationControllerTest, CopyStateFromAndPruneMaxEntries) {
   NavigateAndCommit(url2);
   NavigateAndCommit(url3);
 
-  scoped_ptr<TestTabContents> other_contents(CreateTestTabContents());
+  scoped_ptr<TestWebContents> other_contents(
+      static_cast<TestWebContents*>(CreateTestWebContents()));
   NavigationControllerImpl& other_controller =
       other_contents->GetControllerImpl();
   other_contents->NavigateAndCommit(url4);

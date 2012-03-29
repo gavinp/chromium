@@ -20,6 +20,7 @@
 #include "base/shared_memory.h"
 #include "base/string_number_conversions.h"  // Temporary
 #include "base/threading/thread_local.h"
+#include "base/utf_string_conversions.h"
 #include "base/values.h"
 #include "base/win/scoped_com_initializer.h"
 #include "content/common/appcache/appcache_dispatcher.h"
@@ -41,6 +42,7 @@
 #include "content/public/common/content_paths.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/renderer_preferences.h"
+#include "content/public/common/url_constants.h"
 #include "content/public/renderer/content_renderer_client.h"
 #include "content/public/renderer/render_process_observer.h"
 #include "content/public/renderer/render_view_visitor.h"
@@ -72,6 +74,7 @@
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebPopupMenu.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebRuntimeFeatures.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebScriptController.h"
+#include "third_party/WebKit/Source/WebKit/chromium/public/WebSecurityPolicy.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebStorageEventDispatcher.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebString.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebView.h"
@@ -100,6 +103,7 @@ using WebKit::WebFrame;
 using WebKit::WebNetworkStateNotifier;
 using WebKit::WebRuntimeFeatures;
 using WebKit::WebScriptController;
+using WebKit::WebSecurityPolicy;
 using WebKit::WebString;
 using WebKit::WebStorageEventDispatcher;
 using WebKit::WebView;
@@ -459,8 +463,12 @@ void RenderThreadImpl::EnsureWebKitInitialized() {
   webkit_platform_support_.reset(new RendererWebKitPlatformSupportImpl);
   WebKit::initialize(webkit_platform_support_.get());
 
-  if (CommandLine::ForCurrentProcess()->HasSwitch(
-      switches::kEnableThreadedCompositing)) {
+  bool has_enable = CommandLine::ForCurrentProcess()->HasSwitch(
+      switches::kEnableThreadedCompositing);
+  bool has_disable = CommandLine::ForCurrentProcess()->HasSwitch(
+      switches::kDisableThreadedCompositing);
+  bool enable = has_enable && (!has_disable);
+  if (enable) {
     compositor_thread_.reset(new CompositorThread(this));
     AddFilter(compositor_thread_->GetMessageFilter());
     WebKit::WebCompositor::initialize(compositor_thread_->GetWebThread());
@@ -469,6 +477,8 @@ void RenderThreadImpl::EnsureWebKitInitialized() {
   compositor_initialized_ = true;
 
   WebScriptController::enableV8SingleThreadMode();
+
+  RenderThreadImpl::RegisterSchemes();
 
   const CommandLine& command_line = *CommandLine::ForCurrentProcess();
 
@@ -558,6 +568,9 @@ void RenderThreadImpl::EnsureWebKitInitialized() {
   WebRuntimeFeatures::enableSpeechInput(
       !command_line.HasSwitch(switches::kDisableSpeechInput));
 
+  WebRuntimeFeatures::enableScriptedSpeech(
+      command_line.HasSwitch(switches::kEnableScriptedSpeech));
+
   WebRuntimeFeatures::enableFileSystem(
       !command_line.HasSwitch(switches::kDisableFileSystem));
 
@@ -581,6 +594,14 @@ void RenderThreadImpl::EnsureWebKitInitialized() {
          RunIdleHandlerWhenWidgetsHidden()) {
     ScheduleIdleHandler(kLongIdleHandlerDelayMs);
   }
+}
+
+void RenderThreadImpl::RegisterSchemes() {
+  // swappedout: pages should not be accessible, and should also
+  // be treated as empty documents that can commit synchronously.
+  WebString swappedout_scheme(ASCIIToUTF16(chrome::kSwappedOutScheme));
+  WebSecurityPolicy::registerURLSchemeAsDisplayIsolated(swappedout_scheme);
+  WebSecurityPolicy::registerURLSchemeAsEmptyDocument(swappedout_scheme);
 }
 
 void RenderThreadImpl::RecordUserMetrics(const std::string& action) {

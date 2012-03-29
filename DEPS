@@ -5,10 +5,10 @@ vars = {
   "sourceforge_url": "http://%(repo)s.svn.sourceforge.net/svnroot/%(repo)s",
   "webkit_trunk": "http://svn.webkit.org/repository/webkit/trunk",
   "nacl_trunk": "http://src.chromium.org/native_client/trunk",
-  "webkit_revision": "111216",
+  "webkit_revision": "112458",
   "chromium_git": "http://git.chromium.org/git",
   "swig_revision": "69281",
-  "nacl_revision": "8040",
+  "nacl_revision": "8118",
   # After changing nacl_revision, run 'glient sync' and check native_client/DEPS
   # to update other nacl_*_revision's.
   "nacl_tools_revision": "7955",  # native_client/DEPS: tools_rev
@@ -17,48 +17,48 @@ vars = {
   # After changing nacl_toolchain_revision, run 'gclient runhooks' to get the
   # new values.
   "nacl_toolchain_linux_x86_hash":
-      "b69eb1e819b4f3e400777fa4d2aeeb7c843acba6",
+      "ad59800b550fa1c5d0bac15774a82ed78a510827",
   "nacl_toolchain_linux_x86_newlib_hash":
-      "0173431d0c90a53be9b58abd606bcbe19bac65fa",
+      "569cfaa5820f18cfe179e5dcb9ef9e03b7d5cff9",
   "nacl_toolchain_mac_x86_hash":
-      "d09a2229839ece0c07fe23d5954e215edaa8823d",
+      "a8afcd5a55d4499d1df27cba910102ec0413d9a6",
   "nacl_toolchain_mac_x86_newlib_hash":
-      "531ac475ab5c51e5aef9e688e5678889caa2e0ae",
-  "nacl_toolchain_pnacl_darwin_i386_hash":
-      "c7fe895cb02771f39c57bf38cef18ec57b5964b4",
-  "nacl_toolchain_pnacl_linux_i686_hash":
-      "e9c34cc67f5ac580414e4a012629b124d8220f34",
+      "d0a34734e0356d2fd611ab781c05ee994dec9b5e",
+  "nacl_toolchain_pnacl_mac_x86_32_hash":
+      "4b7e08c62431459244a9e32fc1551918ee96cf34",
   "nacl_toolchain_pnacl_linux_x86_64_hash":
-      "c91d3c9b2a221ee3823ece93e0fa129dc6319300",
+      "8d76fec06ff9975ace6bbbfd01f3ba729c4b9a75",
+  "nacl_toolchain_pnacl_linux_x86_32_hash":
+      "e368da00aa7fd5f1958f8e817c8928df7da70bee",
   "nacl_toolchain_pnacl_translator_hash":
-      "e1d54c688e5a9897d33e2dbcadcae68b61adf2e6",
+      "f9e28462709580ad7333d65c65dc56e40ed8752b",
   "nacl_toolchain_win_x86_hash":
-      "b02e1d003baba4ac071c41c6dda253cee0907a19",
+      "253e3ed5fc292205d1953f78c52a72e1d42b9a18",
   "nacl_toolchain_win_x86_newlib_hash":
-      "1a64e1a60f398c65d2a5157270996202502d7cc6",
-  "nacl_toolchain_revision": "7898",
-  "pnacl_toolchain_revision": "7898",
+      "6ed8ac51f53cb15328165ff1143d9611c40fc5d8",
+  "nacl_toolchain_revision": "8097",
+  "pnacl_toolchain_revision": "8097",
 
-  "libjingle_revision": "125",
+  "libjingle_revision": "128",
   "libphonenumber_revision": "425",
   "libvpx_revision": "125647",
   "lss_revision": "9",
 
   # These two FFmpeg variables must be updated together.  One is used for SVN
   # checkouts and the other for Git checkouts.
-  "ffmpeg_revision": "126470",
-  "ffmpeg_hash": "ddcf259fa5fb83159d441bd71f54e617e2a4afd3",
+  "ffmpeg_revision": "127595",
+  "ffmpeg_hash": "c4db435602131b218d0c39e85ccf18a4be195e60",
 
   "sfntly_revision": "128",
-  "skia_revision": "3412",
+  "skia_revision": "3506",
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling Skia
   # and V8 without interference from each other.
-  "v8_revision": "11082",
-  "webrtc_revision": "1903",
+  "v8_revision": "11136",
+  "webrtc_revision": "1935",
   "jsoncpp_revision": "248",
   "nss_revision": "126189",
-  "rlz_revision": "99",
+  "rlz_revision": "123",
 }
 
 deps = {
@@ -69,7 +69,7 @@ deps = {
     "/trunk/deps/support@20411",
 
   "src/googleurl":
-    (Var("googlecode_url") % "google-url") + "/trunk@168",
+    (Var("googlecode_url") % "google-url") + "/trunk@169",
 
   "src/seccompsandbox":
     (Var("googlecode_url") % "seccompsandbox") + "/trunk@178",
@@ -84,7 +84,7 @@ deps = {
     (Var("googlecode_url") % "googlemock") + "/trunk@374",
 
   "src/third_party/angle":
-    (Var("googlecode_url") % "angleproject") + "/trunk@993",
+    (Var("googlecode_url") % "angleproject") + "/trunk@1008",
 
   # Note that this is *not* where we check out WebKit -- this just
   # puts some extra files into place for the real WebKit checkout to
@@ -116,10 +116,10 @@ deps = {
     (Var("googlecode_url") % "snappy") + "/trunk@37",
 
   "src/tools/grit":
-    (Var("googlecode_url") % "grit-i18n") + "/trunk@17",
+    (Var("googlecode_url") % "grit-i18n") + "/trunk@18",
 
   "src/tools/gyp":
-    (Var("googlecode_url") % "gyp") + "/trunk@1246",
+    (Var("googlecode_url") % "gyp") + "/trunk@1282",
 
   "src/v8":
     (Var("googlecode_url") % "v8") + "/trunk@" + Var("v8_revision"),
@@ -190,60 +190,60 @@ deps = {
 
   # We should use the same software_rendering_list.json for all branches.
   "src/chrome/browser/resources/software_rendering_list":
-    "/trunk/deps/gpu/software_rendering_list@125644",
+    "/trunk/deps/gpu/software_rendering_list@127865",
 
   # We run these layout tests as UI tests. Since many of the buildbots that
   # run layout tests do NOT have access to the LayoutTest directory, we need
   # to map them here. In practice, these do not take up much space.
-  "src/chrome/test/data/layout_tests/LayoutTests/fast/events":
+  "src/content/test/data/layout_tests/LayoutTests/fast/events":
     Var("webkit_trunk") + "/LayoutTests/fast/events@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/fast/js/resources":
+  "src/content/test/data/layout_tests/LayoutTests/fast/js/resources":
     Var("webkit_trunk") + "/LayoutTests/fast/js/resources@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/fast/workers":
+  "src/content/test/data/layout_tests/LayoutTests/fast/workers":
     Var("webkit_trunk") + "/LayoutTests/fast/workers@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/http/tests/resources":
+  "src/content/test/data/layout_tests/LayoutTests/http/tests/resources":
     Var("webkit_trunk") + "/LayoutTests/http/tests/resources@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/http/tests/workers":
+  "src/content/test/data/layout_tests/LayoutTests/http/tests/workers":
     Var("webkit_trunk") + "/LayoutTests/http/tests/workers@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/http/tests/xmlhttprequest":
+  "src/content/test/data/layout_tests/LayoutTests/http/tests/xmlhttprequest":
     Var("webkit_trunk") + "/LayoutTests/http/tests/xmlhttprequest@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/http/tests/websocket/tests":
+  "src/content/test/data/layout_tests/LayoutTests/http/tests/websocket/tests":
     Var("webkit_trunk") + "/LayoutTests/http/tests/websocket/tests@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/platform/chromium/fast/workers":
+  "src/content/test/data/layout_tests/LayoutTests/platform/chromium/fast/workers":
     Var("webkit_trunk") + "/LayoutTests/platform/chromium/fast/workers@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/platform/chromium-win/fast/events":
+  "src/content/test/data/layout_tests/LayoutTests/platform/chromium-win/fast/events":
     Var("webkit_trunk") + "/LayoutTests/platform/chromium-win/fast/events@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/platform/chromium-win/fast/workers":
+  "src/content/test/data/layout_tests/LayoutTests/platform/chromium-win/fast/workers":
     Var("webkit_trunk") + "/LayoutTests/platform/chromium-win/fast/workers@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/http/tests/appcache":
+  "src/content/test/data/layout_tests/LayoutTests/http/tests/appcache":
     Var("webkit_trunk") + "/LayoutTests/http/tests/appcache@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/platform/chromium-win/http/tests/workers":
+  "src/content/test/data/layout_tests/LayoutTests/platform/chromium-win/http/tests/workers":
     Var("webkit_trunk") + "/LayoutTests/platform/chromium-win/http/tests/workers@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/platform/chromium-win/storage/domstorage":
+  "src/content/test/data/layout_tests/LayoutTests/platform/chromium-win/storage/domstorage":
     Var("webkit_trunk") + "/LayoutTests/platform/chromium-win/storage/domstorage@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/storage/domstorage":
+  "src/content/test/data/layout_tests/LayoutTests/storage/domstorage":
     Var("webkit_trunk") + "/LayoutTests/storage/domstorage@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/storage/indexeddb":
+  "src/content/test/data/layout_tests/LayoutTests/storage/indexeddb":
     Var("webkit_trunk") + "/LayoutTests/storage/indexeddb@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/fast/filesystem/resources":
+  "src/content/test/data/layout_tests/LayoutTests/fast/filesystem/resources":
     Var("webkit_trunk") + "/LayoutTests/fast/filesystem/resources@" +
     Var("webkit_revision"),
-  "src/chrome/test/data/layout_tests/LayoutTests/media":
+  "src/content/test/data/layout_tests/LayoutTests/media":
     Var("webkit_trunk") + "/LayoutTests/media@" +
     Var("webkit_revision"),
 
@@ -328,7 +328,7 @@ deps = {
     "/trunk/deps/third_party/undoview@119694",
 
   "src/tools/deps2git":
-    "/trunk/tools/deps2git@123141",
+    "/trunk/tools/deps2git@128331",
 }
 
 
@@ -477,14 +477,14 @@ hooks = [
          "--no-arm-trusted",
          "--optional-pnacl",
          "--pnacl-version", Var("pnacl_toolchain_revision"),
-         "--file-hash", "pnacl_linux_i686",
-             Var("nacl_toolchain_pnacl_linux_i686_hash"),
+         "--file-hash", "pnacl_linux_x86_32",
+             Var("nacl_toolchain_pnacl_linux_x86_32_hash"),
          "--file-hash", "pnacl_linux_x86_64",
              Var("nacl_toolchain_pnacl_linux_x86_64_hash"),
          "--file-hash", "pnacl_translator",
              Var("nacl_toolchain_pnacl_translator_hash"),
-         "--file-hash", "pnacl_darwin_i386",
-             Var("nacl_toolchain_pnacl_darwin_i386_hash"),
+         "--file-hash", "pnacl_mac_x86_32",
+             Var("nacl_toolchain_pnacl_mac_x86_32_hash"),
          "--x86-version", Var("nacl_toolchain_revision"),
          "--file-hash", "mac_x86_newlib",
              Var("nacl_toolchain_mac_x86_newlib_hash"),

@@ -25,6 +25,7 @@ to unittest.py
 """
 
 import cStringIO
+import copy
 import functools
 import hashlib
 import inspect
@@ -92,6 +93,7 @@ _CHROME_DRIVER_FACTORY = None
 _HTTP_SERVER = None
 _REMOTE_PROXY = None
 _OPTIONS = None
+_BROWSER_PID = None
 
 
 class PyUITest(pyautolib.PyUITestBase, unittest.TestCase):
@@ -203,6 +205,9 @@ class PyUITest(pyautolib.PyUITestBase, unittest.TestCase):
     for remote in self.remotes:
       remote.CreateTarget(self)
       remote.setUp()
+
+    global _BROWSER_PID
+    _BROWSER_PID = self.GetBrowserInfo()['browser_pid']
 
   def setUp(self):
     """Override this method to launch browser differently.
@@ -938,9 +943,30 @@ class PyUITest(pyautolib.PyUITestBase, unittest.TestCase):
     if windex is None:  # Do not target any window
       windex = -1
     result = self._SendJSONRequest(windex, json.dumps(cmd_dict), timeout)
-    if len(result) == 0:
+    if not result:
+      additional_info = 'No information available.'
+      # Windows does not support os.kill until Python 2.7.
+      if not self.IsWin() and _BROWSER_PID:
+        additional_info = ('The browser process ID %d still exists. '
+                           'It is possible that it is hung.' % _BROWSER_PID)
+        try:
+          # Does not actually kill the process
+          os.kill(int(_BROWSER_PID), 0)
+        except OSError:
+          additional_info = ('The browser process ID %d no longer exists.' %
+                             _BROWSER_PID)
+      elif not _BROWSER_PID:
+        additional_info = ('The browser PID was not obtained. Does this test '
+                           'have a unique startup configuration?')
+      # Mask private data if it is in the JSON dictionary
+      cmd_dict_copy = copy.copy(cmd_dict)
+      if 'password' in cmd_dict_copy.keys():
+        cmd_dict_copy['password'] = '**********'
+      if 'username' in cmd_dict_copy.keys():
+        cmd_dict_copy['username'] = 'removed_username'
       raise JSONInterfaceError('Automation call %s received empty response.  '
-                               'Perhaps the browser crashed.' % cmd_dict)
+                               'Additional information:\n%s' % (cmd_dict_copy,
+                               additional_info))
     ret_dict = json.loads(result)
     if ret_dict.has_key('error'):
       raise JSONInterfaceError(ret_dict['error'])
@@ -2805,12 +2831,24 @@ class PyUITest(pyautolib.PyUITestBase, unittest.TestCase):
     return self._GetResultFromJSONRequest(cmd_dict, windex=windex,
                                           timeout=timeout)
 
-  def AddDomRaisedEventObserver(self, event_name=''):
+  def AddDomRaisedEventObserver(self, event_name='', automation_id=-1,
+                                recurring=True):
     """Adds a DomRaisedEventObserver associated with the AutomationEventQueue.
 
+    An app raises a matching event in Javascript by calling:
+    window.domAutomationController.sendWithId(automation_id, event_name)
+
     Args:
-      event_name: The raised event name to watch for. By default all raised
-                  events are observed.
+      event_name: The event name to watch for. By default an event is raised
+                  for every message.
+      automation_id: The Automation Id of the sent message. By default all
+                     messages sent from the window.domAutomationController are
+                     observed. Note that other PyAuto functions also send
+                     messages through window.domAutomationController with
+                     arbirary Automation Ids and they will be observed.
+      recurring: If False the observer will be removed after it generates one
+                 event, otherwise it will continue observing and generating
+                 events until explicity removed with RemoveEventObserver(id).
 
     Returns:
       The id of the created observer, which can be used with GetNextEvent(id)
@@ -2819,11 +2857,11 @@ class PyUITest(pyautolib.PyUITestBase, unittest.TestCase):
     Raises:
       pyauto_errors.JSONInterfaceError if the automation call returns an error.
     """
-    # TODO(craigdh): Add documentation for raising an event once it has been
-    #                implemented.
     cmd_dict = {
       'command': 'AddDomRaisedEventObserver',
       'event_name': event_name,
+      'automation_id': automation_id,
+      'recurring': recurring,
     }
     return self._GetResultFromJSONRequest(cmd_dict, windex=None)['observer_id']
 
@@ -3629,17 +3667,18 @@ class PyUITest(pyautolib.PyUITestBase, unittest.TestCase):
     return self._GetResultFromJSONRequest(cmd_dict)
 
   def GetPolicyDefinitionList(self):
-    """Gets a dictionary of existing policies mapped to their value types.
+    """Gets a dictionary of existing policies mapped to their definitions.
 
     SAMPLE OUTPUT:
     {
-      'ShowHomeButton': 'bool',
-      'DefaultSearchProviderSearchURL': 'str',
+      'ShowHomeButton': ['bool', false],
+      'DefaultSearchProviderSearchURL': ['str', false],
       ...
     }
 
     Returns:
-      A dictionary mapping policy names to their value types.
+      A dictionary mapping each policy name to its value type and a Boolean flag
+      indicating whether it is a device policy.
     """
     cmd_dict = {
         'command': 'GetPolicyDefinitionList'

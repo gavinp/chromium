@@ -30,7 +30,8 @@ void DetachedPanelStrip::SetDisplayArea(const gfx::Rect& display_area) {
 }
 
 void DetachedPanelStrip::RefreshLayout() {
-  NOTIMPLEMENTED();
+  // Nothing needds to be done here: detached panels always stay
+  // where the user dragged them.
 }
 
 void DetachedPanelStrip::AddPanel(Panel* panel,
@@ -39,11 +40,6 @@ void DetachedPanelStrip::AddPanel(Panel* panel,
   DCHECK_NE(this, panel->panel_strip());
   panel->SetPanelStrip(this);
   panels_.insert(panel);
-
-  panel->set_attention_mode(
-      static_cast<Panel::AttentionMode>(Panel::USE_PANEL_ATTENTION |
-                                        Panel::USE_SYSTEM_ATTENTION));
-  panel->SetAlwaysOnTop(false);
 }
 
 void DetachedPanelStrip::RemovePanel(Panel* panel) {
@@ -63,33 +59,61 @@ void DetachedPanelStrip::CloseAll() {
 
 void DetachedPanelStrip::OnPanelAttentionStateChanged(Panel* panel) {
   DCHECK_EQ(this, panel->panel_strip());
-  NOTIMPLEMENTED();
+  // Nothing to do.
+}
+
+void DetachedPanelStrip::OnPanelTitlebarClicked(Panel* panel,
+                                                panel::ClickModifier modifier) {
+  DCHECK_EQ(this, panel->panel_strip());
+  // Click on detached panel titlebars does not do anything.
 }
 
 void DetachedPanelStrip::ResizePanelWindow(
     Panel* panel,
     const gfx::Size& preferred_window_size) {
-  NOTIMPLEMENTED();
+  // We should get this call only of we have the panel.
+  DCHECK_EQ(this, panel->panel_strip());
+
+  // Make sure the new size does not violate panel's size restrictions.
+  gfx::Size new_size(preferred_window_size.width(),
+                     preferred_window_size.height());
+  panel->ClampSize(&new_size);
+
+  // Update restored size.
+  if (new_size != panel->restored_size())
+    panel->set_restored_size(new_size);
+
+  gfx::Rect bounds = panel->GetBounds();
+
+  // When we resize a detached panel, its origin does not move.
+  // So we set height and width only.
+  bounds.set_size(new_size);
+
+  if (bounds != panel->GetBounds())
+    panel->SetPanelBounds(bounds);
+
 }
 
 void DetachedPanelStrip::ActivatePanel(Panel* panel) {
   DCHECK_EQ(this, panel->panel_strip());
-  NOTIMPLEMENTED();
+  // No change in panel's appearance.
 }
 
 void DetachedPanelStrip::MinimizePanel(Panel* panel) {
   DCHECK_EQ(this, panel->panel_strip());
-  NOTIMPLEMENTED();
+  // Detached panels do not minimize. However, extensions may call this API
+  // regardless of which strip the panel is in. So we just quietly return.
 }
 
 void DetachedPanelStrip::RestorePanel(Panel* panel) {
   DCHECK_EQ(this, panel->panel_strip());
-  NOTIMPLEMENTED();
+  // Detached panels do not minimize. However, extensions may call this API
+  // regardless of which strip the panel is in. So we just quietly return.
 }
 
 bool DetachedPanelStrip::IsPanelMinimized(const Panel* panel) const {
   DCHECK_EQ(this, panel->panel_strip());
-  NOTIMPLEMENTED();
+  // Detached panels do not minimize.
   return false;
 }
 
@@ -140,6 +164,26 @@ void DetachedPanelStrip::EndDraggingPanelWithinStrip(Panel* panel,
                                                      bool aborted) {
 }
 
+bool DetachedPanelStrip::CanResizePanel(const Panel* panel) const {
+  return true;
+}
+
+void DetachedPanelStrip::SetPanelBounds(Panel* panel,
+                                        const gfx::Rect& new_bounds) {
+  DCHECK_EQ(this, panel->panel_strip());
+  panel->set_restored_size(new_bounds.size());
+  panel->SetPanelBoundsInstantly(new_bounds);
+}
+
+
 bool DetachedPanelStrip::HasPanel(Panel* panel) const {
   return panels_.find(panel) != panels_.end();
+}
+
+void DetachedPanelStrip::UpdatePanelOnStripChange(Panel* panel) {
+  panel->set_attention_mode(
+      static_cast<Panel::AttentionMode>(Panel::USE_PANEL_ATTENTION |
+                                        Panel::USE_SYSTEM_ATTENTION));
+  panel->SetAlwaysOnTop(false);
+  panel->EnableResizeByMouse(true);
 }

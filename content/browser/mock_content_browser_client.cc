@@ -211,6 +211,10 @@ void MockContentBrowserClient::RequestMediaAccessPermission(
     const MediaResponseCallback& callback) {
 }
 
+MediaObserver* MockContentBrowserClient::GetMediaObserver() {
+  return NULL;
+}
+
 void MockContentBrowserClient::RequestDesktopNotificationPermission(
     const GURL& source_origin,
     int callback_context,
@@ -244,7 +248,9 @@ bool MockContentBrowserClient::CanCreateWindow(
     const GURL& source_origin,
     WindowContainerType container_type,
     ResourceContext* context,
-    int render_process_id) {
+    int render_process_id,
+    bool* no_javascript_access) {
+  *no_javascript_access = false;
   return true;
 }
 

@@ -6,8 +6,6 @@
 #define ASH_WM_WINDOW_UTIL_H_
 #pragma once
 
-#include <set>
-
 #include "ash/ash_export.h"
 
 namespace aura {
@@ -22,6 +20,7 @@ ASH_EXPORT void ActivateWindow(aura::Window* window);
 ASH_EXPORT void DeactivateWindow(aura::Window* window);
 ASH_EXPORT bool IsActiveWindow(aura::Window* window);
 ASH_EXPORT aura::Window* GetActiveWindow();
+ASH_EXPORT bool CanActivateWindow(aura::Window* window);
 
 // Retrieves the activatable window for |window|. If |window| is activatable,
 // this will just return it, otherwise it will climb the parent/transient parent
@@ -45,12 +44,11 @@ ASH_EXPORT bool IsWindowFullscreen(aura::Window* window);
 // Maximizes |window|, which must not be NULL.
 ASH_EXPORT void MaximizeWindow(aura::Window* window);
 
+// Minimizes |window|, which must not be NULL.
+ASH_EXPORT void MinimizeWindow(aura::Window* window);
+
 // Restores |window|, which must not be NULL.
 ASH_EXPORT void RestoreWindow(aura::Window* window);
-
-// Returns true if the set of |windows| contains a full-screen window.
-typedef std::set<aura::Window*> WindowSet;
-ASH_EXPORT bool HasFullscreenWindow(const WindowSet& windows);
 
 // Sets whether the window should be open in a split mode. Only applicable when
 // workspaces are used.

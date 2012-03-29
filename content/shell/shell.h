@@ -24,10 +24,12 @@ typedef struct _GtkToolItem GtkToolItem;
 #endif
 
 class GURL;
-class TabContents;
+class WebContents;
 
 namespace content {
+
 class BrowserContext;
+class ShellJavaScriptDialogCreator;
 class SiteInstance;
 
 // This represents one window of the Content Shell, i.e. all the UI including
@@ -53,7 +55,7 @@ class Shell : public WebContentsDelegate,
                                 const GURL& url,
                                 SiteInstance* site_instance,
                                 int routing_id,
-                                TabContents* base_tab_contents);
+                                WebContents* base_web_contents);
 
   // Returns the Shell object corresponding to the given RenderViewHost.
   static Shell* FromRenderViewHost(RenderViewHost* rvh);
@@ -61,7 +63,7 @@ class Shell : public WebContentsDelegate,
   // Closes all windows and exits.
   static void PlatformExit();
 
-  TabContents* tab_contents() const { return tab_contents_.get(); }
+  WebContents* web_contents() const { return web_contents_.get(); }
 
   // layoutTestController related methods.
   void set_wait_until_done() { wait_until_done_ = true; }
@@ -79,10 +81,10 @@ class Shell : public WebContentsDelegate,
     STOP_BUTTON
   };
 
-  explicit Shell(TabContents* tab_contents);
+  explicit Shell(WebContents* web_contents);
 
-  // Helper to create a new Shell given a newly created TabContents.
-  static Shell* CreateShell(TabContents* tab_contents);
+  // Helper to create a new Shell given a newly created WebContents.
+  static Shell* CreateShell(WebContents* web_contents);
 
   // All the methods that begin with Platform need to be implemented by the
   // platform specific Shell implementation.
@@ -90,10 +92,8 @@ class Shell : public WebContentsDelegate,
   void PlatformCleanUp();
   // Creates the main window GUI.
   void PlatformCreateWindow(int width, int height);
-  // Links the TabContents into the newly created window.
+  // Links the WebContents into the newly created window.
   void PlatformSetContents();
-  // Resizes the main window to the given dimensions.
-  void PlatformSizeTo(int width, int height);
   // Resize the content area and GUI.
   void PlatformResizeSubViews();
   // Enable/disable a button.
@@ -102,6 +102,11 @@ class Shell : public WebContentsDelegate,
   void PlatformSetAddressBarURL(const GURL& url);
   // Sets whether the spinner is spinning.
   void PlatformSetIsLoading(bool loading);
+
+#if defined(OS_WIN) || defined(OS_LINUX)
+  // Resizes the main window to the given dimensions.
+  void SizeTo(int width, int height);
+#endif
 
   gfx::NativeView GetContentView();
 
@@ -112,8 +117,11 @@ class Shell : public WebContentsDelegate,
                                   const GURL& target_url,
                                   WebContents* new_contents) OVERRIDE;
   virtual void DidNavigateMainFramePostCommit(WebContents* tab) OVERRIDE;
-  virtual void UpdatePreferredSize(WebContents* source,
-                                   const gfx::Size& pref_size) OVERRIDE;
+  virtual JavaScriptDialogCreator* GetJavaScriptDialogCreator() OVERRIDE;
+#if defined(OS_MACOSX)
+  virtual void HandleKeyboardEvent(
+      const NativeWebKeyboardEvent& event) OVERRIDE;
+#endif
 
   // content::WebContentsObserver
   virtual void DidFinishLoad(int64 frame_id,
@@ -138,7 +146,9 @@ class Shell : public WebContentsDelegate,
                      GObject*, guint, GdkModifierType);
 #endif
 
-  scoped_ptr<TabContents> tab_contents_;
+  scoped_ptr<ShellJavaScriptDialogCreator> dialog_creator_;
+
+  scoped_ptr<WebContents> web_contents_;
 
   // layoutTestController related variables.
   bool wait_until_done_;

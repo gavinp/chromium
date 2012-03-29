@@ -32,10 +32,10 @@ ROW_ROOTWINDOW,
 ROW_TRANSIENTCHILDREN,
 ROW_TRANSIENTPARENT,
 ROW_USERDATA,
-ROW_STOPSEVENTPROPAGATION,
 ROW_IGNOREEVENTS,
 ROW_CANFOCUS,
-ROW_HITTESTBOUNDSOVERRIDE,
+ROW_HITTESTBOUNDSOVERRIDEOUTER,
+ROW_HITTESTBOUNDSOVERRIDEINNER,
 ROW_COUNT
 };
 
@@ -137,21 +137,17 @@ string16 OakAuraWindowDisplay::GetText(int row, int column_id) {
                                   window_->transient_parent());
     case ROW_USERDATA:
       return PropertyWithVoidStar("User Data: ", window_->user_data());
-    case ROW_STOPSEVENTPROPAGATION:
-      return PropertyWithBool("Stops event propagation: ",
-                              window_->StopsEventPropagation());
     case ROW_IGNOREEVENTS:
       return PropertyWithBool("Can receive events: ",
                               window_->CanReceiveEvents());
     case ROW_CANFOCUS:
       return PropertyWithBool("Can Focus: ", window_->CanFocus());
-    case ROW_HITTESTBOUNDSOVERRIDE: {
-      int outer, inner;
-      window_->GetHitTestBoundsOverride(&outer, &inner);
-      return ASCIIToUTF16(
-          base::StringPrintf("Hit test bounds override: outer %d, inner %d",
-                             outer, inner));
-    }
+    case ROW_HITTESTBOUNDSOVERRIDEOUTER:
+      return PropertyWithInsets("Hit test bounds override outer: ",
+                                window_->hit_test_bounds_override_outer());
+    case ROW_HITTESTBOUNDSOVERRIDEINNER:
+      return PropertyWithInsets("Hit test bounds override inner: ",
+                                window_->hit_test_bounds_override_inner());
     default:
       NOTREACHED();
       break;

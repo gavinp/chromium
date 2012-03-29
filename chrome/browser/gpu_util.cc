@@ -216,6 +216,14 @@ Value* GetFeatureStatus() {
           false
       },
       {
+          "css_animation",
+          flags & content::GPU_FEATURE_TYPE_ACCELERATED_COMPOSITING,
+          command_line.HasSwitch(switches::kDisableThreadedAnimation) ||
+          command_line.HasSwitch(switches::kDisableAcceleratedCompositing),
+          "Accelerated CSS animation has been disabled at the command line.",
+          true
+      },
+      {
           "webgl",
           flags & content::GPU_FEATURE_TYPE_WEBGL,
           command_line.HasSwitch(switches::kDisableExperimentalWebGL),
@@ -241,10 +249,14 @@ Value* GetFeatureStatus() {
       std::string status;
       if (kGpuFeatureInfo[i].disabled) {
         status = "disabled";
-        if (kGpuFeatureInfo[i].fallback_to_software)
-          status += "_software";
-        else
-          status += "_off";
+        if (kGpuFeatureInfo[i].name == "css_animation") {
+          status += "_software_animated";
+        } else {
+          if (kGpuFeatureInfo[i].fallback_to_software)
+            status += "_software";
+          else
+            status += "_off";
+        }
       } else if (GpuDataManager::GetInstance()->ShouldUseSoftwareRendering()) {
         status = "unavailable_software";
       } else if (kGpuFeatureInfo[i].blocked ||
@@ -260,6 +272,23 @@ Value* GetFeatureStatus() {
             (command_line.HasSwitch(switches::kDisableAcceleratedCompositing) ||
              (flags & content::GPU_FEATURE_TYPE_ACCELERATED_COMPOSITING)))
           status += "_readback";
+        bool has_thread = CommandLine::ForCurrentProcess()->HasSwitch(
+            switches::kEnableThreadedCompositing) &&
+            (!CommandLine::ForCurrentProcess()->HasSwitch(
+                switches::kDisableThreadedCompositing));
+        if (kGpuFeatureInfo[i].name == "compositing" &&
+            CommandLine::ForCurrentProcess()->HasSwitch(
+                switches::kForceCompositingMode))
+          status += "_force";
+        if (kGpuFeatureInfo[i].name == "compositing" &&
+            has_thread)
+          status += "_threaded";
+        if (kGpuFeatureInfo[i].name == "css_animation") {
+          if (has_thread)
+            status = "accelerated_threaded";
+          else
+            status = "accelerated";
+        }
       }
       feature_status_list->Append(
           NewStatusValue(kGpuFeatureInfo[i].name.c_str(), status.c_str()));
@@ -361,13 +390,19 @@ DictionaryValue* GpuInfoAsDictionaryValue() {
 }
 
 void UpdateStats() {
+  GpuBlacklist* blacklist = GpuBlacklist::GetInstance();
+  uint32 max_entry_id = blacklist->max_entry_id();
+  if (max_entry_id == 0) {
+    // GPU Blacklist was not loaded.  No need to go further.
+    return;
+  }
+
   const CommandLine& command_line = *CommandLine::ForCurrentProcess();
   uint32 flags = GpuDataManager::GetInstance()->GetGpuFeatureType();
-  GpuBlacklist* blacklist = GpuBlacklist::GetInstance();
   bool disabled = false;
   if (flags == 0) {
     UMA_HISTOGRAM_ENUMERATION("GPU.BlacklistTestResultsPerEntry",
-        0, blacklist->max_entry_id() + 1);
+        0, max_entry_id + 1);
   } else {
     std::vector<uint32> flag_entries;
     blacklist->GetGpuFeatureTypeEntries(
@@ -375,7 +410,7 @@ void UpdateStats() {
     DCHECK_GT(flag_entries.size(), 0u);
     for (size_t i = 0; i < flag_entries.size(); ++i) {
       UMA_HISTOGRAM_ENUMERATION("GPU.BlacklistTestResultsPerEntry",
-          flag_entries[i], blacklist->max_entry_id() + 1);
+          flag_entries[i], max_entry_id + 1);
     }
   }
 
@@ -387,7 +422,7 @@ void UpdateStats() {
       content::GPU_FEATURE_TYPE_ALL, flag_disabled_entries, disabled);
   for (size_t i = 0; i < flag_disabled_entries.size(); ++i) {
     UMA_HISTOGRAM_ENUMERATION("GPU.BlacklistTestResultsPerDisabledEntry",
-        flag_disabled_entries[i], blacklist->max_entry_id() + 1);
+        flag_disabled_entries[i], max_entry_id + 1);
   }
 
   const content::GpuFeatureType kGpuFeatures[] = {

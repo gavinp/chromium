@@ -113,6 +113,7 @@ class MockContentBrowserClient : public ContentBrowserClient {
   virtual void RequestMediaAccessPermission(
       const MediaStreamRequest* request,
       const MediaResponseCallback& callback) OVERRIDE;
+  virtual MediaObserver* GetMediaObserver() OVERRIDE;
   virtual void RequestDesktopNotificationPermission(
       const GURL& source_origin,
       int callback_context,
@@ -137,7 +138,8 @@ class MockContentBrowserClient : public ContentBrowserClient {
       const GURL& source_origin,
       WindowContainerType container_type,
       ResourceContext* context,
-      int render_process_id) OVERRIDE;
+      int render_process_id,
+      bool* no_javascript_access) OVERRIDE;
   virtual std::string GetWorkerProcessTitle(const GURL& url,
                                             ResourceContext* context) OVERRIDE;
   virtual void ResourceDispatcherHostCreated() OVERRIDE;

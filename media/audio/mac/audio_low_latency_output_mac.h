@@ -46,7 +46,7 @@ class AUAudioOutputStream : public AudioOutputStream {
   virtual void SetVolume(double volume) OVERRIDE;
   virtual void GetVolume(double* volume) OVERRIDE;
 
-  static double HardwareSampleRate();
+  static int HardwareSampleRate();
 
  private:
   // DefaultOutputUnit callback.
@@ -92,6 +92,9 @@ class AUAudioOutputStream : public AudioOutputStream {
 
   // Fixed playout hardware latency in frames.
   double hardware_latency_frames_;
+
+  // The flag used to stop the streaming.
+  bool stopped_;
 
   DISALLOW_COPY_AND_ASSIGN(AUAudioOutputStream);
 };

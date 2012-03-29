@@ -13,8 +13,10 @@
 #include "base/basictypes.h"
 #include "base/callback.h"
 #include "base/file_path.h"
+#include "base/memory/scoped_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/values.h"
+#include "chrome/browser/chromeos/gdata/gdata_parser.h"
 #include "net/base/io_buffer.h"
 #include "googleurl/src/gurl.h"
 
@@ -24,17 +26,12 @@ namespace gdata {
 struct ResumeUploadResponse {
   ResumeUploadResponse(GDataErrorCode code,
                        int64 start_range_received,
-                       int64 end_range_received,
-                       const std::string& resource_id,
-                       const std::string& md5_checksum);
-
+                       int64 end_range_received);
   ~ResumeUploadResponse();
 
   GDataErrorCode code;
   int64 start_range_received;
   int64 end_range_received;
-  std::string resource_id;
-  std::string md5_checksum;
   FilePath virtual_path;
 };
 
@@ -105,7 +102,8 @@ typedef base::Callback<void(GDataErrorCode error,
 
 // Callback type for DocumentServiceInterface::ResumeUpload.
 typedef base::Callback<void(
-    const ResumeUploadResponse& response)> ResumeUploadCallback;
+    const ResumeUploadResponse& response,
+    scoped_ptr<gdata::DocumentEntry> new_entry)> ResumeUploadCallback;
 
 }  // namespace gdata
 

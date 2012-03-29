@@ -233,11 +233,7 @@ bool WebGraphicsContext3DCommandBufferImpl::MaybeInitializeGL() {
       new WebGraphicsContext3DErrorMessageCallback(this));
   gl_->SetErrorMessageCallback(client_error_message_callback_.get());
 
-  // TODO(gman): Remove this.
   const CommandLine& command_line = *CommandLine::ForCurrentProcess();
-  if (command_line.HasSwitch(switches::kDisableGLSLTranslator)) {
-    context_->DisableShaderTranslation();
-  }
   free_command_buffer_when_invisible_ =
       command_line.HasSwitch(switches::kEnablePruneGpuCommandBuffers);
 
@@ -456,6 +452,17 @@ void WebGraphicsContext3DCommandBufferImpl::setVisibilityCHROMIUM(
   context_->SetSurfaceVisible(visible);
   if (!visible)
     gl_->FreeEverything();
+}
+
+void WebGraphicsContext3DCommandBufferImpl::discardFramebufferEXT(
+    WGC3Denum target, WGC3Dsizei numAttachments, const WGC3Denum* attachments) {
+  gl_->Flush();
+  context_->DiscardBackbuffer();
+}
+
+void WebGraphicsContext3DCommandBufferImpl::ensureFramebufferCHROMIUM() {
+  gl_->Flush();
+  context_->EnsureBackbuffer();
 }
 
 void WebGraphicsContext3DCommandBufferImpl::

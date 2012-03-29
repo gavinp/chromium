@@ -22,6 +22,10 @@
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/notification_source.h"
 
+#if defined(TOOLKIT_GTK)
+#include "ui/base/x/x11_util.h"
+#endif
+
 namespace {
 const int kOverflowStripThickness = 26;
 
@@ -47,6 +51,18 @@ PanelManager* PanelManager::GetInstance() {
 
 // static
 bool PanelManager::ShouldUsePanels(const std::string& extension_id) {
+#if defined(TOOLKIT_GTK)
+  // Panels are only supported on a white list of window managers for Linux.
+  ui::WindowManagerName wm_type = ui::GuessWindowManager();
+  if (wm_type != ui::WM_COMPIZ &&
+      wm_type != ui::WM_ICE_WM &&
+      wm_type != ui::WM_KWIN &&
+      wm_type != ui::WM_METACITY &&
+      wm_type != ui::WM_MUTTER) {
+    return false;
+  }
+#endif  // TOOLKIT_GTK
+
   chrome::VersionInfo::Channel channel = chrome::VersionInfo::GetChannel();
   if (channel == chrome::VersionInfo::CHANNEL_STABLE ||
       channel == chrome::VersionInfo::CHANNEL_BETA) {
@@ -70,6 +86,7 @@ PanelManager::PanelManager()
   docked_strip_.reset(new DockedPanelStrip(this));
   overflow_strip_.reset(new OverflowPanelStrip(this));
   drag_controller_.reset(new PanelDragController(this));
+  resize_controller_.reset(new PanelResizeController(this));
   display_settings_provider_.reset(DisplaySettingsProvider::Create(this));
 
   OnDisplayChanged();
@@ -114,6 +131,7 @@ Panel* PanelManager::CreatePanel(Browser* browser) {
   int height = browser->override_bounds().height();
   Panel* panel = new Panel(browser, gfx::Size(width, height));
   docked_strip_->AddPanel(panel, PanelStrip::DEFAULT_POSITION);
+  docked_strip_->UpdatePanelOnStripChange(panel);
 
   content::NotificationService::current()->Notify(
       chrome::NOTIFICATION_PANEL_ADDED,
@@ -147,6 +165,7 @@ void PanelManager::OnPanelClosed(Panel* panel) {
     full_screen_mode_timer_.Stop();
 
   drag_controller_->OnPanelClosed(panel);
+  resize_controller_->OnPanelClosed(panel);
   panel->panel_strip()->RemovePanel(panel);
 
   content::NotificationService::current()->Notify(
@@ -166,6 +185,24 @@ void PanelManager::Drag(const gfx::Point& mouse_location) {
 
 void PanelManager::EndDragging(bool cancelled) {
   drag_controller_->EndDragging(cancelled);
+}
+
+void PanelManager::StartResizingByMouse(Panel* panel,
+    const gfx::Point& mouse_location,
+    PanelResizeController::ResizingSides sides) {
+   if (panel->panel_strip() && panel->panel_strip()->CanResizePanel(panel) &&
+      sides != PanelResizeController::NO_SIDES)
+    resize_controller_->StartResizing(panel, mouse_location, sides);
+}
+
+void PanelManager::ResizeByMouse(const gfx::Point& mouse_location) {
+  if (resize_controller_->IsResizing())
+    resize_controller_->Resize(mouse_location);
+}
+
+void PanelManager::EndResizingByMouse(bool cancelled) {
+  if (resize_controller_->IsResizing())
+    resize_controller_->EndResizing(cancelled);
 }
 
 void PanelManager::OnPanelExpansionStateChanged(Panel* panel) {
@@ -199,6 +236,13 @@ void PanelManager::ResizePanel(Panel* panel, const gfx::Size& new_size) {
   panel->SetAutoResizable(false);
 }
 
+void PanelManager::SetPanelBounds(Panel* panel,
+                                  const gfx::Rect& new_bounds) {
+  panel->panel_strip()->SetPanelBounds(panel, new_bounds);
+  panel->SetAutoResizable(false);
+
+}
+
 void PanelManager::MovePanelToStrip(
     Panel* panel,
     PanelStrip::Type new_layout,
@@ -225,6 +269,7 @@ void PanelManager::MovePanelToStrip(
   }
 
   target_strip->AddPanel(panel, positioning_mask);
+  target_strip->UpdatePanelOnStripChange(panel);
 
   content::NotificationService::current()->Notify(
       chrome::NOTIFICATION_PANEL_CHANGED_LAYOUT_MODE,

@@ -84,8 +84,10 @@ void AddPreviewUsageForHistogram(TemplateURLID template_url_id,
   DCHECK(0 <= usage && usage < PREVIEW_NUM_TYPES);
   // Only track the histogram for the instant loaders, for now.
   if (template_url_id) {
-    UMA_HISTOGRAM_ENUMERATION("Instant.Previews" + group, usage,
-                              PREVIEW_NUM_TYPES);
+    base::Histogram* histogram = base::LinearHistogram::FactoryGet(
+        "Instant.Previews" + group, 1, PREVIEW_NUM_TYPES, PREVIEW_NUM_TYPES + 1,
+        base::Histogram::kUmaTargetedHistogramFlag);
+    histogram->Add(usage);
   }
 }
 
@@ -825,11 +827,11 @@ TabContentsWrapper* InstantLoader::ReleasePreviewContents(
       type == INSTANT_COMMIT_DESTROY ? PREVIEW_DELETED : PREVIEW_COMMITTED,
       group_);
   if (type != INSTANT_COMMIT_DESTROY) {
-    UMA_HISTOGRAM_ENUMERATION(
-        "Instant.SessionStorageNamespace" + group_,
-        tab_contents == NULL || session_storage_namespace_ ==
-            GetSessionStorageNamespace(tab_contents),
-        2);
+    base::Histogram* histogram = base::LinearHistogram::FactoryGet(
+        "Instant.SessionStorageNamespace" + group_, 1, 2, 3,
+        base::Histogram::kUmaTargetedHistogramFlag);
+    histogram->Add(tab_contents == NULL || session_storage_namespace_ ==
+        GetSessionStorageNamespace(tab_contents));
   }
   session_storage_namespace_ = NULL;
   return preview_contents_.release();

@@ -462,6 +462,7 @@ bool GLInProcessContext::Initialize(const gfx::Size& size,
   // Create the object exposing the OpenGL API.
   gles2_implementation_.reset(new GLES2Implementation(
       gles2_helper_.get(),
+      NULL,
       transfer_buffer_.get(),
       true,
       false));
@@ -807,6 +808,19 @@ void WebGraphicsContext3DInProcessCommandBufferImpl::unmapTexSubImage2DCHROMIUM(
 
 void WebGraphicsContext3DInProcessCommandBufferImpl::setVisibilityCHROMIUM(
     bool visible) {
+}
+
+void WebGraphicsContext3DInProcessCommandBufferImpl::
+    setMemoryAllocationChangedCallbackCHROMIUM(
+        WebGraphicsMemoryAllocationChangedCallbackCHROMIUM* callback) {
+}
+
+void WebGraphicsContext3DInProcessCommandBufferImpl::discardFramebufferEXT(
+    WGC3Denum target, WGC3Dsizei numAttachments, const WGC3Denum* attachments) {
+}
+
+void WebGraphicsContext3DInProcessCommandBufferImpl::
+    ensureFramebufferCHROMIUM() {
 }
 
 void WebGraphicsContext3DInProcessCommandBufferImpl::

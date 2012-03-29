@@ -12,7 +12,7 @@
 #include "base/memory/singleton.h"
 #include "base/memory/weak_ptr.h"
 #include "base/shared_memory.h"
-#include "content/common/gpu/client/command_buffer_proxy.h"
+#include "content/common/gpu/client/command_buffer_proxy_impl.h"
 #include "content/common/gpu/client/gpu_channel_host.h"
 #include "googleurl/src/gurl.h"
 #include "ipc/ipc_channel_handle.h"
@@ -272,22 +272,25 @@ int ContentGLContext::GetChannelID() {
 }
 
 int ContentGLContext::GetContextID() {
-  return command_buffer_->route_id();
+  return command_buffer_->GetRouteID();
 }
 
 bool ContentGLContext::SetSurfaceVisible(bool visible) {
   return GetCommandBufferProxy()->SetSurfaceVisible(visible);
 }
 
+bool ContentGLContext::DiscardBackbuffer() {
+  return GetCommandBufferProxy()->DiscardBackbuffer();
+}
+
+bool ContentGLContext::EnsureBackbuffer() {
+  return GetCommandBufferProxy()->EnsureBackbuffer();
+}
+
 void ContentGLContext::SetMemoryAllocationChangedCallback(
     const base::Callback<void(const GpuMemoryAllocationForRenderer&)>&
         callback) {
   GetCommandBufferProxy()->SetMemoryAllocationChangedCallback(callback);
-}
-
-// TODO(gman): Remove This
-void ContentGLContext::DisableShaderTranslation() {
-  NOTREACHED();
 }
 
 gpu::gles2::GLES2Implementation* ContentGLContext::GetImplementation() {
@@ -417,6 +420,7 @@ bool ContentGLContext::Initialize(bool onscreen,
   // Create the object exposing the OpenGL API.
   gles2_implementation_ = new gpu::gles2::GLES2Implementation(
       gles2_helper_,
+      NULL,
       transfer_buffer_,
       share_resources,
       bind_generates_resources);

@@ -6,30 +6,22 @@
 
 #include "base/bind.h"
 #include "base/file_util.h"
+#include "base/i18n/file_util_icu.h"
 #include "base/memory/ref_counted.h"
+#include "base/threading/sequenced_worker_pool.h"
+#include "chrome/browser/chromeos/gdata/gdata_download_observer.h"
+#include "chrome/browser/chromeos/gdata/gdata_file_system.h"
+#include "chrome/browser/chromeos/gdata/gdata_system_service.h"
+#include "chrome/browser/chromeos/gdata/gdata_util.h"
+#include "chrome/browser/profiles/profile_manager.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/download_item.h"
 #include "content/public/browser/download_manager.h"
-#include "chrome/browser/chromeos/gdata/gdata_download_observer.h"
-#include "chrome/browser/chromeos/gdata/gdata_util.h"
 
 using content::BrowserThread;
 using content::DownloadManager;
 
 namespace {
-
-// Callbacks for PostTaskAndReply.
-
-// |temp_path| is set to a temporary local download path in
-// ~/Downloads/.gdata/
-// Must be called on the FILE thread.
-void GetGDataTempDownloadPath(FilePath* temp_path) {
-  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::FILE));
-  bool created = file_util::CreateTemporaryFileInDir(
-      gdata::util::GetGDataTempDownloadFolderPath(), temp_path);
-  // TODO(achuith): Handle failure in CreateTemporaryFileInDir.
-  DCHECK(created);
-}
 
 // Call FileSelected on |download_manager|.
 void GDataTempFileSelected(DownloadManager* download_manager,
@@ -54,13 +46,19 @@ DownloadFilePickerChromeOS::DownloadFilePickerChromeOS(
 DownloadFilePickerChromeOS::~DownloadFilePickerChromeOS() {
 }
 
-void DownloadFilePickerChromeOS::FileSelected(const FilePath& path,
+void DownloadFilePickerChromeOS::FileSelected(const FilePath& selected_path,
                                               int index,
                                               void* params) {
+  FilePath path = selected_path;
+  file_util::NormalizeFileNameEncoding(&path);
+
   RecordFileSelected(path);
 
   if (download_manager_) {
-    if (gdata::util::IsUnderGDataMountPoint(path)) {
+    gdata::GDataSystemService* system_service =
+        gdata::GDataSystemServiceFactory::GetForProfile(
+            ProfileManager::GetDefaultProfile());
+    if (system_service && gdata::util::IsUnderGDataMountPoint(path)) {
       // If we're trying to download a file into gdata, save path in external
       // data.
       content::DownloadItem* download =
@@ -68,18 +66,21 @@ void DownloadFilePickerChromeOS::FileSelected(const FilePath& path,
       if (download) {
         gdata::GDataDownloadObserver::SetGDataPath(download, path);
         download->SetDisplayName(path.BaseName());
+        download->SetIsTemporary(true);
+
+        const FilePath gdata_tmp_download_dir =
+            system_service->file_system()->GetGDataTempDownloadFolderPath();
 
         // Swap the gdata path with a local path. Local path must be created
-        // on the file thread.
-        // TODO(achuith): Use SequencedWorkerPool/TaskRunner interface once it
-        // supports PostTaskAndReply.
-        FilePath* download_path(new FilePath());
-        BrowserThread::PostTaskAndReply(BrowserThread::FILE, FROM_HERE,
-            base::Bind(&GetGDataTempDownloadPath,
-                       download_path),
+        // on the IO thread pool.
+        FilePath* gdata_tmp_download_path(new FilePath());
+        BrowserThread::GetBlockingPool()->PostTaskAndReply(FROM_HERE,
+            base::Bind(&gdata::GDataDownloadObserver::GetGDataTempDownloadPath,
+                       gdata_tmp_download_dir,
+                       gdata_tmp_download_path),
             base::Bind(&GDataTempFileSelected,
                        download_manager_,
-                       base::Owned(download_path),
+                       base::Owned(gdata_tmp_download_path),
                        download_id_));
       }
     } else {

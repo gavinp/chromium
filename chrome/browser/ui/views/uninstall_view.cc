@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -102,9 +102,8 @@ bool UninstallView::Accept() {
   if (delete_profile_->checked())
     user_selection_ = chrome::RESULT_CODE_UNINSTALL_DELETE_PROFILE;
   if (change_default_browser_ && change_default_browser_->checked()) {
-    int index = browsers_combo_->selected_item();
     BrowsersMap::const_iterator it = browsers_->begin();
-    std::advance(it, index);
+    std::advance(it, browsers_combo_->selected_index());
     base::LaunchOptions options;
     options.start_hidden = true;
     base::LaunchProcess((*it).second, options, NULL);
@@ -142,7 +141,7 @@ views::View* UninstallView::GetContentsView() {
   return this;
 }
 
-int UninstallView::GetItemCount() {
+int UninstallView::GetItemCount() const {
   DCHECK(!browsers_->empty());
   return browsers_->size();
 }

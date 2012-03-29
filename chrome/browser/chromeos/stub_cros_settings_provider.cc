@@ -21,13 +21,19 @@ const char* kHandledSettings[] = {
   kAccountsPrefUsers,
   kAccountsPrefEphemeralUsersEnabled,
   kDeviceOwner,
+  kPolicyMissingMitigationMode,
   kReleaseChannel,
   kReportDeviceVersionInfo,
   kReportDeviceActivityTimes,
   kReportDeviceBootMode,
   kSettingProxyEverywhere,
   kSignedDataRoamingEnabled,
-  kStatsReportingPref
+  kStatsReportingPref,
+  // Kiosk mode settings.
+  kIdleLogoutTimeout,
+  kIdleLogoutWarningDuration,
+  kScreenSaverExtensionId,
+  kScreenSaverTimeout
 };
 
 }  // namespace
@@ -55,8 +61,7 @@ const base::Value* StubCrosSettingsProvider::Get(
   return NULL;
 }
 
-bool StubCrosSettingsProvider::GetTrusted(const std::string& path,
-                                          const base::Closure& callback) {
+bool StubCrosSettingsProvider::PrepareTrustedValues(const base::Closure& cb) {
   // We don't have a trusted store so all values are available immediately.
   return true;
 }

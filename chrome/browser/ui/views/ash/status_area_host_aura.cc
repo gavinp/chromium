@@ -142,8 +142,8 @@ void StatusAreaHostAura::ExecuteStatusAreaCommand(
       case StatusAreaButton::Delegate::SHOW_LANGUAGE_OPTIONS:
         browser->OpenLanguageOptionsDialog();
         break;
-      case StatusAreaButton::Delegate::SHOW_ADVANCED_OPTIONS:
-        browser->OpenAdvancedOptionsDialog();
+      case StatusAreaButton::Delegate::SHOW_DATE_OPTIONS:
+        browser->ShowDateOptions();
         break;
       default:
         NOTREACHED();
@@ -153,9 +153,9 @@ void StatusAreaHostAura::ExecuteStatusAreaCommand(
         chromeos::BaseLoginDisplayHost::default_host()) {
       gfx::NativeWindow native_window =
           chromeos::BaseLoginDisplayHost::default_host()->GetNativeWindow();
-      proxy_settings_dialog_.reset(new chromeos::ProxySettingsDialog(
-          NULL, native_window));
-      proxy_settings_dialog_->Show();
+      chromeos::ProxySettingsDialog* dialog =
+          new chromeos::ProxySettingsDialog(NULL, native_window);
+      dialog->Show();
     } else {
       NOTREACHED();
     }
@@ -165,10 +165,9 @@ void StatusAreaHostAura::ExecuteStatusAreaCommand(
       gfx::NativeWindow native_window =
           chromeos::ScreenLocker::default_screen_locker()->delegate()->
               GetNativeWindow();
-      proxy_settings_dialog_.reset(new chromeos::ProxySettingsDialog(
-                                   NULL,
-                                   native_window));
-      proxy_settings_dialog_->Show();
+      chromeos::ProxySettingsDialog* dialog =
+          new chromeos::ProxySettingsDialog(NULL, native_window);
+      dialog->Show();
     } else {
       NOTREACHED();
     }
@@ -203,6 +202,7 @@ void StatusAreaHostAura::Observe(int type,
 #if defined(OS_CHROMEOS)
     case chrome::NOTIFICATION_SCREEN_LOCK_STATE_CHANGED:
       UpdateAppearance();
+      ash::Shell::GetInstance()->UpdateShelfVisibility();
       break;
 #endif
     default:

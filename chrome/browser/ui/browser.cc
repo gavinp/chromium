@@ -51,7 +51,7 @@
 #include "chrome/browser/extensions/crx_installer.h"
 #include "chrome/browser/extensions/default_apps_trial.h"
 #include "chrome/browser/extensions/extension_browser_event_router.h"
-#include "chrome/browser/extensions/extension_disabled_infobar_delegate.h"
+#include "chrome/browser/extensions/extension_disabled_ui.h"
 #include "chrome/browser/extensions/extension_prefs.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_tab_helper.h"
@@ -134,10 +134,9 @@
 #include "chrome/browser/ui/webui/feedback_ui.h"
 #include "chrome/browser/ui/webui/ntp/app_launcher_handler.h"
 #include "chrome/browser/ui/webui/ntp/new_tab_page_handler.h"
-#include "chrome/browser/ui/webui/options/content_settings_handler.h"
+#include "chrome/browser/ui/webui/options2/content_settings_handler2.h"
 #include "chrome/browser/ui/webui/signin/login_ui_service.h"
 #include "chrome/browser/ui/webui/signin/login_ui_service_factory.h"
-#include "chrome/browser/ui/webui/sync_promo/sync_promo_ui.h"
 #include "chrome/browser/ui/window_sizer.h"
 #include "chrome/browser/upgrade_detector.h"
 #include "chrome/browser/web_applications/web_app.h"
@@ -207,7 +206,7 @@
 #include "chrome/browser/chromeos/boot_times_loader.h"
 #include "chrome/browser/chromeos/dbus/dbus_thread_manager.h"
 #include "chrome/browser/chromeos/dbus/power_manager_client.h"
-#include "chrome/browser/chromeos/kiosk_mode/kiosk_mode_helper.h"
+#include "chrome/browser/chromeos/kiosk_mode/kiosk_mode_settings.h"
 #if defined(USE_AURA)
 #include "chrome/browser/extensions/api/terminal/terminal_extension_helper.h"
 #endif
@@ -321,6 +320,18 @@ bool ParseCommaSeparatedIntegers(const std::string& str,
   return true;
 }
 
+bool AllowPanels(const std::string& app_name) {
+  // TODO(yfriedman): remove OS_ANDROID clause when browser is excluded from
+  // Android build.
+#if (!defined(OS_CHROMEOS) || defined(USE_AURA)) && !defined(OS_ANDROID)
+  if (!PanelManager::ShouldUsePanels(
+          web_app::GetExtensionIdFromApplicationName(app_name))) {
+    return false;
+  }
+#endif  // !OS_CHROMEOS || USE_AURA
+  return true;
+}
+
 }  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -329,6 +340,7 @@ bool ParseCommaSeparatedIntegers(const std::string& str,
 Browser::CreateParams::CreateParams(Type type, Profile* profile)
     : type(type),
       profile(profile),
+      app_type(APP_TYPE_HOST),
       initial_show_state(ui::SHOW_STATE_DEFAULT),
       is_session_restore(false) {
 }
@@ -343,6 +355,7 @@ Browser::Browser(Type type, Profile* profile)
       ALLOW_THIS_IN_INITIALIZER_LIST(
           tab_handler_(TabHandler::CreateTabHandler(this))),
       command_updater_(this),
+      app_type_(APP_TYPE_HOST),
       chrome_updater_factory_(this),
       is_attempting_to_close_browser_(false),
       cancel_download_confirmation_state_(NOT_PROMPTED),
@@ -446,6 +459,16 @@ Browser::~Browser() {
 
   BrowserList::RemoveBrowser(this);
 
+  SessionService* session_service =
+      SessionServiceFactory::GetForProfile(profile_);
+  if (session_service)
+    session_service->WindowClosed(session_id_);
+
+  TabRestoreService* tab_restore_service =
+      TabRestoreServiceFactory::GetForProfile(profile());
+  if (tab_restore_service)
+    tab_restore_service->BrowserClosed(tab_restore_service_delegate());
+
 #if !defined(OS_MACOSX)
   if (!BrowserList::HasBrowserWithProfile(profile_)) {
     // We're the last browser window with this profile. We need to nuke the
@@ -460,16 +483,6 @@ Browser::~Browser() {
     TabRestoreServiceFactory::ResetForProfile(profile_);
   }
 #endif
-
-  SessionService* session_service =
-      SessionServiceFactory::GetForProfile(profile_);
-  if (session_service)
-    session_service->WindowClosed(session_id_);
-
-  TabRestoreService* tab_restore_service =
-      TabRestoreServiceFactory::GetForProfile(profile());
-  if (tab_restore_service)
-    tab_restore_service->BrowserClosed(tab_restore_service_delegate());
 
   profile_pref_registrar_.RemoveAll();
   local_pref_registrar_.RemoveAll();
@@ -509,6 +522,7 @@ Browser* Browser::CreateWithParams(const CreateParams& params) {
 
   Browser* browser = new Browser(params.type, params.profile);
   browser->app_name_ = params.app_name;
+  browser->app_type_ = params.app_type;
   browser->set_override_bounds(params.initial_bounds);
   browser->set_show_state(params.initial_show_state);
   browser->set_is_session_restore(params.is_session_restore);
@@ -531,31 +545,12 @@ Browser* Browser::CreateForApp(Type type,
   DCHECK(type != TYPE_TABBED);
   DCHECK(!app_name.empty());
 
-  // TODO(yfriedman): remove OS_ANDROID clause when browser is excluded from
-  // Android build.
-#if (!defined(OS_CHROMEOS) || defined(USE_AURA)) && !defined(OS_ANDROID)
-  if (type == TYPE_PANEL &&
-      !PanelManager::ShouldUsePanels(
-          web_app::GetExtensionIdFromApplicationName(app_name))) {
+  if (type == TYPE_PANEL && !AllowPanels(app_name))
     type = TYPE_POPUP;
-  }
-#if defined(TOOLKIT_GTK)
-  // Panels are only supported on a white list of window managers for Linux.
-  if (type == TYPE_PANEL) {
-    ui::WindowManagerName wm_type = ui::GuessWindowManager();
-    if (wm_type != ui::WM_COMPIZ &&
-        wm_type != ui::WM_ICE_WM &&
-        wm_type != ui::WM_KWIN &&
-        wm_type != ui::WM_METACITY &&
-        wm_type != ui::WM_MUTTER) {
-      type = TYPE_POPUP;
-    }
-  }
-#endif  // TOOLKIT_GTK
-#endif  // !OS_CHROMEOS || USE_AURA
 
   CreateParams params(type, profile);
   params.app_name = app_name;
+  params.app_type = APP_TYPE_CHILD;
   params.initial_bounds = window_bounds;
   return CreateWithParams(params);
 }
@@ -654,7 +649,7 @@ bool Browser::is_devtools() const {
 // Browser, Creation Helpers:
 
 // static
-Browser* Browser::NewEmptyWindow(Profile* profile) {
+void Browser::NewEmptyWindow(Profile* profile) {
   bool incognito = profile->IsOffTheRecord();
   PrefService* prefs = profile->GetPrefs();
   if (incognito) {
@@ -672,17 +667,16 @@ Browser* Browser::NewEmptyWindow(Profile* profile) {
 
   if (incognito) {
     content::RecordAction(UserMetricsAction("NewIncognitoWindow"));
-    return OpenEmptyWindow(profile->GetOffTheRecordProfile());
+    OpenEmptyWindow(profile->GetOffTheRecordProfile());
   } else {
     content::RecordAction(UserMetricsAction("NewWindow"));
     SessionService* session_service =
         SessionServiceFactory::GetForProfile(profile->GetOriginalProfile());
     if (!session_service ||
         !session_service->RestoreIfNecessary(std::vector<GURL>())) {
-      return OpenEmptyWindow(profile->GetOriginalProfile());
+      OpenEmptyWindow(profile->GetOriginalProfile());
     }
   }
-  return NULL;
 }
 
 // static
@@ -790,8 +784,12 @@ WebContents* Browser::OpenApplicationWindow(
       web_app::GenerateApplicationNameFromExtensionId(extension->id()) :
       web_app::GenerateApplicationNameFromURL(url);
 
-  Type type = extension && (container == extension_misc::LAUNCH_PANEL) ?
-      TYPE_PANEL : TYPE_POPUP;
+  Type type = TYPE_POPUP;
+  if (extension &&
+      container == extension_misc::LAUNCH_PANEL &&
+      AllowPanels(app_name)) {
+    type = TYPE_PANEL;
+  }
 
   gfx::Rect window_bounds;
   if (extension) {
@@ -799,8 +797,10 @@ WebContents* Browser::OpenApplicationWindow(
     window_bounds.set_height(extension->launch_height());
   }
 
-  Browser* browser = Browser::CreateForApp(type, app_name, window_bounds,
-                                           profile);
+  CreateParams params(type, profile);
+  params.app_name = app_name;
+  params.initial_bounds = window_bounds;
+  Browser* browser = Browser::CreateWithParams(params);
 
   if (app_browser)
     *app_browser = browser;
@@ -814,6 +814,19 @@ WebContents* Browser::OpenApplicationWindow(
   // is only done for app tabs in normal browsers through SetExtensionAppById.
   if (extension && type == TYPE_PANEL)
     wrapper->extension_tab_helper()->SetExtensionAppIconById(extension->id());
+
+#if defined(USE_ASH)
+  if (extension &&
+      container == extension_misc::LAUNCH_WINDOW) {
+    // In ash, LAUNCH_FULLSCREEN launches in a maximized app window.
+    ExtensionPrefs::LaunchType launch_type =
+        profile->GetExtensionService()->extension_prefs()->GetLaunchType(
+            extension->id(), ExtensionPrefs::LAUNCH_DEFAULT);
+    if (launch_type == ExtensionPrefs::LAUNCH_FULLSCREEN)
+      browser->window()->Maximize();
+  }
+#endif
+
   browser->window()->Show();
 
   // TODO(jcampan): http://crbug.com/8123 we should not need to set the initial
@@ -861,6 +874,9 @@ WebContents* Browser::OpenApplicationTab(Profile* profile,
     browser->window()->Show();
     // There's no current tab in this browser window, so add a new one.
     disposition = NEW_FOREGROUND_TAB;
+  } else {
+    // For existing browser, ensure its window is activated.
+    browser->window()->Activate();
   }
 
   // Check the prefs for overridden mode.
@@ -916,6 +932,11 @@ WebContents* Browser::OpenApplicationTab(Profile* profile,
     contents = params.target_contents->web_contents();
   }
 
+#if defined(USE_ASH)
+  // In ash, LAUNCH_FULLSCREEN launches in a maximized app window and it should
+  // not reach here.
+  DCHECK(launch_type != ExtensionPrefs::LAUNCH_FULLSCREEN);
+#else
   // TODO(skerner):  If we are already in full screen mode, and the user
   // set the app to open as a regular or pinned tab, what should happen?
   // Today we open the tab, but stay in full screen mode.  Should we leave
@@ -924,6 +945,7 @@ WebContents* Browser::OpenApplicationTab(Profile* profile,
       !browser->window()->IsFullscreen()) {
     browser->ToggleFullscreenMode();
   }
+#endif
 
   return contents;
 }
@@ -936,6 +958,13 @@ void Browser::OpenBookmarkManagerWindow(Profile* profile) {
 }
 
 #if defined(OS_MACOSX)
+// static
+void Browser::OpenAboutWindow(Profile* profile) {
+  Browser* browser = Browser::Create(profile);
+  browser->OpenAboutChromeDialog();
+  browser->window()->Show();
+}
+
 // static
 void Browser::OpenHistoryWindow(Profile* profile) {
   Browser* browser = Browser::Create(profile);
@@ -965,9 +994,10 @@ void Browser::OpenOptionsWindow(Profile* profile) {
 }
 
 // static
-void Browser::OpenSyncSetupWindow(Profile* profile) {
+void Browser::OpenSyncSetupWindow(Profile* profile,
+                                  SyncPromoUI::Source source) {
   Browser* browser = Browser::Create(profile);
-  browser->ShowSyncSetup();
+  browser->ShowSyncSetup(source);
   browser->window()->Show();
 }
 
@@ -2274,9 +2304,10 @@ void Browser::OpenBookmarkManagerEditNode(int64 node_id) {
 }
 
 bool Browser::MaybeCreateBackgroundContents(int route_id,
-                                            SiteInstance* site,
-                                            const GURL& opener_url,
-                                            const string16& frame_name) {
+                                            WebContents* opener_web_contents,
+                                            const string16& frame_name,
+                                            const GURL& target_url) {
+  GURL opener_url = opener_web_contents->GetURL();
   ExtensionService* extensions_service = profile_->GetExtensionService();
 
   if (!opener_url.is_valid() ||
@@ -2302,9 +2333,11 @@ bool Browser::MaybeCreateBackgroundContents(int route_id,
     return false;
 
   // Ensure that we're trying to open this from the extension's process.
+  SiteInstance* opener_site_instance = opener_web_contents->GetSiteInstance();
   extensions::ProcessMap* process_map = extensions_service->process_map();
-  if (!site->GetProcess() ||
-      !process_map->Contains(extension->id(), site->GetProcess()->GetID())) {
+  if (!opener_site_instance->GetProcess() ||
+      !process_map->Contains(
+          extension->id(), opener_site_instance->GetProcess()->GetID())) {
     return false;
   }
 
@@ -2317,10 +2350,32 @@ bool Browser::MaybeCreateBackgroundContents(int route_id,
     delete existing;
   }
 
+  // If script access is not allowed, create the the background contents in a
+  // new SiteInstance, so that a separate process is used.
+  bool allow_js_access = extension->allow_background_js_access();
+  scoped_refptr<content::SiteInstance> site_instance =
+      allow_js_access ?
+      opener_site_instance :
+      content::SiteInstance::Create(opener_web_contents->GetBrowserContext());
+
   // Passed all the checks, so this should be created as a BackgroundContents.
-  BackgroundContents* contents =
-      service->CreateBackgroundContents(site, route_id, profile_, frame_name,
-                                        ASCIIToUTF16(extension->id()));
+  BackgroundContents* contents = service->CreateBackgroundContents(
+      site_instance,
+      route_id,
+      profile_,
+      frame_name,
+      ASCIIToUTF16(extension->id()));
+
+  // When a separate process is used, the original renderer cannot access the
+  // new window later, thus we need to navigate the window now.
+  if (contents && !allow_js_access) {
+    contents->web_contents()->GetController().LoadURL(
+        target_url,
+        content::Referrer(),
+        content::PAGE_TRANSITION_LINK,
+        std::string());  // No extra headers.
+  }
+
   return contents != NULL;
 }
 
@@ -2335,16 +2390,11 @@ void Browser::ShowAvatarMenu() {
 
 void Browser::ShowHistoryTab() {
   content::RecordAction(UserMetricsAction("ShowHistory"));
-  if (CommandLine::ForCurrentProcess()->HasSwitch(switches::kDisableUberPage)) {
-    ShowSingletonTabOverwritingNTP(
-        GetSingletonTabNavigateParams(GURL(chrome::kChromeUIHistoryFrameURL)));
-  } else {
-    browser::NavigateParams params(GetSingletonTabNavigateParams(
-        GURL(std::string(chrome::kChromeUIUberURL) +
-             chrome::kChromeUIHistoryHost)));
-    params.path_behavior = browser::NavigateParams::IGNORE_AND_NAVIGATE;
-    ShowSingletonTabOverwritingNTP(params);
-  }
+  browser::NavigateParams params(GetSingletonTabNavigateParams(
+      GURL(std::string(chrome::kChromeUIUberURL) +
+           chrome::kChromeUIHistoryHost)));
+  params.path_behavior = browser::NavigateParams::IGNORE_AND_NAVIGATE;
+  ShowSingletonTabOverwritingNTP(params);
 }
 
 void Browser::ShowDownloadsTab() {
@@ -2363,15 +2413,11 @@ void Browser::ShowDownloadsTab() {
 
 void Browser::ShowExtensionsTab() {
   content::RecordAction(UserMetricsAction("ShowExtensions"));
-  if (CommandLine::ForCurrentProcess()->HasSwitch(switches::kDisableUberPage)) {
-    ShowOptionsTab(chrome::kExtensionsSubPage);
-  } else {
-    browser::NavigateParams params(GetSingletonTabNavigateParams(
-        GURL(std::string(chrome::kChromeUIUberURL) +
-             chrome::kChromeUIExtensionsHost)));
-    params.path_behavior = browser::NavigateParams::IGNORE_AND_NAVIGATE;
-    ShowSingletonTabOverwritingNTP(params);
-  }
+  browser::NavigateParams params(GetSingletonTabNavigateParams(
+      GURL(std::string(chrome::kChromeUIUberURL) +
+           chrome::kChromeUIExtensionsHost)));
+  params.path_behavior = browser::NavigateParams::IGNORE_AND_NAVIGATE;
+  ShowSingletonTabOverwritingNTP(params);
 }
 
 void Browser::ShowAboutConflictsTab() {
@@ -2395,33 +2441,26 @@ void Browser::ShowBrokenPageTab(WebContents* contents) {
 }
 
 void Browser::ShowOptionsTab(const std::string& sub_page) {
-  if (CommandLine::ForCurrentProcess()->HasSwitch(switches::kDisableUberPage)) {
-    browser::NavigateParams params(GetSingletonTabNavigateParams(
-        GURL(chrome::kChromeUISettingsURL + sub_page)));
-    params.path_behavior = browser::NavigateParams::IGNORE_AND_NAVIGATE;
-    ShowSingletonTabOverwritingNTP(params);
-  } else {
-    std::string url;
-    if (sub_page == chrome::kExtensionsSubPage) {
-      url = std::string(chrome::kChromeUIUberURL) +
-          chrome::kChromeUIExtensionsHost;
+  std::string url;
+  if (sub_page == chrome::kExtensionsSubPage) {
+    url = std::string(chrome::kChromeUIUberURL) +
+        chrome::kChromeUIExtensionsHost;
 #if defined(OS_CHROMEOS)
-    } else if (sub_page.find(chrome::kInternetOptionsSubPage, 0) !=
-               std::string::npos) {
-      std::string::size_type loc = sub_page.find("?", 0);
-      std::string network_page = loc != std::string::npos ?
-          sub_page.substr(loc) : std::string();
-      url = std::string(chrome::kChromeUIUberURL) +
-          chrome::kChromeUISettingsHost + network_page;
+  } else if (sub_page.find(chrome::kInternetOptionsSubPage, 0) !=
+             std::string::npos) {
+    std::string::size_type loc = sub_page.find("?", 0);
+    std::string network_page = loc != std::string::npos ?
+        sub_page.substr(loc) : std::string();
+    url = std::string(chrome::kChromeUIUberURL) +
+        chrome::kChromeUISettingsHost + network_page;
 #endif
-    } else {
-      url = std::string(chrome::kChromeUIUberURL) +
-          chrome::kChromeUISettingsHost + '/' + sub_page;
-    }
-    browser::NavigateParams params(GetSingletonTabNavigateParams(GURL(url)));
-    params.path_behavior = browser::NavigateParams::IGNORE_AND_NAVIGATE;
-    ShowSingletonTabOverwritingNTP(params);
+  } else {
+    url = std::string(chrome::kChromeUIUberURL) +
+        chrome::kChromeUISettingsHost + '/' + sub_page;
   }
+  browser::NavigateParams params(GetSingletonTabNavigateParams(GURL(url)));
+  params.path_behavior = browser::NavigateParams::IGNORE_AND_NAVIGATE;
+  ShowSingletonTabOverwritingNTP(params);
 }
 
 void Browser::OpenClearBrowsingDataDialog() {
@@ -2431,7 +2470,7 @@ void Browser::OpenClearBrowsingDataDialog() {
 
 void Browser::OpenOptionsDialog() {
   content::RecordAction(UserMetricsAction("ShowOptions"));
-  ShowOptionsTab("");
+  ShowOptionsTab(std::string());
 }
 
 void Browser::OpenPasswordManager() {
@@ -2450,22 +2489,15 @@ void Browser::OpenInstantConfirmDialog() {
 
 void Browser::OpenAboutChromeDialog() {
   content::RecordAction(UserMetricsAction("AboutChrome"));
-  if (CommandLine::ForCurrentProcess()->HasSwitch(switches::kDisableUberPage)) {
-#if defined(OS_CHROMEOS)
-    std::string chrome_settings(chrome::kChromeUISettingsURL);
-    ShowSingletonTab(
-        GURL(chrome_settings.append(chrome::kAboutOptionsSubPage)));
+#if !defined(OS_WIN)
+  GURL url = GURL(chrome::kChromeUIUberURL);
+  browser::NavigateParams params(GetSingletonTabNavigateParams(url));
+  params.path_behavior = browser::NavigateParams::IGNORE_AND_NAVIGATE;
+  ShowSingletonTabOverwritingNTP(params);
 #else
-    window_->ShowAboutChromeDialog();
+  // crbug.com/115123.
+  window_->ShowAboutChromeDialog();
 #endif
-  } else {
-#if !defined(OS_WIN) && !defined(OS_MACOSX)
-    ShowSingletonTab(GURL(chrome::kChromeUIUberURL));
-#else
-    // crbug.com/115123.
-    window_->ShowAboutChromeDialog();
-#endif
-  }
 }
 
 void Browser::OpenUpdateChromeDialog() {
@@ -2507,7 +2539,7 @@ void Browser::OpenFileManager() {
 void Browser::LockScreen() {
   content::RecordAction(UserMetricsAction("LockScreen"));
   // Never lock the screen for kiosk mode.
-  if (chromeos::KioskModeHelper::IsKioskModeEnabled())
+  if (chromeos::KioskModeSettings::Get()->IsKioskModeEnabled())
     return;
   chromeos::DBusThreadManager::Get()->GetPowerManagerClient()->
       NotifyScreenLockRequested();
@@ -2519,14 +2551,11 @@ void Browser::Shutdown() {
       RequestShutdown();
 }
 
-void Browser::OpenAdvancedOptionsDialog() {
-  // TODO(csilv): The main purpose of this method is to expose the date & time
-  // settings from the clock. Simply showing the options tab not quite enough.
-  content::RecordAction(UserMetricsAction("OpenSystemOptionsDialog"));
-  if (CommandLine::ForCurrentProcess()->HasSwitch(switches::kDisableUberPage))
-    ShowOptionsTab(chrome::kSystemOptionsSubPage);
-  else
-    ShowOptionsTab("");
+void Browser::ShowDateOptions() {
+  content::RecordAction(UserMetricsAction("ShowDateOptions"));
+  std::string sub_page = std::string(chrome::kSearchSubPage) + "#" +
+      l10n_util::GetStringUTF8(IDS_OPTIONS_SETTINGS_SECTION_TITLE_DATETIME);
+  ShowOptionsTab(sub_page);
 }
 
 void Browser::OpenInternetOptionsDialog() {
@@ -2557,7 +2586,12 @@ void Browser::OpenMobilePlanTabAndActivate() {
     window_->Activate();
   }
 }
-#endif
+
+void Browser::OpenAddBluetoothDeviceDialog() {
+  content::RecordAction(UserMetricsAction("OpenAddBluetoothDeviceDialog"));
+  ShowOptionsTab(chrome::kBluetoothAddDeviceSubPage);
+}
+#endif  // defined(OS_CHROMEOS)
 
 #if defined(OS_CHROMEOS) && defined(USE_AURA)
 void Browser::OpenCrosh() {
@@ -2976,6 +3010,10 @@ bool Browser::IsReservedCommandOrKey(int command_id,
   }
 #endif
 
+  // In Apps mode, no keys are reserved.
+  if (is_app())
+    return false;
+
   if (window_->IsFullscreen() && command_id == IDC_FULLSCREEN)
     return true;
   return command_id == IDC_CLOSE_TAB ||
@@ -3232,7 +3270,8 @@ void Browser::ExecuteCommandWithDisposition(
 #if defined(OS_CHROMEOS) && defined(USE_AURA)
     case IDC_NEW_CROSH_TAB:         OpenCrosh();                    break;
 #endif
-    case IDC_SHOW_SYNC_SETUP:       ShowSyncSetup();                  break;
+    case IDC_SHOW_SYNC_SETUP:       ShowSyncSetup(SyncPromoUI::SOURCE_MENU);
+                                    break;
     case IDC_TOGGLE_SPEECH_INPUT:   ToggleSpeechInput();              break;
 
     default:
@@ -3522,6 +3561,8 @@ void Browser::ActiveTabChanged(TabContentsWrapper* old_contents,
         base::TERMINATION_STATUS_PROCESS_WAS_KILLED) {
     const CommandLine& parsed_command_line = *CommandLine::ForCurrentProcess();
     if (parsed_command_line.HasSwitch(switches::kReloadKilledTabs)) {
+      // Log to track down crash crbug.com/119068
+      LOG(WARNING) << "Reloading killed tab at " << index;
       Reload(CURRENT_TAB);
       return;
     }
@@ -3529,6 +3570,9 @@ void Browser::ActiveTabChanged(TabContentsWrapper* old_contents,
 
   // Discarded tabs always get reloaded.
   if (IsTabDiscarded(index)) {
+    // Log to track down crash crbug.com/119068
+    LOG(WARNING) << "Reloading discarded tab at " << index
+        << " gesture " << user_gesture;
     Reload(CURRENT_TAB);
     return;
   }
@@ -4049,7 +4093,8 @@ void Browser::ShowRepostFormWarningDialog(WebContents* source) {
 void Browser::ShowContentSettingsPage(ContentSettingsType content_type) {
   ShowOptionsTab(
       chrome::kContentSettingsExceptionsSubPage + std::string(kHashMark) +
-      ContentSettingsHandler::ContentSettingsTypeToGroupName(content_type));
+      options2::ContentSettingsHandler::ContentSettingsTypeToGroupName(
+          content_type));
 }
 
 void Browser::ShowCollectedCookiesDialog(TabContentsWrapper* wrapper) {
@@ -4067,14 +4112,12 @@ bool Browser::ShouldCreateWebContents(
     WebContents* web_contents,
     int route_id,
     WindowContainerType window_container_type,
-    const string16& frame_name) {
+    const string16& frame_name,
+    const GURL& target_url) {
   if (window_container_type == WINDOW_CONTAINER_TYPE_BACKGROUND) {
     // If a BackgroundContents is created, suppress the normal WebContents.
     return !MaybeCreateBackgroundContents(
-        route_id,
-        web_contents->GetSiteInstance(),
-        web_contents->GetURL(),
-        frame_name);
+        route_id, web_contents, frame_name, target_url);
   }
 
   return true;
@@ -4398,7 +4441,7 @@ void Browser::Observe(int type,
             content::Details<const Extension>(details).ptr();
         if (service->extension_prefs()->DidExtensionEscalatePermissions(
                 extension->id()))
-          ShowExtensionDisabledUI(service, profile_, extension);
+          extensions::ShowExtensionDisabledUI(service, profile_, extension);
       }
       break;
     }
@@ -5650,7 +5693,7 @@ void Browser::UpdateBookmarkBarState(BookmarkBarStateChangeReason reason) {
   window_->BookmarkBarStateChanged(animate_type);
 }
 
-void Browser::ShowSyncSetup() {
+void Browser::ShowSyncSetup(SyncPromoUI::Source source) {
   // TODO(yfriedman): remove OS_ANDROID clause when browser is excluded from
   // Android build.
 #if !defined(OS_ANDROID)
@@ -5660,11 +5703,11 @@ void Browser::ShowSyncSetup() {
   LoginUIService* login_service =
       LoginUIServiceFactory::GetForProfile(profile()->GetOriginalProfile());
   if (service->HasSyncSetupCompleted()) {
-    ShowOptionsTab(chrome::kPersonalOptionsSubPage);
+    ShowOptionsTab(std::string());
   } else if (SyncPromoUI::ShouldShowSyncPromo(profile()) &&
              login_service->current_login_ui() == NULL) {
     // There is no currently active login UI, so display a new promo page.
-    GURL url(SyncPromoUI::GetSyncPromoURL(GURL(), false, std::string()));
+    GURL url(SyncPromoUI::GetSyncPromoURL(GURL(), source));
     browser::NavigateParams params(GetSingletonTabNavigateParams(GURL(url)));
     params.path_behavior = browser::NavigateParams::IGNORE_AND_NAVIGATE;
     ShowSingletonTabOverwritingNTP(params);

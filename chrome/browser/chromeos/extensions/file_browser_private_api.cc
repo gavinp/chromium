@@ -4,9 +4,10 @@
 
 #include "chrome/browser/chromeos/extensions/file_browser_private_api.h"
 
+#include <utility>
+
 #include "base/base64.h"
 #include "base/bind.h"
-#include "base/command_line.h"
 #include "base/logging.h"
 #include "base/memory/singleton.h"
 #include "base/memory/weak_ptr.h"
@@ -18,6 +19,7 @@
 #include "chrome/browser/chromeos/extensions/file_manager_util.h"
 #include "chrome/browser/chromeos/gdata/gdata_file_system_proxy.h"
 #include "chrome/browser/chromeos/gdata/gdata_operation_registry.h"
+#include "chrome/browser/chromeos/gdata/gdata_system_service.h"
 #include "chrome/browser/chromeos/gdata/gdata_util.h"
 #include "chrome/browser/extensions/extension_function_dispatcher.h"
 #include "chrome/browser/extensions/extension_process_manager.h"
@@ -30,10 +32,10 @@
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/views/select_file_dialog_extension.h"
 #include "chrome/browser/ui/webui/extensions/extension_icon_source.h"
-#include "chrome/common/chrome_switches.h"
 #include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_icon_set.h"
 #include "chrome/common/extensions/file_browser_handler.h"
+#include "chrome/common/pref_names.h"
 #include "content/public/browser/child_process_security_policy.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_view_host.h"
@@ -49,6 +51,7 @@
 #include "webkit/fileapi/file_system_operation_context.h"
 #include "webkit/fileapi/file_system_types.h"
 #include "webkit/fileapi/file_system_util.h"
+#include "webkit/glue/webkit_glue.h"
 
 #if defined(OS_CHROMEOS)
 #include "chrome/browser/chromeos/disks/disk_mount_manager.h"
@@ -175,6 +178,15 @@ base::DictionaryValue* CreateValueFromMountPoint(Profile* profile,
 }
 #endif  // defined(OS_CHROMEOS)
 
+
+// Gives the extension renderer |host| file |permissions| for the given |path|.
+void GrantFilePermissionsToHost(content::RenderViewHost* host,
+                                const FilePath& path,
+                                int permissions) {
+  ChildProcessSecurityPolicy::GetInstance()->GrantPermissionsForFile(
+      host->GetProcess()->GetID(), path, permissions);
+}
+
 // Given a file url, find the virtual FilePath associated with it.
 FilePath GetVirtualPathFromURL(const GURL& file_url) {
   FilePath virtual_path;
@@ -188,141 +200,30 @@ FilePath GetVirtualPathFromURL(const GURL& file_url) {
   return virtual_path;
 }
 
+// gdata::GDataFileBase* parameter is safe to be used since it's
+// run directly from FindFileDelegate::OnDone()
+typedef base::Callback<void(base::PlatformFileError,
+                            const FilePath&,
+                            gdata::GDataFileBase*)>
+    FilePropertiesCallback;
+
 // Delegate used to find file properties.
 class FilePropertiesDelegate : public gdata::FindFileDelegate {
  public:
-  FilePropertiesDelegate();
-  virtual ~FilePropertiesDelegate();
-
-  // Builds a dictionary from the GDataFile file property information
-  void CopyProperties(base::DictionaryValue* property_dict);
-
-  base::PlatformFileError error() const { return error_; }
+  explicit FilePropertiesDelegate(FilePropertiesCallback const& callback) :
+      callback_(callback) {}
+  virtual ~FilePropertiesDelegate() {}
 
  private:
-  // Callback for GDataFile::GetCacheState.
-  void OnCacheStateReceived(base::PlatformFileError error,
-                            gdata::GDataFile* file,
-                            int cache_state);
-
   // GDataFileSystem::FindFileDelegate overrides.
   virtual void OnDone(base::PlatformFileError error,
                       const FilePath& directory_path,
-                      gdata::GDataFileBase* file) OVERRIDE;
+                      gdata::GDataFileBase* file) OVERRIDE {
+    callback_.Run(error, directory_path, file);
+  }
 
-  GURL thumbnail_url_;
-  GURL edit_url_;
-  GURL content_url_;
-  int cache_state_;
-  bool is_hosted_document_;
-  base::PlatformFileError error_;
-  base::WeakPtrFactory<FilePropertiesDelegate> weak_ptr_factory_;
+  FilePropertiesCallback callback_;
 };
-
-// FilePropertiesDelegate class implementation.
-
-FilePropertiesDelegate::FilePropertiesDelegate()
-  : cache_state_(0),
-    is_hosted_document_(false),
-    error_(base::PLATFORM_FILE_OK),
-    weak_ptr_factory_(ALLOW_THIS_IN_INITIALIZER_LIST(this)) {
-}
-
-FilePropertiesDelegate::~FilePropertiesDelegate() { }
-
-void FilePropertiesDelegate::CopyProperties(
-    base::DictionaryValue* property_dict) {
-  DCHECK(property_dict);
-  DCHECK(!property_dict->HasKey("thumbnailUrl"));
-  DCHECK(!property_dict->HasKey("editUrl"));
-  DCHECK(!property_dict->HasKey("contentUrl"));
-  DCHECK(!property_dict->HasKey("isPinned"));
-  DCHECK(!property_dict->HasKey("isPresent"));
-  DCHECK(!property_dict->HasKey("isDirty"));
-  DCHECK(!property_dict->HasKey("isHosted"));
-  DCHECK(!property_dict->HasKey("errorCode"));
-
-  if (error_ != base::PLATFORM_FILE_OK) {
-    property_dict->SetInteger("errorCode", error_);
-    return;
-  }
-
-  property_dict->SetString("thumbnailUrl", thumbnail_url_.spec());
-  if (!edit_url_.is_empty())
-    property_dict->SetString("editUrl", edit_url_.spec());
-
-  if (!content_url_.is_empty())
-    property_dict->SetString("contentUrl", content_url_.spec());
-
-  property_dict->SetBoolean(
-      "isPinned",
-      static_cast<bool>(cache_state_ & gdata::GDataFile::CACHE_STATE_PINNED));
-
-  property_dict->SetBoolean(
-      "isPresent",
-      static_cast<bool>(cache_state_ & gdata::GDataFile::CACHE_STATE_PRESENT));
-
-  property_dict->SetBoolean(
-      "isDirty",
-      static_cast<bool>(cache_state_ & gdata::GDataFile::CACHE_STATE_DIRTY));
-
-  property_dict->SetBoolean("isHosted", is_hosted_document_);
-}
-
-void FilePropertiesDelegate::OnCacheStateReceived(
-    base::PlatformFileError error,
-    gdata::GDataFile* file,
-    int cache_state) {
-  // TODO(gspencer) : Wire this up with UI.
-  cache_state_ = cache_state;
-
-#if defined(_DEBUG)
-  std::string state;
-  if (cache_state == gdata::GDataFile::CACHE_STATE_NONE) {
-    state = "none";
-  } else {
-    if (cache_state & gdata::GDataFile::CACHE_STATE_PRESENT)
-      state = "present";
-    if (cache_state & gdata::GDataFile::CACHE_STATE_PINNED) {
-      if (!state.empty())
-        state += ",";
-      state += "pinned";
-    }
-    if (cache_state & gdata::GDataFile::CACHE_STATE_DIRTY) {
-      if (!state.empty())
-       state += ",";
-      state += "dirty";
-    }
-  }
-
-  DVLOG(1) << "got OnCacheStateReceived: err=" << error
-           << ", file_id=" << file->id()
-           << ", cache_state=" << state;
-#endif // #if defined(_DEBUG)
-}
-
-void FilePropertiesDelegate::OnDone(base::PlatformFileError error,
-                                    const FilePath& directory_path,
-                                    gdata::GDataFileBase* entity) {
-  if (error != base::PLATFORM_FILE_OK) {
-    error_ = error;
-    return;
-  }
-
-  gdata::GDataFile* file = entity->AsGDataFile();
-  if (!file) {
-    LOG(WARNING) << "Reading properties of a non-file at "
-                 << directory_path.value();
-    return;
-  }
-
-  thumbnail_url_ = file->thumbnail_url();
-  edit_url_ = file->edit_url();
-  content_url_ = file->content_url();
-  file->GetCacheState(base::Bind(&FilePropertiesDelegate::OnCacheStateReceived,
-                                 weak_ptr_factory_.GetWeakPtr()));
-  is_hosted_document_ = file->is_hosted_document();
-}
 
 }  // namespace
 
@@ -430,7 +331,7 @@ void RequestLocalFileSystemFunction::RequestOnFileThread(
     const GURL& source_url, int child_id) {
   GURL origin_url = source_url.GetOrigin();
   BrowserContext::GetFileSystemContext(profile())->OpenFileSystem(
-      origin_url, fileapi::kFileSystemTypeExternal, false, // create
+      origin_url, fileapi::kFileSystemTypeExternal, false,  // create
       LocalFileSystemCallbackDispatcher::CreateCallback(
           this,
           profile(),
@@ -456,12 +357,60 @@ bool RequestLocalFileSystemFunction::RunImpl() {
 void RequestLocalFileSystemFunction::RespondSuccessOnUIThread(
     const std::string& name, const GURL& root_path) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  // Add gdata mount point immediately when we kick of first instance of file
+  // manager. The actual mount event will be sent to UI only when we perform
+  // proper authentication.
+  AddGDataMountPoint();
   result_.reset(new DictionaryValue());
   DictionaryValue* dict = reinterpret_cast<DictionaryValue*>(result_.get());
   dict->SetString("name", name);
   dict->SetString("path", root_path.spec());
   dict->SetInteger("error", base::PLATFORM_FILE_OK);
   SendResponse(true);
+}
+
+void RequestLocalFileSystemFunction::AddGDataMountPoint() {
+  fileapi::ExternalFileSystemMountPointProvider* provider =
+      BrowserContext::GetFileSystemContext(profile_)->external_provider();
+  const FilePath mount_point = gdata::util::GetGDataMountPointPath();
+  if (!render_view_host() || !render_view_host()->GetProcess())
+    return;
+  if (!provider || provider->HasMountPoint(mount_point))
+    return;
+
+  // Grant R/W permissions to gdata 'folder'. File API layer still
+  // expects this to be satisfied.
+  GrantFilePermissionsToHost(render_view_host(),
+                             mount_point,
+                             file_handler_util::GetReadWritePermissions());
+
+  // Grant R/W permission for tmp and pinned cache folder.
+  gdata::GDataSystemService* system_service =
+      gdata::GDataSystemServiceFactory::GetForProfile(profile_);
+  // |system_service| is NULL if incognito window / guest login.
+  if (!system_service || !system_service->file_system())
+    return;
+  gdata::GDataFileSystem* gdata_file_system = system_service->file_system();
+
+  // We check permissions for raw cache file paths only for read-only
+  // operations (when fileEntry.file() is called), so read only permissions
+  // should be sufficient for all cache paths. For the rest of supported
+  // operations the file access check is done for gdata/ paths.
+  GrantFilePermissionsToHost(render_view_host(),
+                             gdata_file_system->GetGDataCacheTmpDirectory(),
+                             file_handler_util::GetReadOnlyPermissions());
+  GrantFilePermissionsToHost(
+      render_view_host(),
+      gdata_file_system->GetGDataCachePersistentDirectory(),
+      file_handler_util::GetReadOnlyPermissions());
+
+  provider->AddRemoteMountPoint(
+      mount_point,
+      new gdata::GDataFileSystemProxy(gdata_file_system));
+
+  FilePath mount_point_virtual;
+  if (provider->GetVirtualPath(mount_point, &mount_point_virtual))
+    provider->GrantFileAccessToExtension(extension_id(), mount_point_virtual);
 }
 
 void RequestLocalFileSystemFunction::RespondFailedOnUIThread(
@@ -990,11 +939,13 @@ bool AddMountFunction::RunImpl() {
       break;
     }
     case chromeos::MOUNT_TYPE_GDATA: {
-      gdata::GDataFileSystem* file_system =
-          gdata::GDataFileSystemFactory::GetForProfile(profile_);
-      file_system->Authenticate(
-          base::Bind(&AddMountFunction::OnGDataAuthentication,
-                     this));
+      gdata::GDataSystemService* system_service =
+          gdata::GDataSystemServiceFactory::GetForProfile(profile_);
+      if (system_service) {
+        system_service->file_system()->Authenticate(
+            base::Bind(&AddMountFunction::OnGDataAuthentication,
+                       this));
+      }
       break;
     }
     default: {
@@ -1014,24 +965,6 @@ bool AddMountFunction::RunImpl() {
   return true;
 }
 
-
-void AddMountFunction::AddGDataMountPoint() {
-  fileapi::ExternalFileSystemMountPointProvider* provider =
-      BrowserContext::GetFileSystemContext(profile_)->external_provider();
-  const FilePath mount_point = gdata::util::GetGDataMountPointPath();
-  if (!provider || provider->HasMountPoint(mount_point))
-    return;
-
-  // Grant R/W permissions to gdata 'folder'. File API layer still
-  // expects this to be satisfied.
-  ChildProcessSecurityPolicy::GetInstance()->GrantPermissionsForFile(
-      render_view_host()->GetProcess()->GetID(), mount_point,
-      file_handler_util::GetReadWritePermissions());
-
-  provider->AddRemoteMountPoint(mount_point,
-                                new gdata::GDataFileSystemProxy(profile_));
-}
-
 void AddMountFunction::RaiseGDataMountEvent(gdata::GDataErrorCode error) {
   chromeos::MountError error_code = error == gdata::HTTP_SUCCESS ?
       chromeos::MOUNT_ERROR_NONE : chromeos::MOUNT_ERROR_NOT_AUTHENTICATED;
@@ -1047,9 +980,6 @@ void AddMountFunction::RaiseGDataMountEvent(gdata::GDataErrorCode error) {
 
 void AddMountFunction::OnGDataAuthentication(gdata::GDataErrorCode error,
                                              const std::string& token) {
-  if (error == gdata::HTTP_SUCCESS)
-    AddGDataMountPoint();
-
   RaiseGDataMountEvent(error);
   SendResponse(true);
 }
@@ -1370,6 +1300,7 @@ bool FileDialogStringsFunction::RunImpl() {
   SET_STRING(IDS_FILE_BROWSER, ERROR_NEW_FOLDER_EMPTY_NAME);
   SET_STRING(IDS_FILE_BROWSER, NEW_FOLDER_BUTTON_LABEL);
   SET_STRING(IDS_FILE_BROWSER, FILENAME_LABEL);
+  SET_STRING(IDS_FILE_BROWSER, PREPARING_LABEL);
 
   SET_STRING(IDS_FILE_BROWSER, DIMENSIONS_LABEL);
   SET_STRING(IDS_FILE_BROWSER, DIMENSIONS_FORMAT);
@@ -1407,6 +1338,10 @@ bool FileDialogStringsFunction::RunImpl() {
   SET_STRING(IDS_FILE_BROWSER, GALLERY_SAVED);
   SET_STRING(IDS_FILE_BROWSER, GALLERY_KEEP_ORIGINAL);
   SET_STRING(IDS_FILE_BROWSER, GALLERY_UNSAVED_CHANGES);
+  SET_STRING(IDS_FILE_BROWSER, GALLERY_READONLY_WARNING);
+  SET_STRING(IDS_FILE_BROWSER, GALLERY_IMAGE_ERROR);
+  SET_STRING(IDS_FILE_BROWSER, GALLERY_VIDEO_ERROR);
+  SET_STRING(IDS_FILE_BROWSER, AUDIO_ERROR);
   // Reusing the string, but with alias starting with GALLERY.
   dict->SetString("GALLERY_FILE_HIDDEN_NAME",
       l10n_util::GetStringUTF16(IDS_FILE_BROWSER_ERROR_HIDDEN_NAME));
@@ -1468,7 +1403,11 @@ bool FileDialogStringsFunction::RunImpl() {
   SET_STRING(IDS_FILE_BROWSER, MANY_DIRECTORIES_SELECTED);
   SET_STRING(IDS_FILE_BROWSER, MANY_ENTRIES_SELECTED);
 
-  SET_STRING(IDS_FILE_BROWSER, PLAYBACK_ERROR);
+  SET_STRING(IDS_FILE_BROWSER, OFFLINE_HEADER);
+  SET_STRING(IDS_FILE_BROWSER, OFFLINE_MESSAGE);
+  SET_STRING(IDS_FILE_BROWSER, OFFLINE_MESSAGE_PLURAL);
+  SET_STRING(IDS_FILE_BROWSER, GDATA_OUT_OF_SPACE_HEADER);
+  SET_STRING(IDS_FILE_BROWSER, GDATA_OUT_OF_SPACE_MESSAGE);
   SET_STRING(IDS_FILE_BROWSER, NO_ACTION_FOR_FILE);
 
   // MP3 metadata extractor plugin
@@ -1517,11 +1456,19 @@ bool FileDialogStringsFunction::RunImpl() {
   SET_STRING(IDS_FILE_BROWSER, GDOC_DOCUMENT_FILE_TYPE);
   SET_STRING(IDS_FILE_BROWSER, GSHEET_DOCUMENT_FILE_TYPE);
   SET_STRING(IDS_FILE_BROWSER, GSLIDES_DOCUMENT_FILE_TYPE);
-  SET_STRING(IDS_FILE_BROWSER, GSLIDES_DOCUMENT_FILE_TYPE);
+  SET_STRING(IDS_FILE_BROWSER, GDRAW_DOCUMENT_FILE_TYPE);
   SET_STRING(IDS_FILE_BROWSER, GTABLE_DOCUMENT_FILE_TYPE);
+
+  SET_STRING(IDS_FILE_BROWSER, GDATA_PRODUCT_NAME);
+  SET_STRING(IDS_FILE_BROWSER, GDATA_LOADING);
+  SET_STRING(IDS_FILE_BROWSER, GDATA_CANNOT_REACH);
+  SET_STRING(IDS_FILE_BROWSER, GDATA_RETRY);
 
   SET_STRING(IDS_FILE_BROWSER, AUDIO_PLAYER_TITLE);
 #undef SET_STRING
+
+  dict->SetString("GDATA_LEARN_MORE",
+      l10n_util::GetStringUTF16(IDS_LEARN_MORE));
 
   dict->SetString("PDF_VIEW_ENABLED",
       file_manager_util::ShouldBeOpenedWithPdfPlugin(".pdf") ?
@@ -1529,8 +1476,8 @@ bool FileDialogStringsFunction::RunImpl() {
 
   ChromeURLDataManager::DataSource::SetFontAndTextDirection(dict);
 
-  if (!CommandLine::ForCurrentProcess()->HasSwitch(switches::kDisableGData))
-      dict->SetString("ENABLE_GDATA", "1");
+  if (!profile_->GetPrefs()->GetBoolean(prefs::kDisableGData))
+    dict->SetString("ENABLE_GDATA", "1");
 
   return true;
 }
@@ -1541,62 +1488,128 @@ GetGDataFilePropertiesFunction::GetGDataFilePropertiesFunction() {
 GetGDataFilePropertiesFunction::~GetGDataFilePropertiesFunction() {
 }
 
-bool GetGDataFilePropertiesFunction::DoOperation(const FilePath& /*path*/) {
-  return false;  // Terminate loop early by default.
+void GetGDataFilePropertiesFunction::DoOperation(
+    const FilePath& path, base::DictionaryValue* property_dict) {
+  OnOperationComplete(path, property_dict, base::PLATFORM_FILE_OK);
 }
 
 bool GetGDataFilePropertiesFunction::RunImpl() {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  if (args_->GetSize() != NumExpectedArgs())
+  if (args_->GetSize() != 1)
     return false;
 
-  ListValue* path_list = NULL;
-  args_->GetList(0, &path_list);
-  DCHECK(path_list);
-  std::vector<GURL> file_urls;
-  std::vector<FilePath> file_paths;
-
-  size_t len = path_list->GetSize();
-  file_paths.reserve(len);
-  file_urls.reserve(len);
-  std::string file_str;
-  GURL file_url;
-  for (size_t i = 0; i < len; ++i) {
-    path_list->GetString(i, &file_str);
-    file_url = GURL(file_str);
-    file_urls.push_back(file_url);
-    file_paths.push_back(GetVirtualPathFromURL(file_url));
-  }
-
-  for (std::vector<FilePath>::iterator iter = file_paths.begin();
-      iter != file_paths.end(); ++iter) {
-    if (!DoOperation(*iter))
-      break;
-  }
-
-  base::ListValue* file_properties = new base::ListValue;
-  gdata::GDataFileSystem* file_system =
-      gdata::GDataFileSystemFactory::GetForProfile(profile_);
-  DCHECK(file_system);
-  for (std::vector<FilePath>::size_type i = 0; i < file_paths.size(); ++i) {
-    FilePropertiesDelegate property_delegate;
-    file_system->FindFileByPathSync(file_paths[i], &property_delegate);
-    base::DictionaryValue* property_dict = new base::DictionaryValue;
-    property_delegate.CopyProperties(property_dict);
-    property_dict->SetString("fileUrl", file_urls[i].spec());
-    file_properties->Append(property_dict);
-  }
-
-  result_.reset(file_properties);
-
-  SendResponse(true);
+  PrepareResults();
   return true;
 }
 
-size_t GetGDataFilePropertiesFunction::NumExpectedArgs() const {
-  return 1u;
+void GetGDataFilePropertiesFunction::PrepareResults() {
+  args_->GetList(0, &path_list_);
+  DCHECK(path_list_);
+
+  file_properties_.reset(new base::ListValue);
+
+  current_index_ = 0;
+  GetNextFileProperties();
 }
 
+void GetGDataFilePropertiesFunction::GetNextFileProperties() {
+  if (current_index_ >= path_list_->GetSize()) {
+    // Exit of asynchronous look and return the result.
+    result_.reset(file_properties_.release());
+    SendResponse(true);
+    return;
+  }
+
+  std::string file_str;
+  path_list_->GetString(current_index_, &file_str);
+  GURL file_url = GURL(file_str);
+  FilePath file_path = GetVirtualPathFromURL(file_url);
+
+  base::DictionaryValue* property_dict = new base::DictionaryValue;
+  property_dict->SetString("fileUrl", file_url.spec());
+  DoOperation(file_path, property_dict);
+  file_properties_->Append(property_dict);
+}
+
+void GetGDataFilePropertiesFunction::CompleteGetFileProperties() {
+  current_index_++;
+
+  // Could be called from callback. Let finish operation.
+  MessageLoop::current()->PostTask(FROM_HERE,
+      Bind(&GetGDataFilePropertiesFunction::GetNextFileProperties, this));
+}
+
+void GetGDataFilePropertiesFunction::OnOperationComplete(
+    const FilePath& path,
+    base::DictionaryValue* property_dict,
+    base::PlatformFileError error) {
+  if (error != base::PLATFORM_FILE_OK) {
+    property_dict->SetInteger("errorCode", error);
+    CompleteGetFileProperties();
+    return;
+  }
+
+  FilePropertiesDelegate property_delegate(base::Bind(
+      &GetGDataFilePropertiesFunction::OnFileProperties,
+      this,
+      property_dict));
+
+  gdata::GDataSystemService* system_service =
+      gdata::GDataSystemServiceFactory::GetForProfile(profile_);
+  system_service->file_system()->FindFileByPathSync(path,
+                                                    &property_delegate);
+}
+
+void GetGDataFilePropertiesFunction::OnFileProperties(
+    base::DictionaryValue* property_dict,
+    base::PlatformFileError error,
+    const FilePath& directory_path,
+    gdata::GDataFileBase* file_base) {
+  if (error != base::PLATFORM_FILE_OK) {
+    property_dict->SetInteger("errorCode", error);
+    CompleteGetFileProperties();
+    return;
+  }
+
+  gdata::GDataFile* file = file_base->AsGDataFile();
+  if (!file) {
+    LOG(WARNING) << "Reading properties of a non-file at "
+                 << directory_path.value();
+    CompleteGetFileProperties();
+    return;
+  }
+
+  property_dict->SetString("thumbnailUrl", file->thumbnail_url().spec());
+  if (!file->edit_url().is_empty())
+    property_dict->SetString("editUrl", file->edit_url().spec());
+
+  if (!file->content_url().is_empty())
+    property_dict->SetString("contentUrl", file->content_url().spec());
+
+  property_dict->SetBoolean("isHosted", file->is_hosted_document());
+
+  file->GetCacheState(base::Bind(
+      &GetGDataFilePropertiesFunction::CacheStateReceived,
+      this, property_dict));
+}
+
+void GetGDataFilePropertiesFunction::CacheStateReceived(
+    base::DictionaryValue* property_dict,
+    base::PlatformFileError error,
+    int cache_state) {
+  property_dict->SetBoolean(
+      "isPinned",
+      gdata::GDataFile::IsCachePinned(cache_state));
+
+  property_dict->SetBoolean(
+      "isPresent",
+      gdata::GDataFile::IsCachePresent(cache_state));
+
+  property_dict->SetBoolean(
+      "isDirty",
+      gdata::GDataFile::IsCacheDirty(cache_state));
+  CompleteGetFileProperties();
+}
 
 PinGDataFileFunction::PinGDataFileFunction() {
 }
@@ -1606,21 +1619,30 @@ PinGDataFileFunction::~PinGDataFileFunction() {
 
 bool PinGDataFileFunction::RunImpl() {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  if (args_->GetSize() != NumExpectedArgs())
+  if (args_->GetSize() != 2 || !args_->GetBoolean(1, &set_pin_))
     return false;
-  // TODO(gspencer): use 'args_->GetBoolean(1, &set_pin_)' to get
-  // whether or not we are pinning or unpinning.  (and set_pin_ should be
-  // a bool member variable.)
-  return GetGDataFilePropertiesFunction::RunImpl();
-}
 
-size_t PinGDataFileFunction::NumExpectedArgs() const {
-  return 2u;
-}
+  PrepareResults();
 
-bool PinGDataFileFunction::DoOperation(const FilePath& /*path*/) {
-  // TODO(gspencer): Actually pin/unpin the file here, depending on set_pin_.
   return true;
+}
+
+void PinGDataFileFunction::DoOperation(const FilePath& path,
+                                       base::DictionaryValue* properties) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  gdata::GDataSystemService* system_service =
+      gdata::GDataSystemServiceFactory::GetForProfile(profile_);
+  system_service->file_system()->SetPinState(path, set_pin_, base::Bind(
+      &PinGDataFileFunction::OnPinStateSet, this, path, properties));
+}
+
+void PinGDataFileFunction::OnPinStateSet(const FilePath& path,
+                                         base::DictionaryValue* properties,
+                                         base::PlatformFileError error) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  MessageLoop::current()->PostTask(FROM_HERE,
+      Bind(&PinGDataFileFunction::OnOperationComplete,
+           this, path, properties, error));
 }
 
 GetFileLocationsFunction::GetFileLocationsFunction() {
@@ -1717,13 +1739,13 @@ void GetGDataFilesFunction::GetFileOrSendResponse() {
     return;
   }
 
-  gdata::GDataFileSystem* file_system =
-      gdata::GDataFileSystemFactory::GetForProfile(profile_);
-  DCHECK(file_system);
+  gdata::GDataSystemService* system_service =
+      gdata::GDataSystemServiceFactory::GetForProfile(profile_);
+  DCHECK(system_service);
 
   // Get the file on the top of the queue.
   FilePath gdata_path = remaining_gdata_paths_.front();
-  file_system->GetFile(
+  system_service->file_system()->GetFile(
       gdata_path,
       base::Bind(&GetGDataFilesFunction::OnFileReady, this));
 }
@@ -1732,6 +1754,7 @@ void GetGDataFilesFunction::GetFileOrSendResponse() {
 void GetGDataFilesFunction::OnFileReady(
     base::PlatformFileError error,
     const FilePath& local_path,
+    const std::string& unused_mime_type,
     gdata::GDataFileType file_type) {
   FilePath gdata_path = remaining_gdata_paths_.front();
 
@@ -1761,13 +1784,13 @@ GetFileTransfersFunction::GetFileTransfersFunction() {}
 GetFileTransfersFunction::~GetFileTransfersFunction() {}
 
 ListValue* GetFileTransfersFunction::GetFileTransfersList() {
-  gdata::GDataFileSystem* file_system =
-      gdata::GDataFileSystemFactory::GetForProfile(profile_);
-  if (!file_system)
+  gdata::GDataSystemService* system_service =
+      gdata::GDataSystemServiceFactory::GetForProfile(profile_);
+  if (!system_service)
     return NULL;
 
   std::vector<gdata::GDataOperationRegistry::ProgressStatus>
-      list = file_system->GetProgressStatusList();
+      list = system_service->file_system()->GetProgressStatusList();
   return file_manager_util::ProgressStatusVectorToListValue(
       profile_, source_url_.GetOrigin(), list);
 }
@@ -1791,7 +1814,7 @@ CancelFileTransfersFunction::~CancelFileTransfersFunction() {}
 
 bool CancelFileTransfersFunction::RunImpl() {
   ListValue* url_list = NULL;
-  if (args_->GetList(0, &url_list)) {
+  if (!args_->GetList(0, &url_list)) {
     SendResponse(false);
     return false;
   }
@@ -1815,9 +1838,9 @@ bool CancelFileTransfersFunction::RunImpl() {
 void CancelFileTransfersFunction::GetLocalPathsResponseOnUIThread(
     const SelectedFileInfoList& files) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  gdata::GDataFileSystem* file_system =
-      gdata::GDataFileSystemFactory::GetForProfile(profile_);
-  if (!file_system) {
+  gdata::GDataSystemService* system_service =
+      gdata::GDataSystemServiceFactory::GetForProfile(profile_);
+  if (!system_service) {
     SendResponse(false);
     return;
   }
@@ -1827,10 +1850,12 @@ void CancelFileTransfersFunction::GetLocalPathsResponseOnUIThread(
     DCHECK(gdata::util::IsUnderGDataMountPoint(files[i].path));
     FilePath file_path = gdata::util::ExtractGDataPath(files[i].path);
     scoped_ptr<DictionaryValue> result(new DictionaryValue());
-    result->SetBoolean("canceled", file_system->CancelOperation(file_path));
+    result->SetBoolean(
+        "canceled",
+        system_service->file_system()->CancelOperation(file_path));
     GURL file_url;
     if (file_manager_util::ConvertFileToFileSystemUrl(profile_,
-            FilePath("gdata").Append(file_path),
+            gdata::util::GetSpecialRemoteRootPath().Append(file_path),
             source_url_.GetOrigin(),
             &file_url)) {
       result->SetString("fileUrl", file_url.spec());
@@ -1840,4 +1865,70 @@ void CancelFileTransfersFunction::GetLocalPathsResponseOnUIThread(
   }
   result_.reset(responses.release());
   SendResponse(true);
+}
+
+TransferFileFunction::TransferFileFunction() {}
+
+TransferFileFunction::~TransferFileFunction() {}
+
+bool TransferFileFunction::RunImpl() {
+  std::string local_file_url;
+  std::string remote_file_url;
+  if (!args_->GetString(0, &local_file_url) ||
+      !args_->GetString(1, &remote_file_url)) {
+    return false;
+  }
+
+  UrlList file_urls;
+  file_urls.push_back(GURL(local_file_url));
+  file_urls.push_back(GURL(remote_file_url));
+
+  GetLocalPathsOnFileThreadAndRunCallbackOnUIThread(
+      file_urls,
+      base::Bind(&TransferFileFunction::GetLocalPathsResponseOnUIThread,
+                 this));
+  return true;
+}
+
+void TransferFileFunction::GetLocalPathsResponseOnUIThread(
+    const SelectedFileInfoList& files) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  if (files.size() != 2U) {
+    SendResponse(false);
+    return;
+  }
+
+  const FilePath& local_source_file = files[0].path;
+  FilePath remote_destination_file = files[1].path;
+  if (gdata::util::IsUnderGDataMountPoint(local_source_file) ||
+      !gdata::util::IsUnderGDataMountPoint(remote_destination_file)) {
+    SendResponse(false);
+    return;
+  }
+  remote_destination_file =
+      gdata::util::ExtractGDataPath(remote_destination_file);
+
+  gdata::GDataSystemService* system_service =
+      gdata::GDataSystemServiceFactory::GetForProfile(profile_);
+  if (!system_service) {
+    SendResponse(false);
+    return;
+  }
+
+  system_service->file_system()->TransferFile(
+      local_source_file,
+      remote_destination_file,
+      base::Bind(&TransferFileFunction::OnTransferCompleted,
+                 this));
+}
+
+void TransferFileFunction::OnTransferCompleted(
+    base::PlatformFileError error) {
+  if (error == base::PLATFORM_FILE_OK) {
+    SendResponse(true);
+  } else {
+    error_ = base::StringPrintf("%d", static_cast<int>(
+        webkit_glue::PlatformFileErrorToWebFileError(error)));
+    SendResponse(false);
+  }
 }

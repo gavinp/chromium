@@ -104,8 +104,10 @@ class ChromotingHostTest : public testing::Test {
     local_input_monitor_ = new MockLocalInputMonitor();
     it2me_host_user_interface_.reset(new It2MeHostUserInterface(host_,
                                                                 &context_));
-    it2me_host_user_interface_->InitFrom(disconnect_window_, continue_window_,
-                                         local_input_monitor_);
+    it2me_host_user_interface_->InitFrom(
+        scoped_ptr<DisconnectWindow>(disconnect_window_),
+        scoped_ptr<ContinueWindow>(continue_window_),
+        scoped_ptr<LocalInputMonitor>(local_input_monitor_));
 
     session_ = new MockSession();
     session2_ = new MockSession();
@@ -137,9 +139,9 @@ class ChromotingHostTest : public testing::Test {
         session2_, &host_stub2_, &event_executor2_));
     connection2_ = owned_connection2_.get();
 
-    ON_CALL(video_stub_, ProcessVideoPacket(_, _))
+    ON_CALL(video_stub_, ProcessVideoPacketPtr(_, _))
         .WillByDefault(DeleteArg<0>());
-    ON_CALL(video_stub2_, ProcessVideoPacket(_, _))
+    ON_CALL(video_stub2_, ProcessVideoPacketPtr(_, _))
         .WillByDefault(DeleteArg<0>());
     ON_CALL(*connection_, video_stub())
         .WillByDefault(Return(&video_stub_));
@@ -178,10 +180,12 @@ class ChromotingHostTest : public testing::Test {
 
   // Helper method to pretend a client is connected to ChromotingHost.
   void SimulateClientConnection(int connection_index, bool authenticate) {
-    protocol::ConnectionToClient* connection = (connection_index == 0) ?
-        owned_connection_.release() : owned_connection2_.release();
+    scoped_ptr<protocol::ConnectionToClient> connection =
+        ((connection_index == 0) ? owned_connection_ : owned_connection2_).
+        PassAs<protocol::ConnectionToClient>();
+    protocol::ConnectionToClient* connection_ptr = connection.get();
     ClientSession* client = new ClientSession(
-        host_.get(), connection, event_executor_,
+        host_.get(), connection.Pass(), event_executor_,
         desktop_environment_->capturer());
     connection->set_host_stub(client);
 
@@ -190,8 +194,12 @@ class ChromotingHostTest : public testing::Test {
                               host_, client));
     if (authenticate) {
       context_.network_message_loop()->PostTask(
-          FROM_HERE, base::Bind(&ClientSession::OnConnectionOpened,
-                                base::Unretained(client), connection));
+          FROM_HERE, base::Bind(&ClientSession::OnConnectionAuthenticated,
+                                base::Unretained(client), connection_ptr));
+      context_.network_message_loop()->PostTask(
+          FROM_HERE,
+          base::Bind(&ClientSession::OnConnectionChannelsConnected,
+                     base::Unretained(client), connection_ptr));
     }
 
     if (connection_index == 0) {
@@ -203,7 +211,7 @@ class ChromotingHostTest : public testing::Test {
 
   // Helper method to remove a client connection from ChromotingHost.
   void RemoveClientSession() {
-    client_->OnConnectionClosed(connection_);
+    client_->OnConnectionClosed(connection_, protocol::OK);
   }
 
   static void AddClientToHost(scoped_refptr<ChromotingHost> host,
@@ -273,12 +281,12 @@ TEST_F(ChromotingHostTest, DISABLED_Connect) {
     InSequence s;
     EXPECT_CALL(*disconnect_window_, Show(_, _))
         .Times(0);
-    EXPECT_CALL(video_stub_, ProcessVideoPacket(_, _))
+    EXPECT_CALL(video_stub_, ProcessVideoPacketPtr(_, _))
         .WillOnce(DoAll(
             InvokeWithoutArgs(this, &ChromotingHostTest::ShutdownHost),
             RunDoneTask()))
         .RetiresOnSaturation();
-    EXPECT_CALL(video_stub_, ProcessVideoPacket(_, _))
+    EXPECT_CALL(video_stub_, ProcessVideoPacketPtr(_, _))
         .Times(AnyNumber());
     EXPECT_CALL(*connection_, Disconnect())
         .RetiresOnSaturation();
@@ -296,14 +304,14 @@ TEST_F(ChromotingHostTest, DISABLED_Reconnect) {
     InSequence s;
     EXPECT_CALL(*disconnect_window_, Show(_, _))
         .Times(0);
-    EXPECT_CALL(video_stub_, ProcessVideoPacket(_, _))
+    EXPECT_CALL(video_stub_, ProcessVideoPacketPtr(_, _))
         .WillOnce(DoAll(
             InvokeWithoutArgs(this, &ChromotingHostTest::RemoveClientSession),
             RunDoneTask()))
         .RetiresOnSaturation();
-    EXPECT_CALL(video_stub_, ProcessVideoPacket(_, _))
+    EXPECT_CALL(video_stub_, ProcessVideoPacketPtr(_, _))
         .Times(AnyNumber());
-    EXPECT_CALL(video_stub_, ProcessVideoPacket(_, _))
+    EXPECT_CALL(video_stub_, ProcessVideoPacketPtr(_, _))
         .Times(AnyNumber());
   }
 
@@ -320,12 +328,12 @@ TEST_F(ChromotingHostTest, DISABLED_Reconnect) {
     InSequence s;
     EXPECT_CALL(*disconnect_window_, Show(_, _))
         .Times(0);
-    EXPECT_CALL(video_stub_, ProcessVideoPacket(_, _))
+    EXPECT_CALL(video_stub_, ProcessVideoPacketPtr(_, _))
         .WillOnce(DoAll(
             InvokeWithoutArgs(this, &ChromotingHostTest::ShutdownHost),
             RunDoneTask()))
         .RetiresOnSaturation();
-    EXPECT_CALL(video_stub_, ProcessVideoPacket(_, _))
+    EXPECT_CALL(video_stub_, ProcessVideoPacketPtr(_, _))
         .Times(AnyNumber());
   }
 
@@ -345,7 +353,7 @@ TEST_F(ChromotingHostTest, DISABLED_ConnectTwice) {
     InSequence s;
     EXPECT_CALL(*disconnect_window_, Show(_, _))
         .Times(0);
-    EXPECT_CALL(video_stub_, ProcessVideoPacket(_, _))
+    EXPECT_CALL(video_stub_, ProcessVideoPacketPtr(_, _))
         .WillOnce(DoAll(
             InvokeWithoutArgs(
                 CreateFunctor(
@@ -355,14 +363,14 @@ TEST_F(ChromotingHostTest, DISABLED_ConnectTwice) {
         .RetiresOnSaturation();
     EXPECT_CALL(*disconnect_window_, Show(_, _))
         .Times(0);
-    EXPECT_CALL(video_stub_, ProcessVideoPacket(_, _))
+    EXPECT_CALL(video_stub_, ProcessVideoPacketPtr(_, _))
         .Times(AnyNumber());
-    EXPECT_CALL(video_stub2_, ProcessVideoPacket(_, _))
+    EXPECT_CALL(video_stub2_, ProcessVideoPacketPtr(_, _))
         .WillOnce(DoAll(
             InvokeWithoutArgs(this, &ChromotingHostTest::ShutdownHost),
             RunDoneTask()))
         .RetiresOnSaturation();
-    EXPECT_CALL(video_stub2_, ProcessVideoPacket(_, _))
+    EXPECT_CALL(video_stub2_, ProcessVideoPacketPtr(_, _))
         .Times(AnyNumber());
   }
 

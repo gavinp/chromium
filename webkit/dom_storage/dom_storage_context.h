@@ -12,6 +12,7 @@
 #include "base/atomic_sequence_num.h"
 #include "base/basictypes.h"
 #include "base/file_path.h"
+#include "base/gtest_prod_util.h"
 #include "base/memory/ref_counted.h"
 #include "base/observer_list.h"
 #include "base/time.h"
@@ -44,7 +45,7 @@ class DomStorageTaskRunner;
 //
 // In general terms, the DomStorage object relationships are...
 //   Contexts (per-profile) own Namespaces which own Areas which share Maps.
-//   Hosts(per-renderer) refer to Namespaces and Areas open in it's renderer.
+//   Hosts(per-renderer) refer to Namespaces and Areas open in its renderer.
 //   Sessions (per-tab) cause the creation and deletion of session Namespaces.
 //
 // Session Namespaces are cloned by initially making a shallow copy of
@@ -94,7 +95,7 @@ class DomStorageContext
   DomStorageTaskRunner* task_runner() const { return task_runner_; }
   DomStorageNamespace* GetStorageNamespace(int64 namespace_id);
 
-  void GetUsageInfo(std::vector<UsageInfo>* info);
+  void GetUsageInfo(std::vector<UsageInfo>* infos, bool include_file_info);
   void DeleteOrigin(const GURL& origin);
   void DeleteDataModifiedSince(const base::Time& cutoff);
   void PurgeMemory();
@@ -110,7 +111,11 @@ class DomStorageContext
     save_session_state_ = true;
   }
 
-  // Called when the BrowserContext/Profile is going away.
+  // Called when the owning BrowserContext is ending.
+  // Schedules the commit of any unsaved changes and will delete
+  // and keep data on disk per the content settings and special storage
+  // policies. Contained areas and namespaces will stop functioning after
+  // this method has been called.
   void Shutdown();
 
   // Methods to add, remove, and notify EventObservers.
@@ -142,17 +147,21 @@ class DomStorageContext
   void CloneSessionNamespace(int64 existing_id, int64 new_id);
 
  private:
+  friend class DomStorageContextTest;
+  FRIEND_TEST_ALL_PREFIXES(DomStorageContextTest, Basics);
   friend class base::RefCountedThreadSafe<DomStorageContext>;
   typedef std::map<int64, scoped_refptr<DomStorageNamespace> >
       StorageNamespaceMap;
 
   ~DomStorageContext();
 
+  void ClearLocalStateInCommitSequence();
+
   // Collection of namespaces keyed by id.
   StorageNamespaceMap namespaces_;
 
   // Where localstorage data is stored, maybe empty for the incognito use case.
-  const FilePath directory_;
+  FilePath directory_;
 
   // Used to schedule sequenced background tasks.
   scoped_refptr<DomStorageTaskRunner> task_runner_;
@@ -164,6 +173,7 @@ class DomStorageContext
   // At a tab per second, this range is large enough for 68 years.
   base::AtomicSequenceNumber session_id_sequence_;
 
+  bool is_shutdown_;
   bool clear_local_state_;
   bool save_session_state_;
   scoped_refptr<quota::SpecialStoragePolicy> special_storage_policy_;

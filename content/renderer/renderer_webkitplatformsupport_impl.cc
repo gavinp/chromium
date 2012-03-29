@@ -336,21 +336,29 @@ void RendererWebKitPlatformSupportImpl::suddenTerminationChanged(bool enabled) {
 WebStorageNamespace*
 RendererWebKitPlatformSupportImpl::createLocalStorageNamespace(
     const WebString& path, unsigned quota) {
+#ifdef ENABLE_NEW_DOM_STORAGE_BACKEND
+  return new RendererWebStorageNamespaceImpl(DOM_STORAGE_LOCAL);
+#else
   if (CommandLine::ForCurrentProcess()->HasSwitch(switches::kSingleProcess))
     return WebStorageNamespace::createLocalStorageNamespace(path, quota);
   return new RendererWebStorageNamespaceImpl(DOM_STORAGE_LOCAL);
+#endif
 }
 
 void RendererWebKitPlatformSupportImpl::dispatchStorageEvent(
     const WebString& key, const WebString& old_value,
     const WebString& new_value, const WebString& origin,
     const WebKit::WebURL& url, bool is_local_storage) {
+#ifdef ENABLE_NEW_DOM_STORAGE_BACKEND
+  NOTREACHED();
+#else
   DCHECK(CommandLine::ForCurrentProcess()->HasSwitch(switches::kSingleProcess));
   // Inefficient, but only used in single process mode.
   scoped_ptr<WebStorageEventDispatcher> event_dispatcher(
       WebStorageEventDispatcher::create());
   event_dispatcher->dispatchStorageEvent(key, old_value, new_value, origin,
                                          url, is_local_storage);
+#endif
 }
 
 //------------------------------------------------------------------------------
@@ -635,14 +643,53 @@ size_t RendererWebKitPlatformSupportImpl::audioHardwareBufferSize() {
 
 WebAudioDevice*
 RendererWebKitPlatformSupportImpl::createAudioDevice(
-    size_t buffer_size,
-    unsigned channels,
-    double sample_rate,
+    size_t bufferSize,
+    unsigned numberOfChannels,
+    double sampleRate,
     WebAudioDevice::RenderCallback* callback) {
-  return new RendererWebAudioDeviceImpl(buffer_size,
-                                        channels,
-                                        sample_rate,
-                                        callback);
+  ChannelLayout layout = CHANNEL_LAYOUT_UNSUPPORTED;
+
+  // The |numberOfChannels| does not exactly identify the channel layout of the
+  // device. The switch statement below assigns a best guess to the channel
+  // layout based on number of channels.
+  // TODO(crogers): WebKit should give the channel layout instead of the hard
+  // channel count.
+  switch (numberOfChannels) {
+    case 1:
+      layout = CHANNEL_LAYOUT_MONO;
+      break;
+    case 2:
+      layout = CHANNEL_LAYOUT_STEREO;
+      break;
+    case 3:
+      layout = CHANNEL_LAYOUT_2_1;
+      break;
+    case 4:
+      layout = CHANNEL_LAYOUT_4_0;
+      break;
+    case 5:
+      layout = CHANNEL_LAYOUT_5_0;
+      break;
+    case 6:
+      layout = CHANNEL_LAYOUT_5_1;
+      break;
+    case 7:
+      layout = CHANNEL_LAYOUT_7_0;
+      break;
+    case 8:
+      layout = CHANNEL_LAYOUT_7_1;
+      break;
+    default:
+      layout = CHANNEL_LAYOUT_STEREO;
+  }
+
+  AudioParameters params(AudioParameters::AUDIO_PCM_LOW_LATENCY,
+                         layout,
+                         static_cast<int>(sampleRate),
+                         16,
+                         bufferSize);
+
+  return new RendererWebAudioDeviceImpl(params, callback);
 }
 
 //------------------------------------------------------------------------------

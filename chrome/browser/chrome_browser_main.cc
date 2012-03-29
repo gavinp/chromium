@@ -40,6 +40,7 @@
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extensions_startup.h"
 #include "chrome/browser/first_run/upgrade_util.h"
+#include "chrome/browser/google/google_search_counter.h"
 #include "chrome/browser/google/google_url_tracker.h"
 #include "chrome/browser/google/google_util.h"
 #include "chrome/browser/gpu_blacklist.h"
@@ -55,6 +56,7 @@
 #include "chrome/browser/metrics/tracking_synchronizer.h"
 #include "chrome/browser/nacl_host/nacl_process_host.h"
 #include "chrome/browser/net/chrome_net_log.h"
+#include "chrome/browser/net/chrome_network_delegate.h"
 #include "chrome/browser/net/predictor.h"
 #include "chrome/browser/notifications/desktop_notification_service.h"
 #include "chrome/browser/notifications/desktop_notification_service_factory.h"
@@ -80,7 +82,6 @@
 #include "chrome/browser/ui/browser_init.h"
 #include "chrome/browser/ui/webui/chrome_url_data_manager_backend.h"
 #include "chrome/browser/ui/webui/ntp/new_tab_ui.h"
-#include "chrome/browser/ui/webui/sync_promo/sync_promo_trial.h"
 #include "chrome/common/child_process_logging.h"
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/chrome_paths.h"
@@ -149,7 +150,6 @@
 #include "chrome/browser/first_run/try_chrome_dialog_view.h"
 #include "chrome/browser/first_run/upgrade_util_win.h"
 #include "chrome/browser/net/url_fixer_upper.h"
-#include "chrome/browser/rlz/rlz.h"
 #include "chrome/browser/ui/views/user_data_dir_dialog.h"
 #include "chrome/installer/util/helper.h"
 #include "chrome/installer/util/install_util.h"
@@ -163,8 +163,11 @@
 #include <Security/Security.h>
 
 #include "base/mac/scoped_nsautorelease_pool.h"
-#include "chrome/browser/mac/install_from_dmg.h"
 #include "chrome/browser/mac/keystone_glue.h"
+#endif
+
+#if defined(ENABLE_RLZ)
+#include "chrome/browser/rlz/rlz.h"
 #endif
 
 #if defined(TOOLKIT_VIEWS)
@@ -472,33 +475,6 @@ OSStatus KeychainCallback(SecKeychainEvent keychain_event,
 }
 #endif
 
-#if defined(OS_CHROMEOS) && defined(TOOLKIT_USES_GTK)
-void RegisterTranslateableItems(void) {
-  struct {
-    const char* stock_id;
-    int resource_id;
-  } translations[] = {
-    { GTK_STOCK_COPY, IDS_COPY },
-    { GTK_STOCK_CUT, IDS_CUT },
-    { GTK_STOCK_PASTE, IDS_PASTE },
-    { GTK_STOCK_DELETE, IDS_DELETE },
-    { GTK_STOCK_SELECT_ALL, IDS_SELECT_ALL },
-    { NULL, -1 }
-  }, *trans;
-
-  for (trans = translations; trans->stock_id; trans++) {
-    GtkStockItem stock_item;
-    if (gtk_stock_lookup(trans->stock_id, &stock_item)) {
-      std::string trans_label = gfx::ConvertAcceleratorsFromWindowsStyle(
-          l10n_util::GetStringUTF8(trans->resource_id));
-      stock_item.label = g_strdup(trans_label.c_str());
-      gtk_stock_add(&stock_item, 1);
-      g_free(stock_item.label);
-    }
-  }
-}
-#endif  // defined(OS_CHROMEOS)
-
 void SetSocketReusePolicy(int warmest_socket_trial_group,
                           const int socket_policy[],
                           int num_groups) {
@@ -659,19 +635,22 @@ void ChromeBrowserMainParts::ConnectionFieldTrial() {
 
   const int connect_trial_group = connect_trial->group();
 
+  int max_sockets = 0;
   if (connect_trial_group == connect_5) {
-    net::ClientSocketPoolManager::set_max_sockets_per_group(5);
+    max_sockets = 5;
   } else if (connect_trial_group == connect_6) {
-    net::ClientSocketPoolManager::set_max_sockets_per_group(6);
+    max_sockets = 6;
   } else if (connect_trial_group == connect_7) {
-    net::ClientSocketPoolManager::set_max_sockets_per_group(7);
+    max_sockets = 7;
   } else if (connect_trial_group == connect_8) {
-    net::ClientSocketPoolManager::set_max_sockets_per_group(8);
+    max_sockets = 8;
   } else if (connect_trial_group == connect_9) {
-    net::ClientSocketPoolManager::set_max_sockets_per_group(9);
+    max_sockets = 9;
   } else {
     NOTREACHED();
   }
+  net::ClientSocketPoolManager::set_max_sockets_per_group(
+      net::HttpNetworkSession::NORMAL_SOCKET_POOL, max_sockets);
 }
 
 // A/B test for determining a value for unused socket timeout. Currently the
@@ -744,15 +723,18 @@ void ChromeBrowserMainParts::ProxyConnectionsFieldTrial() {
 
   const int proxy_connections_trial_group = proxy_connection_trial->group();
 
+  int max_sockets = 0;
   if (proxy_connections_trial_group == proxy_connections_16) {
-    net::ClientSocketPoolManager::set_max_sockets_per_proxy_server(16);
+    max_sockets = 16;
   } else if (proxy_connections_trial_group == proxy_connections_32) {
-    net::ClientSocketPoolManager::set_max_sockets_per_proxy_server(32);
+    max_sockets = 32;
   } else if (proxy_connections_trial_group == proxy_connections_64) {
-    net::ClientSocketPoolManager::set_max_sockets_per_proxy_server(64);
+    max_sockets = 64;
   } else {
     NOTREACHED();
   }
+  net::ClientSocketPoolManager::set_max_sockets_per_proxy_server(
+      net::HttpNetworkSession::NORMAL_SOCKET_POOL, max_sockets);
 }
 
 // When --use-spdy not set, users will be in A/B test for spdy.
@@ -767,36 +749,61 @@ void ChromeBrowserMainParts::SpdyFieldTrial() {
     std::string spdy_mode =
         parsed_command_line().GetSwitchValueASCII(switches::kUseSpdy);
     net::HttpNetworkLayer::EnableSpdy(spdy_mode);
+  }
+  if (parsed_command_line().HasSwitch(switches::kEnableSpdy3)) {
+    net::HttpStreamFactory::EnableNpnSpdy3();
+  } else if (parsed_command_line().HasSwitch(
+             switches::kEnableSpdyFlowControl)) {
+    net::HttpStreamFactory::EnableFlowControl();
+  } else if (parsed_command_line().HasSwitch(switches::kEnableNpn)) {
+    net::HttpStreamFactory::EnableNpnSpdy();
+  } else if (parsed_command_line().HasSwitch(switches::kEnableNpnHttpOnly)) {
+    net::HttpStreamFactory::EnableNpnHttpOnly();
   } else {
 #if !defined(OS_CHROMEOS)
     bool is_spdy_trial = false;
     const base::FieldTrial::Probability kSpdyDivisor = 100;
     base::FieldTrial::Probability npnhttp_probability = 5;
+    base::FieldTrial::Probability flow_control_probability = 5;
+    base::FieldTrial::Probability spdy3_probability = 0;
 
     // After June 30, 2013 builds, it will always be in default group.
     scoped_refptr<base::FieldTrial> trial(
         new base::FieldTrial(
             "SpdyImpact", kSpdyDivisor, "npn_with_spdy", 2013, 6, 30));
 
-    // npn with spdy support is the default.
+    // NPN with spdy support is the default.
     int npn_spdy_grp = trial->kDefaultGroupNumber;
 
-    // npn with only http support, no spdy.
+    // NPN with only http support, no spdy.
     int npn_http_grp = trial->AppendGroup("npn_with_http", npnhttp_probability);
 
+    // NPN with http/1.1, spdy/2, spdy/2.1 and spdy/3 support.
+    int spdy3_grp = trial->AppendGroup("spdy3", spdy3_probability);
+
+    // NPN with http/1.1, spdy/2 and spdy/2.1 support.
+    int flow_control_grp = trial->AppendGroup(
+        "flow_control", flow_control_probability);
+
     int trial_grp = trial->group();
-    if (trial_grp == npn_http_grp) {
+    if (trial_grp == npn_spdy_grp) {
       is_spdy_trial = true;
-      net::HttpNetworkLayer::EnableSpdy("npn-http");
-    } else if (trial_grp == npn_spdy_grp) {
+      net::HttpStreamFactory::EnableNpnSpdy();
+    } else if (trial_grp == npn_http_grp) {
       is_spdy_trial = true;
-      net::HttpNetworkLayer::EnableSpdy("npn");
+      net::HttpStreamFactory::EnableNpnHttpOnly();
+    } else if (trial_grp == spdy3_grp) {
+      is_spdy_trial = true;
+      net::HttpStreamFactory::EnableNpnSpdy3();
+    } else if (trial_grp == flow_control_grp) {
+      is_spdy_trial = true;
+      net::HttpStreamFactory::EnableFlowControl();
     } else {
       CHECK(!is_spdy_trial);
     }
 #else
     // Always enable SPDY on Chrome OS
-    net::HttpNetworkLayer::EnableSpdy("npn");
+    net::HttpStreamFactory::EnableNpnSpdy();
 #endif  // !defined(OS_CHROMEOS)
   }
 
@@ -1007,6 +1014,22 @@ void ChromeBrowserMainParts::AutoLaunchChromeFieldTrial() {
   }
 }
 
+void ChromeBrowserMainParts::ComodoDNSExperimentFieldTrial() {
+  // 100% probability of being in the experiment group until the timeout.
+  const base::FieldTrial::Probability kDivisor = 1;
+  const base::FieldTrial::Probability kProbability = 1;
+
+  // After April 15, 2012 builds, it will always be in default group.
+  scoped_refptr<base::FieldTrial> trial(
+      new base::FieldTrial("ComodoDNSExperiment", kDivisor,
+          "inactive", 2012, 4, 15));
+
+  const int active = trial->AppendGroup("active", kProbability);
+
+  if (trial->group() == active)
+    ChromeNetworkDelegate::EnableComodoDNSExperiment();
+}
+
 // ChromeBrowserMainParts: |SetupMetricsAndFieldTrials()| related --------------
 
 void ChromeBrowserMainParts::SetupFieldTrials(bool metrics_recording_enabled,
@@ -1027,8 +1050,8 @@ void ChromeBrowserMainParts::SetupFieldTrials(bool metrics_recording_enabled,
   PredictorFieldTrial();
   DefaultAppsFieldTrial();
   AutoLaunchChromeFieldTrial();
+  ComodoDNSExperimentFieldTrial();
   AutocompleteFieldTrial::Activate();
-  sync_promo_trial::Activate();
   NewTabUI::SetupFieldTrials();
 }
 
@@ -1240,11 +1263,6 @@ int ChromeBrowserMainParts::PreCreateThreadsImpl() {
 #endif  // defined(OS_WIN)
   }
 
-#if defined(OS_CHROMEOS) && defined(TOOLKIT_USES_GTK)
-  // This needs to be called after the locale has been set.
-  RegisterTranslateableItems();
-#endif
-
   // On first run, we need to process the predictor preferences before the
   // browser's profile_manager object is created, but after ResourceBundle
   // is initialized.
@@ -1271,9 +1289,12 @@ int ChromeBrowserMainParts::PreCreateThreadsImpl() {
   if (!parsed_command_line().HasSwitch(switches::kNoErrorDialogs))
     WarnAboutMinimumSystemRequirements();
 
-  // Convert active labs into switches. Modifies the current command line.
+#if !defined(OS_ANDROID)
+  // Convert active labs into switches. Modifies the current command line. Not
+  // needed on Android as there aren't experimental flags.
   about_flags::ConvertFlagsToSwitches(local_state_,
                                       CommandLine::ForCurrentProcess());
+#endif
   local_state_->UpdateCommandLinePrefStore(CommandLine::ForCurrentProcess());
 
   // Reset the command line in the crash report details, since we may have
@@ -1529,18 +1550,6 @@ int ChromeBrowserMainParts::PreMainMessageLoopRunImpl() {
   translate_manager_ = TranslateManager::GetInstance();
   DCHECK(translate_manager_ != NULL);
 
-#if defined(OS_MACOSX)
-  if (!parsed_command_line().HasSwitch(switches::kNoFirstRun)) {
-    // Disk image installation is sort of a first-run task, so it shares the
-    // kNoFirstRun switch.
-    if (MaybeInstallFromDiskImage()) {
-      // The application was installed and the installed copy has been
-      // launched.  This process is now obsolete.  Exit.
-      return content::RESULT_CODE_NORMAL_EXIT;
-    }
-  }
-#endif
-
   // TODO(stevenjb): Move WIN and MACOSX specific code to apprpriate Parts.
   // (requires supporting early exit).
   PostProfileInit();
@@ -1589,8 +1598,9 @@ int ChromeBrowserMainParts::PreMainMessageLoopRunImpl() {
     ChromeBrowserMainPartsWin::RegisterApplicationRestart(
         parsed_command_line());
   }
+#endif  // OS_WIN
 
-#if defined(GOOGLE_CHROME_BUILD)
+#if defined(ENABLE_RLZ)
   // Init the RLZ library. This just binds the dll and schedules a task on the
   // file thread to be run sometime later. If this is the first run we record
   // the installation event.
@@ -1622,8 +1632,7 @@ int ChromeBrowserMainParts::PreMainMessageLoopRunImpl() {
   // for the startup page if needed (i.e., when the startup page is set to
   // the home page).
   RLZTracker::GetAccessPointRlz(rlz_lib::CHROME_HOME_PAGE, NULL);
-#endif  // GOOGLE_CHROME_BUILD
-#endif  // OS_WIN
+#endif  // defined(ENABLE_RLZ)
 
   // Configure modules that need access to resources.
   net::NetModule::SetResourceProvider(chrome_common_net::NetResourceProvider);
@@ -1642,6 +1651,7 @@ int ChromeBrowserMainParts::PreMainMessageLoopRunImpl() {
   // need to read prefs that get set after that runs.
   browser_process_->google_url_tracker();
   browser_process_->intranet_redirect_detector();
+  GoogleSearchCounter::RegisterForNotifications();
 
   // Disable SDCH filtering if switches::kEnableSdch is 0.
   int sdch_enabled = 1;
@@ -1682,7 +1692,9 @@ int ChromeBrowserMainParts::PreMainMessageLoopRunImpl() {
 
   HandleTestParameters(parsed_command_line());
   RecordBreakpadStatusUMA(browser_process_->metrics_service());
+#if !defined(OS_ANDROID)
   about_flags::RecordUMAStatistics(local_state_);
+#endif
   LanguageUsageMetrics::RecordAcceptLanguages(
       profile_->GetPrefs()->GetString(prefs::kAcceptLanguages));
   LanguageUsageMetrics::RecordApplicationLanguage(

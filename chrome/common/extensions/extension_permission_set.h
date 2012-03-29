@@ -100,7 +100,6 @@ class ExtensionAPIPermission {
     kBookmark,
     kBrowsingData,
     kChromeAuthPrivate,
-    kChromePrivate,
     kChromeosInfoPrivate,
     kClipboardRead,
     kClipboardWrite,
@@ -123,6 +122,7 @@ class ExtensionAPIPermission {
     kMediaPlayerPrivate,
     kMetricsPrivate,
     kNotification,
+    kOffersPrivate,
     kPageCapture,
     kPlugin,
     kPrivacy,
@@ -132,6 +132,7 @@ class ExtensionAPIPermission {
     kSystemPrivate,
     kTab,
     kTerminalPrivate,
+    kTopSites,
     kTts,
     kTtsEngine,
     kUnlimitedStorage,
@@ -317,6 +318,12 @@ class ExtensionPermissionSet
 
   // Gets the API permissions in this set as a set of strings.
   std::set<std::string> GetAPIsAsStrings() const;
+
+  // Gets the API permissions in this set, plus any that have implicit access
+  // (such as APIs that require no permissions, or APIs with functions that
+  // require no permissions).
+  // TODO(kalman): return scoped_ptr to avoid copying.
+  std::set<std::string> GetAPIsWithAnyAccessAsStrings() const;
 
   // Returns whether this namespace has any functions which the extension has
   // permission to use.  For example, even though the extension may not have

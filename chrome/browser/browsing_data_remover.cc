@@ -49,8 +49,8 @@
 #include "content/public/browser/plugin_data_remover.h"
 #include "content/public/browser/user_metrics.h"
 #include "net/base/net_errors.h"
-#include "net/base/origin_bound_cert_service.h"
-#include "net/base/origin_bound_cert_store.h"
+#include "net/base/server_bound_cert_service.h"
+#include "net/base/server_bound_cert_store.h"
 #include "net/base/transport_security_state.h"
 #include "net/cookies/cookie_store.h"
 #include "net/disk_cache/disk_cache.h"
@@ -104,7 +104,7 @@ BrowsingDataRemover::BrowsingDataRemover(Profile* profile,
       waiting_for_clear_cookies_count_(0),
       waiting_for_clear_history_(false),
       waiting_for_clear_networking_history_(false),
-      waiting_for_clear_origin_bound_certs_(false),
+      waiting_for_clear_server_bound_certs_(false),
       waiting_for_clear_plugin_data_(false),
       waiting_for_clear_quota_managed_data_(false),
       remove_mask_(0),
@@ -129,7 +129,7 @@ BrowsingDataRemover::BrowsingDataRemover(Profile* profile,
       waiting_for_clear_cookies_count_(0),
       waiting_for_clear_history_(false),
       waiting_for_clear_networking_history_(false),
-      waiting_for_clear_origin_bound_certs_(false),
+      waiting_for_clear_server_bound_certs_(false),
       waiting_for_clear_plugin_data_(false),
       waiting_for_clear_quota_managed_data_(false),
       remove_mask_(0),
@@ -288,16 +288,16 @@ void BrowsingDataRemover::RemoveImpl(int remove_mask,
 #endif
   }
 
-  if (remove_mask & REMOVE_ORIGIN_BOUND_CERTS) {
+  if (remove_mask & REMOVE_SERVER_BOUND_CERTS) {
     content::RecordAction(
-        UserMetricsAction("ClearBrowsingData_OriginBoundCerts"));
+        UserMetricsAction("ClearBrowsingData_ServerBoundCerts"));
     // Since we are running on the UI thread don't call GetURLRequestContext().
     net::URLRequestContextGetter* rq_context = profile_->GetRequestContext();
     if (rq_context) {
-      waiting_for_clear_origin_bound_certs_ = true;
+      waiting_for_clear_server_bound_certs_ = true;
       BrowserThread::PostTask(
           BrowserThread::IO, FROM_HERE,
-          base::Bind(&BrowsingDataRemover::ClearOriginBoundCertsOnIOThread,
+          base::Bind(&BrowsingDataRemover::ClearServerBoundCertsOnIOThread,
                      base::Unretained(this), base::Unretained(rq_context)));
     }
   }
@@ -692,21 +692,21 @@ void BrowsingDataRemover::ClearCookiesOnIOThread(
                  base::Unretained(this)));
 }
 
-void BrowsingDataRemover::ClearOriginBoundCertsOnIOThread(
+void BrowsingDataRemover::ClearServerBoundCertsOnIOThread(
     net::URLRequestContextGetter* rq_context) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
-  net::OriginBoundCertService* origin_bound_cert_service =
-      rq_context->GetURLRequestContext()->origin_bound_cert_service();
-  origin_bound_cert_service->GetCertStore()->DeleteAllCreatedBetween(
+  net::ServerBoundCertService* server_bound_cert_service =
+      rq_context->GetURLRequestContext()->server_bound_cert_service();
+  server_bound_cert_service->GetCertStore()->DeleteAllCreatedBetween(
       delete_begin_, delete_end_);
   BrowserThread::PostTask(
       BrowserThread::UI, FROM_HERE,
-      base::Bind(&BrowsingDataRemover::OnClearedOriginBoundCerts,
+      base::Bind(&BrowsingDataRemover::OnClearedServerBoundCerts,
                  base::Unretained(this)));
 }
 
-void BrowsingDataRemover::OnClearedOriginBoundCerts() {
+void BrowsingDataRemover::OnClearedServerBoundCerts() {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  waiting_for_clear_origin_bound_certs_ = false;
+  waiting_for_clear_server_bound_certs_ = false;
   NotifyAndDeleteIfDone();
 }

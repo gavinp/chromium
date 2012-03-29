@@ -31,6 +31,7 @@ CONTENT_EXPORT extern const char kHttpsScheme[];
 CONTENT_EXPORT extern const char kJavaScriptScheme[];
 CONTENT_EXPORT extern const char kMailToScheme[];
 CONTENT_EXPORT extern const char kMetadataScheme[];
+CONTENT_EXPORT extern const char kSwappedOutScheme[];
 CONTENT_EXPORT extern const char kViewSourceScheme[];
 
 // Used to separate a standard scheme and the hostname: "://".
@@ -38,18 +39,24 @@ CONTENT_EXPORT extern const char kStandardSchemeSeparator[];
 
 // About URLs (including schemes).
 CONTENT_EXPORT extern const char kAboutBlankURL[];
+CONTENT_EXPORT extern const char kChromeUIAppCacheInternalsHost[];
+CONTENT_EXPORT extern const char kChromeUIBlobInternalsHost[];
 CONTENT_EXPORT extern const char kChromeUIBrowserCrashHost[];
+CONTENT_EXPORT extern const char kChromeUINetworkViewCacheHost[];
 CONTENT_EXPORT extern const char kChromeUICrashURL[];
 CONTENT_EXPORT extern const char kChromeUIGpuCleanURL[];
 CONTENT_EXPORT extern const char kChromeUIGpuCrashURL[];
 CONTENT_EXPORT extern const char kChromeUIGpuHangURL[];
 CONTENT_EXPORT extern const char kChromeUIHangURL[];
 CONTENT_EXPORT extern const char kChromeUIKillURL[];
+CONTENT_EXPORT extern const char kChromeUINetworkViewCacheURL[];
 CONTENT_EXPORT extern const char kChromeUIShorthangURL[];
 
 // Special URL used to start a navigation to an error page.
 extern const char kUnreachableWebDataURL[];
 
+// Special URL used to swap out a view being rendered by another process.
+extern const char kSwappedOutURL[];
 
 }  // namespace chrome
 

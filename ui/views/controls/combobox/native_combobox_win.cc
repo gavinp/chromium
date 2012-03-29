@@ -15,14 +15,18 @@
 #include "ui/views/controls/combobox/native_combobox_views.h"
 #include "ui/views/widget/widget.h"
 
-namespace views {
+namespace {
 
 // Limit how small a combobox can be.
-static const int kMinComboboxWidth = 148;
+const int kMinComboboxWidth = 148;
 
 // Add a couple extra pixels to the widths of comboboxes and combobox
 // dropdowns so that text isn't too crowded.
-static const int kComboboxExtraPaddingX = 6;
+const int kComboboxExtraPaddingX = 6;
+
+}  // namespace
+
+namespace views {
 
 ////////////////////////////////////////////////////////////////////////////////
 // NativeComboboxWin, public:
@@ -44,8 +48,7 @@ NativeComboboxWin::~NativeComboboxWin() {
 
 void NativeComboboxWin::UpdateFromModel() {
   SendMessage(native_view(), CB_RESETCONTENT, 0, 0);
-  gfx::Font font = ResourceBundle::GetSharedInstance().GetFont(
-      ResourceBundle::BaseFont);
+  const gfx::Font& font = Combobox::GetFont();
   int max_width = 0;
   int num_items = combobox_->model()->GetItemCount();
   for (int i = 0; i < num_items; ++i) {
@@ -62,7 +65,7 @@ void NativeComboboxWin::UpdateFromModel() {
   content_width_ = max_width;
 
   if (num_items > 0) {
-    SendMessage(native_view(), CB_SETCURSEL, combobox_->selected_item(), 0);
+    SendMessage(native_view(), CB_SETCURSEL, combobox_->selected_index(), 0);
 
     // Set the width for the drop down while accounting for the scrollbar and
     // borders.
@@ -75,23 +78,23 @@ void NativeComboboxWin::UpdateFromModel() {
   }
 }
 
-void NativeComboboxWin::UpdateSelectedItem() {
+void NativeComboboxWin::UpdateSelectedIndex() {
   // Note that we use CB_SETCURSEL and not CB_SELECTSTRING because on RTL
   // locales the strings we get from our ComboBox::Model might be augmented
-  // with Unicode directionality marks before we insert them into the combo box
+  // with Unicode directionality marks before we insert them into the combobox
   // and therefore we can not assume that the string we get from
-  // ComboBox::Model can be safely searched for and selected (which is what
+  // ui::ComboboxModel can be safely searched for and selected (which is what
   // CB_SELECTSTRING does).
-  SendMessage(native_view(), CB_SETCURSEL, combobox_->selected_item(), 0);
+  SendMessage(native_view(), CB_SETCURSEL, combobox_->selected_index(), 0);
 }
 
 void NativeComboboxWin::UpdateEnabled() {
   SetEnabled(combobox_->enabled());
 }
 
-int NativeComboboxWin::GetSelectedItem() const {
-  LRESULT selected_item = SendMessage(native_view(), CB_GETCURSEL, 0, 0);
-  return selected_item != CB_ERR ? selected_item : -1;
+int NativeComboboxWin::GetSelectedIndex() const {
+  LRESULT selected_index = SendMessage(native_view(), CB_GETCURSEL, 0, 0);
+  return selected_index != CB_ERR ? selected_index : -1;
 }
 
 bool NativeComboboxWin::IsDropdownOpen() const {
@@ -194,8 +197,7 @@ void NativeComboboxWin::NativeControlCreated(HWND native_control) {
 // NativeComboboxWin, private:
 
 void NativeComboboxWin::UpdateFont() {
-  HFONT font = ResourceBundle::GetSharedInstance().
-      GetFont(ResourceBundle::BaseFont).GetNativeFont();
+  HFONT font = Combobox::GetFont().GetNativeFont();
   SendMessage(native_view(), WM_SETFONT, reinterpret_cast<WPARAM>(font), FALSE);
 }
 

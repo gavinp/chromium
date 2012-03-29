@@ -32,13 +32,6 @@
           'includes': [ '../build/grit_action.gypi' ],
         },
         {
-          'action_name': 'options_resources',
-          'variables': {
-            'grit_grd_file': 'browser/resources/options_resources.grd',
-          },
-          'includes': [ '../build/grit_action.gypi' ],
-        },
-        {
           'action_name': 'options2_resources',
           'variables': {
             'grit_grd_file': 'browser/resources/options2_resources.grd',
@@ -63,13 +56,6 @@
           'action_name': 'sync_internals_resources',
           'variables': {
             'grit_grd_file': 'browser/resources/sync_internals_resources.grd',
-          },
-          'includes': [ '../build/grit_action.gypi' ],
-        },
-        {
-          'action_name': 'workers_resources',
-          'variables': {
-            'grit_grd_file': 'browser/resources/workers_resources.grd',
           },
           'includes': [ '../build/grit_action.gypi' ],
         },

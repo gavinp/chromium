@@ -9,6 +9,7 @@
 #include "sync/engine/net/server_connection_manager.h"
 #include "sync/engine/syncer.h"
 #include "sync/engine/syncer_types.h"
+#include "sync/engine/traffic_logger.h"
 #include "sync/protocol/service_constants.h"
 #include "sync/protocol/sync.pb.h"
 #include "sync/protocol/sync_enums.pb.h"
@@ -266,19 +267,19 @@ SyncProtocolErrorType ConvertSyncProtocolErrorTypePBToLocalType(
 }
 
 browser_sync::ClientAction ConvertClientActionPBToLocalClientAction(
-    const sync_pb::ClientToServerResponse::Error::Action& action) {
+    const sync_pb::SyncEnums::Action& action) {
   switch (action) {
-    case ClientToServerResponse::Error::UPGRADE_CLIENT:
+    case sync_pb::SyncEnums::UPGRADE_CLIENT:
       return browser_sync::UPGRADE_CLIENT;
-    case ClientToServerResponse::Error::CLEAR_USER_DATA_AND_RESYNC:
+    case sync_pb::SyncEnums::CLEAR_USER_DATA_AND_RESYNC:
       return browser_sync::CLEAR_USER_DATA_AND_RESYNC;
-    case ClientToServerResponse::Error::ENABLE_SYNC_ON_ACCOUNT:
+    case sync_pb::SyncEnums::ENABLE_SYNC_ON_ACCOUNT:
       return browser_sync::ENABLE_SYNC_ON_ACCOUNT;
-    case ClientToServerResponse::Error::STOP_AND_RESTART_SYNC:
+    case sync_pb::SyncEnums::STOP_AND_RESTART_SYNC:
       return browser_sync::STOP_AND_RESTART_SYNC;
-    case ClientToServerResponse::Error::DISABLE_SYNC_ON_CLIENT:
+    case sync_pb::SyncEnums::DISABLE_SYNC_ON_CLIENT:
       return browser_sync::DISABLE_SYNC_ON_CLIENT;
-    case ClientToServerResponse::Error::UNKNOWN_ACTION:
+    case sync_pb::SyncEnums::UNKNOWN_ACTION:
       return browser_sync::UNKNOWN_ACTION;
     default:
       NOTREACHED();
@@ -337,6 +338,7 @@ SyncerError SyncerProtoUtil::PostClientToServerMessage(
 
   syncable::Directory* dir = session->context()->directory();
 
+  LogClientToServerMessage(msg);
   if (!PostAndProcessHeaders(session->context()->connection_manager(), session,
                              msg, response)) {
     // There was an error establishing communication with the server.
@@ -349,6 +351,8 @@ SyncerError SyncerProtoUtil::PostClientToServerMessage(
 
     return ServerConnectionErrorAsSyncerError(server_status);
   }
+
+  LogClientToServerResponse(*response);
 
   browser_sync::SyncProtocolError sync_protocol_error;
 

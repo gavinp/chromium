@@ -111,7 +111,8 @@ TEST_P(ConfigurationPolicyPrefStoreStringTest, GetDefault) {
 
 TEST_P(ConfigurationPolicyPrefStoreStringTest, SetValue) {
   provider_.AddMandatoryPolicy(GetParam().policy_name(),
-                               base::Value::CreateStringValue("http://chromium.org"));
+                               base::Value::CreateStringValue(
+                                   "http://chromium.org"));
   store_->OnUpdatePolicy(&provider_);
   const base::Value* value = NULL;
   EXPECT_EQ(PrefStore::READ_OK,
@@ -274,7 +275,11 @@ INSTANTIATE_TEST_CASE_P(
     ConfigurationPolicyPrefStoreBooleanTest,
     testing::Values(
         PolicyAndPref(key::kChromeOsLockOnIdleSuspend,
-                      prefs::kEnableScreenLock)));
+                      prefs::kEnableScreenLock),
+        PolicyAndPref(key::kGDataDisabled,
+                      prefs::kDisableGData),
+        PolicyAndPref(key::kGDataDisabledOverCellular,
+                      prefs::kDisableGDataOverCellular)));
 #endif  // defined(OS_CHROMEOS)
 
 // Test cases for integer-valued policy settings.
@@ -597,7 +602,7 @@ TEST_F(ConfigurationPolicyPrefStoreDefaultSearchTest, MinimallyDefined) {
 
   EXPECT_EQ(PrefStore::READ_OK,
             store->GetValue(prefs::kDefaultSearchProviderKeyword, &value));
-  EXPECT_TRUE(base::StringValue(std::string()).Equals(value));
+  EXPECT_TRUE(base::StringValue("test.com").Equals(value));
 
   EXPECT_EQ(PrefStore::READ_OK,
             store->GetValue(prefs::kDefaultSearchProviderSuggestURL, &value));

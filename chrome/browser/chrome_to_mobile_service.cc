@@ -5,6 +5,7 @@
 #include "chrome/browser/chrome_to_mobile_service.h"
 
 #include "base/bind.h"
+#include "base/command_line.h"
 #include "base/json/json_writer.h"
 #include "base/stringprintf.h"
 #include "base/utf_string_conversions.h"
@@ -17,6 +18,7 @@
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_list.h"
 #include "chrome/common/chrome_notification_types.h"
+#include "chrome/common/chrome_switches.h"
 #include "chrome/common/cloud_print/cloud_print_helpers.h"
 #include "chrome/common/guid.h"
 #include "chrome/common/net/gaia/gaia_constants.h"
@@ -33,15 +35,27 @@
 
 namespace {
 
-// The maximum number of retries for the URLFetcher requests.
-size_t kMaxRetries = 10;
+// The default enabled/disabled state of the Chrome To Mobile feature.
+const bool kChromeToMobileEnabled = false;
 
-// The number of seconds between automated URLFetcher requests.
-size_t kRetryDelay = 300;
+// The maximum number of retries for the URLFetcher requests.
+const size_t kMaxRetries = 1;
+
+// The number of hours to delay before retrying authentication on failure.
+const size_t kAuthRetryDelayHours = 6;
+
+// The number of hours before subsequent search requests are allowed.
+// This value is used to throttle expensive cloud print search requests.
+// Note that this limitation does not hold across application restarts.
+const int kSearchRequestDelayHours = 24;
 
 // The cloud print OAuth2 scope and 'printer' type of compatible mobile devices.
-const char kOAuthScope[] = "https://www.googleapis.com/auth/cloudprint";
+const char kCloudPrintOAuthScope[] =
+    "https://www.googleapis.com/auth/cloudprint";
 const char kTypeAndroidChromeSnapshot[] = "ANDROID_CHROME_SNAPSHOT";
+
+// The Chrome To Mobile requestor type; used by the service for filtering.
+const char kChromeToMobileRequestor[] = "requestor=chrome-to-mobile";
 
 // The types of Chrome To Mobile requests sent to the cloud print service.
 const char kRequestTypeURL[] = "url";
@@ -66,6 +80,15 @@ std::string GetJobString(const ChromeToMobileService::RequestData& data) {
   std::string job_string;
   base::JSONWriter::Write(job.get(), &job_string);
   return job_string;
+}
+
+// Get the URL for cloud print device search; appends a requestor query param.
+GURL GetSearchURL(const GURL& service_url) {
+  GURL search_url = cloud_print::GetUrlForSearch(service_url);
+  GURL::Replacements replacements;
+  std::string query(kChromeToMobileRequestor);
+  replacements.SetQueryStr(query);
+  return search_url.ReplaceComponents(replacements);
 }
 
 // Get the URL for cloud print job submission; appends query params if needed.
@@ -135,6 +158,19 @@ ChromeToMobileService::RequestData::RequestData() {}
 
 ChromeToMobileService::RequestData::~RequestData() {}
 
+// static
+bool ChromeToMobileService::IsChromeToMobileEnabled() {
+  CommandLine* command_line = CommandLine::ForCurrentProcess();
+
+  if (command_line->HasSwitch(switches::kDisableChromeToMobile))
+    return false;
+
+  if (command_line->HasSwitch(switches::kEnableChromeToMobile))
+    return true;
+
+  return kChromeToMobileEnabled;
+}
+
 ChromeToMobileService::ChromeToMobileService(Profile* profile)
     : profile_(profile),
       cloud_print_url_(new CloudPrintURL(profile)) {
@@ -163,7 +199,7 @@ void ChromeToMobileService::RequestMobileListUpdate() {
 
 void ChromeToMobileService::GenerateSnapshot(base::WeakPtr<Observer> observer) {
   FilePath path(temp_dir_.path().Append(kSnapshotPath));
-    BrowserList::GetLastActiveWithProfile(profile_)->GetSelectedWebContents()->
+  BrowserList::GetLastActiveWithProfile(profile_)->GetSelectedWebContents()->
       GenerateMHTML(path.InsertBeforeExtensionASCII(guid::GenerateGUID()),
                     base::Bind(&Observer::SnapshotGenerated, observer));
 }
@@ -219,7 +255,7 @@ void ChromeToMobileService::OnGetTokenSuccess(
     const std::string& access_token) {
   DCHECK(!access_token.empty());
   access_token_fetcher_.reset();
-  request_timer_.Stop();
+  auth_retry_timer_.Stop();
   access_token_ = access_token;
   RequestMobileListUpdate();
 }
@@ -227,9 +263,10 @@ void ChromeToMobileService::OnGetTokenSuccess(
 void ChromeToMobileService::OnGetTokenFailure(
     const GoogleServiceAuthError& error) {
   access_token_fetcher_.reset();
-  request_timer_.Stop();
-  request_timer_.Start(FROM_HERE, base::TimeDelta::FromSeconds(kRetryDelay),
-                       this, &ChromeToMobileService::RefreshAccessToken);
+  auth_retry_timer_.Stop();
+  auth_retry_timer_.Start(
+      FROM_HERE, base::TimeDelta::FromHours(kAuthRetryDelayHours),
+      this, &ChromeToMobileService::RefreshAccessToken);
 }
 
 void ChromeToMobileService::CreateUniqueTempDir() {
@@ -242,7 +279,7 @@ content::URLFetcher* ChromeToMobileService::CreateRequest(
   bool get = data.type != SNAPSHOT;
   GURL service_url(cloud_print_url_->GetCloudPrintServiceURL());
   content::URLFetcher* request = content::URLFetcher::Create(
-      data.type == SEARCH ? cloud_print::GetUrlForSearch(service_url) :
+      data.type == SEARCH ? GetSearchURL(service_url) :
                             GetSubmitURL(service_url, data),
       get ? content::URLFetcher::GET : content::URLFetcher::POST, this);
   request->SetRequestContext(profile_->GetRequestContext());
@@ -263,10 +300,10 @@ void ChromeToMobileService::RefreshAccessToken() {
   if (token.empty())
     return;
 
-  request_timer_.Stop();
+  auth_retry_timer_.Stop();
   access_token_fetcher_.reset(
       new OAuth2AccessTokenFetcher(this, profile_->GetRequestContext()));
-  std::vector<std::string> scopes(1, kOAuthScope);
+  std::vector<std::string> scopes(1, kCloudPrintOAuthScope);
   GaiaUrls* gaia_urls = GaiaUrls::GetInstance();
   access_token_fetcher_->Start(gaia_urls->oauth2_chrome_client_id(),
       gaia_urls->oauth2_chrome_client_secret(), token, scopes);
@@ -274,13 +311,22 @@ void ChromeToMobileService::RefreshAccessToken() {
 
 void ChromeToMobileService::RequestSearch() {
   DCHECK(!access_token_.empty());
+
+  // Deny requests while another request is currently pending.
   if (search_request_.get())
+    return;
+
+  // Deny requests before the delay period has passed since the last request.
+  base::TimeDelta elapsed_time = base::TimeTicks::Now() - previous_search_time_;
+  if (!previous_search_time_.is_null() &&
+      elapsed_time.InHours() < kSearchRequestDelayHours)
     return;
 
   RequestData data;
   data.type = SEARCH;
   search_request_.reset(CreateRequest(data));
   search_request_->Start();
+  previous_search_time_ = base::TimeTicks::Now();
 }
 
 void ChromeToMobileService::HandleSearchResponse() {
@@ -312,10 +358,6 @@ void ChromeToMobileService::HandleSearchResponse() {
       browser->command_updater()->UpdateCommandEnabled(
           IDC_CHROME_TO_MOBILE_PAGE, !mobiles_.empty());
   }
-
-  request_timer_.Stop();
-  request_timer_.Start(FROM_HERE, base::TimeDelta::FromSeconds(kRetryDelay),
-                       this, &ChromeToMobileService::RequestSearch);
 }
 
 void ChromeToMobileService::HandleSubmitResponse(

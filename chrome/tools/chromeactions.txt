@@ -11,6 +11,7 @@
 0xf73b5212b48e2a75	AboutFlags_disable-print-preview
 0xdddbf34cee2c636c	AboutFlags_dns-server
 0x3add7fc42803849e	AboutFlags_downloads-new-ui
+0x487390cc957aa352	AboutFlags_enable-chrome-to-mobile
 0x4eae5ccc2900dffa	AboutFlags_enable-nacl
 0x6d932203ed5c6ae8	AboutFlags_enable-nacl-exception-handling
 0x1a3d598e2cd416a0	AboutFlags_enable-smooth-scrolling
@@ -183,7 +184,7 @@
 0xea9b835bf0310f85	ClearBrowsingData_Downloads
 0xe3c9686626019346	ClearBrowsingData_History
 0x86678d0ede469c46	ClearBrowsingData_LSOData
-0x82601d6a3aca0eb1	ClearBrowsingData_OriginBoundCerts
+0x82601d6a3aca0eb1	ClearBrowsingData_ServerBoundCerts
 0x511e8366cdda3890	ClearBrowsingData_Passwords
 0x6d69a061f7adf595	ClearBrowsingData_ShowDlg
 0x9fd631c62234969a	ClearSelection

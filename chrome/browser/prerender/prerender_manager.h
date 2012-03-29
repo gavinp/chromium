@@ -25,7 +25,6 @@
 #include "googleurl/src/gurl.h"
 
 class Profile;
-class TabContents;
 
 namespace base {
 class DictionaryValue;
@@ -190,8 +189,7 @@ class PrerenderManager : public base::SupportsWeakPtr<PrerenderManager>,
   bool IsOldRenderViewHost(
       const content::RenderViewHost* render_view_host) const;
 
-  // Checks whether navigation to the provided URL has occurred in a visible
-  // tab recently.
+  // Checks whether |url| has been recently navigated to.
   bool HasRecentlyBeenNavigatedTo(const GURL& url);
 
   // Returns true if the method given is invalid for prerendering.
@@ -238,6 +236,10 @@ class PrerenderManager : public base::SupportsWeakPtr<PrerenderManager>,
 
   // Returns true if |url| matches any URLs being prerendered.
   bool IsPrerendering(const GURL& url) const;
+
+  // Records that some visible tab navigated (or was redirected) to the
+  // provided URL.
+  void RecordNavigation(const GURL& url);
 
   PrerenderLinkManager* link_manager() { return link_manager_.get(); }
 
@@ -373,10 +375,6 @@ class PrerenderManager : public base::SupportsWeakPtr<PrerenderManager>,
 
   // Adds to the history list.
   void AddToHistory(PrerenderContents* contents);
-
-  // Records that some visible tab navigated (or was redirected) to the
-  // provided URL.
-  void RecordNavigation(const GURL& url);
 
   // Returns a new Value representing the pages currently being prerendered. The
   // caller is responsible for delete'ing the return value.

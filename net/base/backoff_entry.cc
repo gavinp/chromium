@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "base/logging.h"
 #include "base/rand_util.h"
@@ -29,13 +30,11 @@ void BackoffEntry::InformOfRequest(bool succeeded) {
     ++failure_count_;
     exponential_backoff_release_time_ = CalculateReleaseTime();
   } else {
-    // We slowly decay the number of times delayed instead of resetting it to 0
-    // in order to stay stable if we receive successes interleaved between lots
-    // of failures.
-    //
-    // TODO(joi): Revisit this; it might be most correct to go to zero
-    // but have a way to go back to "old error count +1" if there is
-    // another error soon after.
+    // We slowly decay the number of times delayed instead of
+    // resetting it to 0 in order to stay stable if we receive
+    // successes interleaved between lots of failures.  Note that in
+    // the normal case, the calculated release time (in the next
+    // statement) will be in the past once the method returns.
     if (failure_count_ > 0)
       --failure_count_;
 
@@ -121,10 +120,13 @@ base::TimeTicks BackoffEntry::CalculateReleaseTime() const {
   delay *= pow(policy_->multiply_factor, effective_failure_count - 1);
   delay -= base::RandDouble() * policy_->jitter_factor * delay;
 
+  const int64 kMaxInt64 = std::numeric_limits<int64>::max();
+  int64 delay_int = (delay > kMaxInt64) ?
+      kMaxInt64 : static_cast<int64>(delay + 0.5);
+
   // Ensure that we do not exceed maximum delay.
-  int64 delay_int = static_cast<int64>(delay + 0.5);
-  delay_int = std::min(delay_int,
-                       static_cast<int64>(policy_->maximum_backoff_ms));
+  if (policy_->maximum_backoff_ms >= 0)
+    delay_int = std::min(delay_int, policy_->maximum_backoff_ms);
 
   // Never reduce previously set release horizon, e.g. due to Retry-After
   // header.

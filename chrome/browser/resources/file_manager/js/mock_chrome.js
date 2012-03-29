@@ -203,7 +203,12 @@ chrome.fileBrowserPrivate = {
     }
   ],
 
-  fsPrefix_: 'filesystem:file:///persistent',
+  fsRe_: new RegExp('^filesystem:[^/]*://[^/]*/persistent(.*)'),
+
+  fileUrlToLocalPath_: function(fileUrl) {
+    var match = chrome.fileBrowserPrivate.fsRe_.exec(fileUrl);
+    return match && match[1];
+  },
 
   archiveCount_: 0,
 
@@ -239,8 +244,8 @@ chrome.fileBrowserPrivate = {
 
   removeMount: function(mountPoint) {
     for (var i = 0; i != chrome.fileBrowserPrivate.mountPoints_.length; i++) {
-      if (mountPoint == (chrome.fileBrowserPrivate.fsPrefix_ +
-          chrome.fileBrowserPrivate.mountPoints_[i].mountPath)) {
+      if (chrome.fileBrowserPrivate.fileUrlToLocalPath_(mountPoint) ==
+          chrome.fileBrowserPrivate.mountPoints_[i].mountPath) {
         chrome.fileBrowserPrivate.mountPoints_.splice(i, 1);
         break;
       }
@@ -264,8 +269,9 @@ chrome.fileBrowserPrivate = {
 
   getVolumeMetadata: function(url, callback) {
     var metadata = {};
+    var urlLocalPath = chrome.fileBrowserPrivate.fileUrlToLocalPath_(url);
     function urlStartsWith(path) {
-      return url.indexOf(chrome.fileBrowserPrivate.fsPrefix_ + path) == 0;
+      return urlLocalPath && urlLocalPath.indexOf(path) == 0;
     }
     if (urlStartsWith('/removable')) {
       metadata.deviceType = 'usb';
@@ -278,6 +284,33 @@ chrome.fileBrowserPrivate = {
       metadata.deviceType = 'file';
     }
     callback(metadata);
+  },
+
+  pinned_: {},
+
+  getGDataFileProperties: function(urls, callback) {
+    var response = [];
+    for (var i = 0; i != urls.length; i++) {
+      var url = urls[i];
+      response.push({
+        fileUrl: url,
+        isHosted: url.match(/\.g(doc|slides|sheet|draw|table)$/i),
+        isPinned: (url in chrome.fileBrowserPrivate.pinned_)
+      });
+    }
+    setTimeout(callback, 0, response);
+  },
+
+  pinGDataFile: function(urls, on, callback) {
+    for (var i = 0; i != urls.length; i++) {
+      var url = urls[i];
+      if (on) {
+        chrome.fileBrowserPrivate.pinned_[url] = true;
+      } else {
+        delete chrome.fileBrowserPrivate.pinned_[url];
+      }
+    }
+    chrome.fileBrowserPrivate.getGDataFileProperties(urls, callback);
   },
 
   toggleFullscreen: function() {
@@ -332,6 +365,7 @@ chrome.fileBrowserPrivate = {
       ERROR_NEW_FOLDER_EMPTY_NAME: 'Please specify a folder name',
       NEW_FOLDER_BUTTON_LABEL: 'New folder',
       FILENAME_LABEL: 'File Name',
+      PREPARING_LABEL: 'Preparing',
 
       DIMENSIONS_LABEL: 'Dimensions',
       DIMENSIONS_FORMAT: '$1 x $2',
@@ -371,6 +405,10 @@ chrome.fileBrowserPrivate = {
       GALLERY_SAVED: 'Saved',
       GALLERY_KEEP_ORIGINAL: 'Keep original',
       GALLERY_UNSAVED_CHANGES: 'Changes are not saved yet.',
+      GALLERY_READONLY_WARNING: '$1 is read only. Edited images will be saved in the Downloads folder.',
+      GALLERY_IMAGE_ERROR: 'This file could not be displayed',
+      GALLERY_VIDEO_ERROR: 'This file could not be played',
+      AUDIO_ERROR: 'This file could not be played',
 
       CONFIRM_OVERWRITE_FILE: 'A file named "$1" already exists. Do you want to replace it?',
       FILE_ALREADY_EXISTS: 'The file named "$1" already exists. Please choose a different name.',
@@ -459,9 +497,9 @@ chrome.fileBrowserPrivate = {
 
       FOLDER: 'Folder',
       DEVICE: 'Device',
-      IMAGE_FILE_TYPE: '$1 image file',
-      VIDEO_FILE_TYPE: '$1 video file',
-      AUDIO_FILE_TYPE: '$1 audio file',
+      IMAGE_FILE_TYPE: '$1 image',
+      VIDEO_FILE_TYPE: '$1 video',
+      AUDIO_FILE_TYPE: '$1 audio',
       HTML_DOCUMENT_FILE_TYPE: 'HTML document',
       ZIP_ARCHIVE_FILE_TYPE: 'Zip archive',
       RAR_ARCHIVE_FILE_TYPE: 'RAR archive',

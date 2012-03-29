@@ -72,7 +72,6 @@ class CONTENT_EXPORT ResourceDispatcherHostImpl
   // ResourceDispatcherHost implementation:
   virtual void SetDelegate(ResourceDispatcherHostDelegate* delegate) OVERRIDE;
   virtual void SetAllowCrossOriginAuthPrompt(bool value) OVERRIDE;
-  virtual void CancelRequestsForContext(ResourceContext* context) OVERRIDE;
   virtual net::Error BeginDownload(
       scoped_ptr<net::URLRequest> request,
       ResourceContext* context,
@@ -87,6 +86,11 @@ class CONTENT_EXPORT ResourceDispatcherHostImpl
   // Puts the resource dispatcher host in an inactive state (unable to begin
   // new requests).  Cancels all pending requests.
   void Shutdown();
+
+  // Force cancels any pending requests for the given |context|. This is
+  // necessary to ensure that before |context| goes away, all requests
+  // for it are dead.
+  void CancelRequestsForContext(ResourceContext* context);
 
   // Returns true if the message was a resource message that was processed.
   // If it was, message_was_ok will be false iff the message was corrupt.
@@ -437,7 +441,8 @@ class CONTENT_EXPORT ResourceDispatcherHostImpl
 
   // A timer that periodically calls UpdateLoadStates while pending_requests_
   // is not empty.
-  base::RepeatingTimer<ResourceDispatcherHostImpl> update_load_states_timer_;
+  scoped_ptr<base::RepeatingTimer<ResourceDispatcherHostImpl> >
+      update_load_states_timer_;
 
   // We own the download file writing thread and manager
   scoped_refptr<DownloadFileManager> download_file_manager_;

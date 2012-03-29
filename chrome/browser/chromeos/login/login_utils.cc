@@ -6,6 +6,7 @@
 
 #include <vector>
 
+#include "ash/ash_switches.h"
 #include "base/command_line.h"
 #include "base/compiler_specific.h"
 #include "base/file_path.h"
@@ -34,7 +35,6 @@
 #include "chrome/browser/chromeos/dbus/session_manager_client.h"
 #include "chrome/browser/chromeos/input_method/input_method_manager.h"
 #include "chrome/browser/chromeos/input_method/input_method_util.h"
-#include "chrome/browser/chromeos/login/cookie_fetcher.h"
 #include "chrome/browser/chromeos/login/language_switch_menu.h"
 #include "chrome/browser/chromeos/login/login_display_host.h"
 #include "chrome/browser/chromeos/login/ownership_service.h"
@@ -79,12 +79,8 @@
 #include "net/http/http_transaction_factory.h"
 #include "net/url_request/url_request_context.h"
 #include "net/url_request/url_request_context_getter.h"
-#include "ui/gfx/gl/gl_switches.h"
-
-#if defined(USE_AURA)
-#include "ash/ash_switches.h"
 #include "ui/gfx/compositor/compositor_switches.h"
-#endif
+#include "ui/gfx/gl/gl_switches.h"
 
 using content::BrowserThread;
 
@@ -908,6 +904,13 @@ void LoginUtilsImpl::OnProfileCreated(
 
   user_profile->OnLogin();
 
+  // Send the notification before creating the browser so additional objects
+  // that need the profile (e.g. the launcher) can be created first.
+  content::NotificationService::current()->Notify(
+      chrome::NOTIFICATION_LOGIN_USER_PROFILE_PREPARED,
+      content::NotificationService::AllSources(),
+      content::Details<Profile>(user_profile));
+
   // TODO(altimofeev): This pointer should probably never be NULL, but it looks
   // like LoginUtilsImpl::OnProfileCreated() may be getting called before
   // LoginUtilsImpl::PrepareProfile() has set |delegate_| when Chrome is killed
@@ -1033,15 +1036,20 @@ std::string LoginUtilsImpl::GetOffTheRecordCommandLine(
     CommandLine* command_line) {
   static const char* kForwardSwitches[] = {
       switches::kCompressSystemFeedback,
+      switches::kDeviceManagementUrl,
+      switches::kDisableAccelerated2dCanvas,
       switches::kDisableAcceleratedPlugins,
-      switches::kDisableSeccompSandbox,
       switches::kDisableLoginAnimations,
+      switches::kDisableSeccompSandbox,
+      switches::kDisableThreadedAnimation,
+      switches::kEnableDevicePolicy,
       switches::kEnableGView,
       switches::kEnableLogging,
       switches::kEnablePartialSwap,
       switches::kEnableSensors,
       switches::kEnableSmoothScrolling,
-      switches::kEnableThreadedAnimation,
+      switches::kEnableThreadedCompositing,
+      switches::kDisableThreadedCompositing,
       switches::kForceCompositingMode,
       switches::kLoginProfile,
       switches::kScrollPixels,
@@ -1050,8 +1058,9 @@ std::string LoginUtilsImpl::GetOffTheRecordCommandLine(
       switches::kPpapiFlashInProcess,
       switches::kPpapiFlashPath,
       switches::kPpapiFlashVersion,
+      switches::kFlingTapSuppressMaxDown,
+      switches::kFlingTapSuppressMaxGap,
       switches::kTouchDevices,
-#if defined(USE_AURA)
       ash::switches::kDisableAshUberTray,
       ash::switches::kAuraLegacyPowerButton,
       ash::switches::kAuraNoShadows,
@@ -1059,7 +1068,6 @@ std::string LoginUtilsImpl::GetOffTheRecordCommandLine(
       ash::switches::kAuraWindowAnimationsDisabled,
       switches::kUIEnablePartialSwap,
       switches::kUIUseGPUProcess,
-#endif
       switches::kUseGL,
       switches::kUserDataDir,
 #if defined(USE_VIRTUAL_KEYBOARD)

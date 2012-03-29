@@ -121,6 +121,7 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
   virtual void RequestMediaAccessPermission(
       const content::MediaStreamRequest* request,
       const content::MediaResponseCallback& callback) OVERRIDE;
+  virtual content::MediaObserver* GetMediaObserver() OVERRIDE;
   virtual void RequestDesktopNotificationPermission(
       const GURL& source_origin,
       int callback_context,
@@ -145,7 +146,8 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       const GURL& source_origin,
       WindowContainerType container_type,
       content::ResourceContext* context,
-      int render_process_id) OVERRIDE;
+      int render_process_id,
+      bool* no_javascript_access) OVERRIDE;
   virtual std::string GetWorkerProcessTitle(
       const GURL& url, content::ResourceContext* context) OVERRIDE;
   virtual void ResourceDispatcherHostCreated() OVERRIDE;

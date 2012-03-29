@@ -10,12 +10,12 @@
 #include <vector>
 
 #include "ash/ash_export.h"
+#include "ash/wm/shelf_auto_hide_behavior.h"
 #include "base/basictypes.h"
 #include "base/compiler_specific.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/observer_list.h"
-#include "ui/aura/monitor_manager.h"
 #include "ui/gfx/size.h"
 #include "ui/gfx/insets.h"
 
@@ -24,6 +24,7 @@ class SkBitmap;
 
 namespace aura {
 class EventFilter;
+class Monitor;
 class RootWindow;
 class Window;
 }
@@ -51,6 +52,7 @@ class ShellDelegate;
 class ShellObserver;
 class SystemTrayDelegate;
 class SystemTray;
+class UserWallpaperDelegate;
 class VideoDetector;
 class WindowCycleController;
 
@@ -59,8 +61,11 @@ class ActivationController;
 class AcceleratorFilter;
 class AppList;
 class DragDropController;
+class EventClientImpl;
 class FocusCycler;
 class InputMethodEventFilter;
+class KeyRewriterEventFilter;
+class MonitorController;
 class PartialScreenshotEventFilter;
 class ResizeShadowController;
 class RootWindowEventFilter;
@@ -79,7 +84,7 @@ class WorkspaceController;
 //
 // Upon creation, the Shell sets itself as the RootWindow's delegate, which
 // takes ownership of the Shell.
-class ASH_EXPORT Shell : public aura::MonitorObserver {
+class ASH_EXPORT Shell {
  public:
   enum Direction {
     FORWARD,
@@ -113,7 +118,7 @@ class ASH_EXPORT Shell : public aura::MonitorObserver {
 
   static void DeleteInstance();
 
-  // Get the singleton RootWindow used by the Shell.
+  // Gets the singleton RootWindow used by the Shell.
   static aura::RootWindow* GetRootWindow();
 
   internal::RootWindowLayoutManager* root_window_layout() const {
@@ -145,15 +150,20 @@ class ASH_EXPORT Shell : public aura::MonitorObserver {
   views::NonClientFrameView* CreateDefaultNonClientFrameView(
       views::Widget* widget);
 
-  // Rotate focus through containers that can receive focus.
+  // Rotates focus through containers that can receive focus.
   void RotateFocus(Direction direction);
 
   // Sets the work area insets of the monitor that contains |window|,
   // this notifies observers too.
+  // TODO(sky): this no longer really replicates what happens and is unreliable.
+  // Remove this.
   void SetMonitorWorkAreaInsets(aura::Window* window,
                                 const gfx::Insets& insets);
 
-  // Add/remove observer.
+  // Initializes |launcher_|.  Does nothing if it's already initialized.
+  void CreateLauncher();
+
+  // Adds/removes observer.
   void AddShellObserver(ShellObserver* observer);
   void RemoveShellObserver(ShellObserver* observer);
 
@@ -168,6 +178,9 @@ class ASH_EXPORT Shell : public aura::MonitorObserver {
   }
   internal::TooltipController* tooltip_controller() {
     return tooltip_controller_.get();
+  }
+  internal::KeyRewriterEventFilter* key_rewriter_filter() {
+    return key_rewriter_filter_.get();
   }
   internal::PartialScreenshotEventFilter* partial_screenshot_filter() {
     return partial_screenshot_filter_.get();
@@ -190,20 +203,28 @@ class ASH_EXPORT Shell : public aura::MonitorObserver {
 
   ShellDelegate* delegate() { return delegate_.get(); }
   SystemTrayDelegate* tray_delegate() { return tray_delegate_.get(); }
+  UserWallpaperDelegate* user_wallpaper_delegate() {
+    return user_wallpaper_delegate_.get();
+  }
 
   Launcher* launcher() { return launcher_.get(); }
 
   const ScreenAsh* screen() { return screen_; }
 
+  // Force the shelf to query for it's current visibility state.
+  void UpdateShelfVisibility();
+
+  // Sets/gets the shelf auto-hide behavior.
+  void SetShelfAutoHideBehavior(ShelfAutoHideBehavior behavior);
+  ShelfAutoHideBehavior GetShelfAutoHideBehavior() const;
+
+  // TODO(sky): don't expose this!
   internal::ShelfLayoutManager* shelf() const { return shelf_; }
 
   SystemTray* tray() const { return tray_.get(); }
 
   // Returns the size of the grid.
   int GetGridSize() const;
-
-  // aura::MonitorObserver overrides:
-  virtual void OnMonitorBoundsChanged(const aura::Monitor* monitor) OVERRIDE;
 
   static void set_initially_hide_cursor(bool hide) {
     initially_hide_cursor_ = hide;
@@ -256,6 +277,7 @@ class ASH_EXPORT Shell : public aura::MonitorObserver {
 
   scoped_ptr<ShellDelegate> delegate_;
   scoped_ptr<SystemTrayDelegate> tray_delegate_;
+  scoped_ptr<UserWallpaperDelegate> user_wallpaper_delegate_;
 
   scoped_ptr<Launcher> launcher_;
 
@@ -275,9 +297,11 @@ class ASH_EXPORT Shell : public aura::MonitorObserver {
   scoped_ptr<VideoDetector> video_detector_;
   scoped_ptr<WindowCycleController> window_cycle_controller_;
   scoped_ptr<internal::FocusCycler> focus_cycler_;
+  scoped_ptr<internal::EventClientImpl> event_client_;
+  scoped_ptr<internal::MonitorController> monitor_controller_;
 
-  // An event filter that pre-handles all key events to send them to an IME.
-  scoped_ptr<internal::InputMethodEventFilter> input_method_filter_;
+  // An event filter that rewrites or drops a key event.
+  scoped_ptr<internal::KeyRewriterEventFilter> key_rewriter_filter_;
 
   // An event filter that pre-handles key events while the partial
   // screenshot UI is active.
@@ -287,6 +311,9 @@ class ASH_EXPORT Shell : public aura::MonitorObserver {
   // An event filter that pre-handles global accelerators.
   scoped_ptr<internal::AcceleratorFilter> accelerator_filter_;
 #endif
+
+  // An event filter that pre-handles all key events to send them to an IME.
+  scoped_ptr<internal::InputMethodEventFilter> input_method_filter_;
 
   // The shelf for managing the launcher and the status widget in non-compact
   // mode. Shell does not own the shelf. Instead, it is owned by container of

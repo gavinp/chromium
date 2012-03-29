@@ -7,10 +7,11 @@
 #include "base/logging.h"
 #include "base/string_split.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/shell/shell_network_delegate.h"
 #include "net/base/cert_verifier.h"
-#include "net/base/default_origin_bound_cert_store.h"
+#include "net/base/default_server_bound_cert_store.h"
 #include "net/base/host_resolver.h"
-#include "net/base/origin_bound_cert_service.h"
+#include "net/base/server_bound_cert_service.h"
 #include "net/base/ssl_config_service_defaults.h"
 #include "net/cookies/cookie_monster.h"
 #include "net/http/http_auth_handler_factory.h"
@@ -49,11 +50,12 @@ net::URLRequestContext* ShellURLRequestContextGetter::GetURLRequestContext() {
 
   if (!url_request_context_) {
     url_request_context_ = new net::URLRequestContext();
+    network_delegate_.reset(new ShellNetworkDelegate);
+    url_request_context_->set_network_delegate(network_delegate_.get());
     storage_.reset(new net::URLRequestContextStorage(url_request_context_));
-
     storage_->set_cookie_store(new net::CookieMonster(NULL, NULL));
-    storage_->set_origin_bound_cert_service(new net::OriginBoundCertService(
-        new net::DefaultOriginBoundCertStore(NULL)));
+    storage_->set_server_bound_cert_service(new net::ServerBoundCertService(
+        new net::DefaultServerBoundCertStore(NULL)));
     url_request_context_->set_accept_language("en-us,en");
     url_request_context_->set_accept_charset("iso-8859-1,*,utf-8");
 
@@ -61,7 +63,7 @@ net::URLRequestContext* ShellURLRequestContextGetter::GetURLRequestContext() {
         net::CreateSystemHostResolver(net::HostResolver::kDefaultParallelism,
                                       net::HostResolver::kDefaultRetryAttempts,
                                       NULL));
-    storage_->set_cert_verifier(new net::CertVerifier);
+    storage_->set_cert_verifier(net::CertVerifier::CreateDefault());
     // TODO(jam): use v8 if possible, look at chrome code.
     storage_->set_proxy_service(
         net::ProxyService::CreateUsingSystemProxyResolver(
@@ -86,13 +88,13 @@ net::URLRequestContext* ShellURLRequestContextGetter::GetURLRequestContext() {
     net::HttpCache* main_cache = new net::HttpCache(
         url_request_context_->host_resolver(),
         url_request_context_->cert_verifier(),
-        url_request_context_->origin_bound_cert_service(),
+        url_request_context_->server_bound_cert_service(),
         NULL, // tranport_security_state
         url_request_context_->proxy_service(),
         "", // ssl_session_cache_shard
         url_request_context_->ssl_config_service(),
         url_request_context_->http_auth_handler_factory(),
-        NULL,  // network_delegate
+        url_request_context_->network_delegate(),
         url_request_context_->http_server_properties(),
         NULL,
         main_backend);
@@ -102,13 +104,6 @@ net::URLRequestContext* ShellURLRequestContextGetter::GetURLRequestContext() {
   }
 
   return url_request_context_;
-}
-
-net::CookieStore* ShellURLRequestContextGetter::DONTUSEME_GetCookieStore() {
-  if (BrowserThread::CurrentlyOn(BrowserThread::IO))
-    return GetURLRequestContext()->cookie_store();
-  NOTIMPLEMENTED();
-  return NULL;
 }
 
 scoped_refptr<base::MessageLoopProxy>

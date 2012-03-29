@@ -240,11 +240,11 @@ TEST_F(WindowTest, GetChildById) {
 // and not containing NULL or parents.
 TEST_F(WindowTest, Contains) {
   Window parent(NULL);
-  parent.Init(ui::Layer::LAYER_NOT_DRAWN);
+  parent.Init(ui::LAYER_NOT_DRAWN);
   Window child1(NULL);
-  child1.Init(ui::Layer::LAYER_NOT_DRAWN);
+  child1.Init(ui::LAYER_NOT_DRAWN);
   Window child2(NULL);
-  child2.Init(ui::Layer::LAYER_NOT_DRAWN);
+  child2.Init(ui::LAYER_NOT_DRAWN);
 
   child1.SetParent(&parent);
   child2.SetParent(&child1);
@@ -272,7 +272,7 @@ TEST_F(WindowTest, ConvertPointToWindow) {
 TEST_F(WindowTest, HitTest) {
   Window w1(new ColorTestWindowDelegate(SK_ColorWHITE));
   w1.set_id(1);
-  w1.Init(ui::Layer::LAYER_TEXTURED);
+  w1.Init(ui::LAYER_TEXTURED);
   w1.SetBounds(gfx::Rect(10, 20, 50, 60));
   w1.Show();
   w1.SetParent(NULL);
@@ -282,7 +282,7 @@ TEST_F(WindowTest, HitTest) {
   EXPECT_FALSE(w1.HitTest(gfx::Point(-1, -1)));
 
   // We can expand the bounds slightly to track events outside our border.
-  w1.SetHitTestBoundsOverride(1, 0);
+  w1.set_hit_test_bounds_override_outer(gfx::Insets(-1, -1, -1, -1));
   EXPECT_TRUE(w1.HitTest(gfx::Point(-1, -1)));
   EXPECT_FALSE(w1.HitTest(gfx::Point(-2, -2)));
 
@@ -330,7 +330,7 @@ TEST_F(WindowTest, GetEventHandlerForPointWithOverride) {
 
   // We can override the hit test bounds of the parent to make the parent grab
   // events along that edge.
-  parent->SetHitTestBoundsOverride(0, 1);
+  parent->set_hit_test_bounds_override_inner(gfx::Insets(1, 1, 1, 1));
   EXPECT_EQ(parent.get(), parent->GetEventHandlerForPoint(gfx::Point(0, 0)));
   EXPECT_EQ(child.get(),  parent->GetEventHandlerForPoint(gfx::Point(1, 1)));
 }
@@ -354,10 +354,6 @@ TEST_F(WindowTest, GetTopWindowContainingPoint) {
       CreateTestWindow(SK_ColorCYAN, 31, gfx::Rect(0, 0, 50, 50), w3.get()));
   scoped_ptr<Window> w311(
       CreateTestWindow(SK_ColorBLUE, 311, gfx::Rect(0, 0, 10, 10), w31.get()));
-
-  // The stop-event-propagation flag shouldn't have any effect on the behavior
-  // of this method.
-  w3->set_stops_event_propagation(true);
 
   EXPECT_EQ(NULL, root->GetTopWindowContainingPoint(gfx::Point(0, 0)));
   EXPECT_EQ(w2.get(), root->GetTopWindowContainingPoint(gfx::Point(5, 5)));
@@ -421,11 +417,11 @@ TEST_F(WindowTest, OrphanedBeforeOnDestroyed) {
 // Make sure StackChildAtTop moves both the window and layer to the front.
 TEST_F(WindowTest, StackChildAtTop) {
   Window parent(NULL);
-  parent.Init(ui::Layer::LAYER_NOT_DRAWN);
+  parent.Init(ui::LAYER_NOT_DRAWN);
   Window child1(NULL);
-  child1.Init(ui::Layer::LAYER_NOT_DRAWN);
+  child1.Init(ui::LAYER_NOT_DRAWN);
   Window child2(NULL);
-  child2.Init(ui::Layer::LAYER_NOT_DRAWN);
+  child2.Init(ui::LAYER_NOT_DRAWN);
 
   child1.SetParent(&parent);
   child2.SetParent(&parent);
@@ -448,15 +444,15 @@ TEST_F(WindowTest, StackChildAtTop) {
 // Make sure StackChildBelow works.
 TEST_F(WindowTest, StackChildBelow) {
   Window parent(NULL);
-  parent.Init(ui::Layer::LAYER_NOT_DRAWN);
+  parent.Init(ui::LAYER_NOT_DRAWN);
   Window child1(NULL);
-  child1.Init(ui::Layer::LAYER_NOT_DRAWN);
+  child1.Init(ui::LAYER_NOT_DRAWN);
   child1.set_id(1);
   Window child2(NULL);
-  child2.Init(ui::Layer::LAYER_NOT_DRAWN);
+  child2.Init(ui::LAYER_NOT_DRAWN);
   child2.set_id(2);
   Window child3(NULL);
-  child3.Init(ui::Layer::LAYER_NOT_DRAWN);
+  child3.Init(ui::LAYER_NOT_DRAWN);
   child3.set_id(3);
 
   child1.SetParent(&parent);
@@ -480,13 +476,13 @@ TEST_F(WindowTest, StackChildBelow) {
 // Various assertions for StackChildAbove.
 TEST_F(WindowTest, StackChildAbove) {
   Window parent(NULL);
-  parent.Init(ui::Layer::LAYER_NOT_DRAWN);
+  parent.Init(ui::LAYER_NOT_DRAWN);
   Window child1(NULL);
-  child1.Init(ui::Layer::LAYER_NOT_DRAWN);
+  child1.Init(ui::LAYER_NOT_DRAWN);
   Window child2(NULL);
-  child2.Init(ui::Layer::LAYER_NOT_DRAWN);
+  child2.Init(ui::LAYER_NOT_DRAWN);
   Window child3(NULL);
-  child3.Init(ui::Layer::LAYER_NOT_DRAWN);
+  child3.Init(ui::LAYER_NOT_DRAWN);
 
   child1.SetParent(&parent);
   child2.SetParent(&parent);
@@ -572,7 +568,7 @@ TEST_F(WindowTest, CaptureTests) {
   generator.PressLeftButton();
   EXPECT_EQ(1, delegate.mouse_event_count());
 
-  TouchEvent touchev2(ui::ET_TOUCH_PRESSED, gfx::Point(50, 50), 1);
+  TouchEvent touchev2(ui::ET_TOUCH_PRESSED, gfx::Point(250, 250), 1);
   root_window()->DispatchTouchEvent(&touchev2);
   EXPECT_EQ(0, delegate.touch_event_count());
 
@@ -808,58 +804,6 @@ TEST_F(WindowTest, Visibility) {
   EXPECT_TRUE(w3->IsVisible());
 }
 
-// When set_consume_events() is called with |true| for a Window, that Window
-// should make sure that none behind it in the z-order see events if it has
-// children. If it does not have children, event targeting works as usual.
-TEST_F(WindowTest, StopsEventPropagation) {
-  TestWindowDelegate d11;
-  TestWindowDelegate d111;
-  TestWindowDelegate d121;
-  scoped_ptr<Window> w1(CreateTestWindowWithDelegate(NULL, 1,
-      gfx::Rect(0, 0, 500, 500), NULL));
-  scoped_ptr<Window> w11(CreateTestWindowWithDelegate(&d11, 11,
-      gfx::Rect(0, 0, 500, 500), w1.get()));
-  scoped_ptr<Window> w111(CreateTestWindowWithDelegate(&d111, 111,
-      gfx::Rect(50, 50, 450, 450), w11.get()));
-  scoped_ptr<Window> w12(CreateTestWindowWithDelegate(NULL, 12,
-      gfx::Rect(0, 0, 500, 500), w1.get()));
-  scoped_ptr<Window> w121(CreateTestWindowWithDelegate(&d121, 121,
-      gfx::Rect(150, 150, 50, 50), NULL));
-
-  w12->set_stops_event_propagation(true);
-  EXPECT_EQ(w11.get(), w1->GetEventHandlerForPoint(gfx::Point(10, 10)));
-
-  EXPECT_TRUE(w111->CanFocus());
-  EXPECT_TRUE(w111->CanReceiveEvents());
-  w111->Focus();
-  EXPECT_EQ(w111.get(), w1->GetFocusManager()->GetFocusedWindow());
-
-  w12->AddChild(w121.get());
-
-  EXPECT_EQ(NULL, w1->GetEventHandlerForPoint(gfx::Point(10, 10)));
-  EXPECT_EQ(w121.get(), w1->GetEventHandlerForPoint(gfx::Point(175, 175)));
-
-  // It should be possible to focus w121 since it is at or above the
-  // consumes_events_ window.
-  EXPECT_TRUE(w121->CanFocus());
-  EXPECT_TRUE(w121->CanReceiveEvents());
-  w121->Focus();
-  EXPECT_EQ(w121.get(), w1->GetFocusManager()->GetFocusedWindow());
-
-  // An attempt to focus 111 should be ignored and w121 should retain focus,
-  // since a consumes_events_ window with a child is in the z-index above w111.
-  EXPECT_FALSE(w111->CanReceiveEvents());
-  w111->Focus();
-  EXPECT_EQ(w121.get(), w1->GetFocusManager()->GetFocusedWindow());
-
-  // Hiding w121 should make 111 focusable.
-  w121->Hide();
-  EXPECT_TRUE(w111->CanFocus());
-  EXPECT_TRUE(w111->CanReceiveEvents());
-  w111->Focus();
-  EXPECT_EQ(w111.get(), w1->GetFocusManager()->GetFocusedWindow());
-}
-
 TEST_F(WindowTest, IgnoreEventsTest) {
   TestWindowDelegate d11;
   TestWindowDelegate d12;
@@ -905,11 +849,13 @@ TEST_F(WindowTest, Transform) {
   // The size should be the transformed size.
   gfx::Size transformed_size(size.height(), size.width());
   EXPECT_EQ(transformed_size.ToString(),
-            root_window()->GetHostSize().ToString());
-  EXPECT_EQ(transformed_size.ToString(),
             root_window()->bounds().size().ToString());
   EXPECT_EQ(gfx::Rect(transformed_size).ToString(),
             gfx::Screen::GetMonitorAreaNearestPoint(gfx::Point()).ToString());
+
+  // Host size shouldn't change.
+  EXPECT_EQ(size.ToString(),
+            root_window()->GetHostSize().ToString());
 }
 
 TEST_F(WindowTest, TransformGesture) {
@@ -1772,7 +1718,7 @@ TEST_F(WindowTest, RootWindowAttachment) {
 
   // Test a direct add/remove from the RootWindow.
   scoped_ptr<Window> w1(new Window(NULL));
-  w1->Init(ui::Layer::LAYER_NOT_DRAWN);
+  w1->Init(ui::LAYER_NOT_DRAWN);
   w1->AddObserver(&observer);
 
   w1->SetParent(NULL);
@@ -1787,9 +1733,9 @@ TEST_F(WindowTest, RootWindowAttachment) {
 
   // Test an indirect add/remove from the RootWindow.
   w1.reset(new Window(NULL));
-  w1->Init(ui::Layer::LAYER_NOT_DRAWN);
+  w1->Init(ui::LAYER_NOT_DRAWN);
   Window* w11 = new Window(NULL);
-  w11->Init(ui::Layer::LAYER_NOT_DRAWN);
+  w11->Init(ui::LAYER_NOT_DRAWN);
   w11->AddObserver(&observer);
   w11->SetParent(w1.get());
   EXPECT_EQ(0, observer.added_count());
@@ -1808,13 +1754,13 @@ TEST_F(WindowTest, RootWindowAttachment) {
 
   // Test an indirect add/remove with nested observers.
   w1.reset(new Window(NULL));
-  w1->Init(ui::Layer::LAYER_NOT_DRAWN);
+  w1->Init(ui::LAYER_NOT_DRAWN);
   w11 = new Window(NULL);
-  w11->Init(ui::Layer::LAYER_NOT_DRAWN);
+  w11->Init(ui::LAYER_NOT_DRAWN);
   w11->AddObserver(&observer);
   w11->SetParent(w1.get());
   Window* w111 = new Window(NULL);
-  w111->Init(ui::Layer::LAYER_NOT_DRAWN);
+  w111->Init(ui::LAYER_NOT_DRAWN);
   w111->AddObserver(&observer);
   w111->SetParent(w11);
 

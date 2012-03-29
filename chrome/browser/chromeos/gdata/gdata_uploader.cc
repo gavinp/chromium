@@ -8,9 +8,11 @@
 
 #include "base/bind.h"
 #include "base/callback.h"
+#include "chrome/browser/chromeos/gdata/gdata_files.h"
 #include "chrome/browser/chromeos/gdata/gdata_file_system.h"
 #include "chrome/browser/chromeos/gdata/gdata_upload_file_info.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/download_item.h"
 #include "net/base/file_stream.h"
 #include "net/base/net_errors.h"
 
@@ -37,79 +39,103 @@ GDataUploader::GDataUploader(GDataFileSystem* file_system)
 GDataUploader::~GDataUploader() {
 }
 
-void GDataUploader::UploadFile(UploadFileInfo* upload_file_info) {
+int GDataUploader::UploadFile(scoped_ptr<UploadFileInfo> upload_file_info) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  DCHECK(upload_file_info);
+  DCHECK(upload_file_info.get());
   DCHECK_EQ(upload_file_info->upload_id, -1);
+  DCHECK(!upload_file_info->file_path.empty());
+  DCHECK_NE(upload_file_info->file_size, 0);
+  DCHECK(!upload_file_info->gdata_path.empty());
+  DCHECK(!upload_file_info->title.empty());
+  DCHECK(!upload_file_info->content_type.empty());
 
-  upload_file_info->upload_id = next_upload_id_++;
+  const int upload_id = next_upload_id_++;
+  upload_file_info->upload_id = upload_id;
   // Add upload_file_info to our internal map and take ownership.
-  pending_uploads_[upload_file_info->upload_id] = upload_file_info;
-  DVLOG(1) << "Uploading file: " << upload_file_info->DebugString();
+  pending_uploads_[upload_id] = upload_file_info.release();
+
+  UploadFileInfo* info = GetUploadFileInfo(upload_id);
+  DVLOG(1) << "Uploading file: " << info->DebugString();
 
   // Create a FileStream to make sure the file can be opened successfully.
-  upload_file_info->file_stream = new net::FileStream(NULL);
+  info->file_stream = new net::FileStream(NULL);
 
   // Create buffer to hold upload data.
-  upload_file_info->buf_len = std::min(upload_file_info->file_size,
-                                       kUploadChunkSize);
-  upload_file_info->buf = new net::IOBuffer(upload_file_info->buf_len);
+  info->buf_len = std::min(info->file_size, kUploadChunkSize);
+  info->buf = new net::IOBuffer(info->buf_len);
 
-  OpenFile(upload_file_info);
+  OpenFile(info);
+  return upload_id;
 }
 
 void GDataUploader::UpdateUpload(int upload_id,
-                                 const FilePath& file_path,
-                                 int64 file_size,
-                                 bool download_complete) {
+                                 content::DownloadItem* download) {
   UploadFileInfo* upload_file_info = GetUploadFileInfo(upload_id);
   if (!upload_file_info)
     return;
 
-  // Update file_size and download_complete.
+  const int64 file_size = download->GetReceivedBytes();
+
+  // Update file_size and all_bytes_present.
   DVLOG(1) << "Updating file size from " << upload_file_info->file_size
-           << " to " << file_size;
+           << " to " << file_size
+           << (download->AllDataSaved() ? " (AllDataSaved)" : " (In-progress)");
   upload_file_info->file_size = file_size;
-  upload_file_info->download_complete = download_complete;
+  upload_file_info->all_bytes_present = download->AllDataSaved();
+  if (upload_file_info->file_path != download->GetFullPath()) {
+    // We shouldn't see a rename if should_retry_file_open is true. The only
+    // rename we expect (for now) is the final rename that happens after the
+    // download transition from IN_PROGRESS -> COMPLETE. This, in turn, only
+    // happens after the upload completes. However, since this isn't enforced by
+    // the API contract, we reset the retry count so we can retry all over again
+    // with the new path.
+    // TODO(asanka): Introduce a synchronization point after the initial rename
+    //               of the download and get rid of the retry logic.
+    upload_file_info->num_file_open_tries = 0;
+    upload_file_info->file_path = download->GetFullPath();
+  }
 
   // Resume upload if necessary and possible.
   if (upload_file_info->upload_paused &&
-      (upload_file_info->download_complete ||
-      upload_file_info->SizeRemaining() >= kUploadChunkSize)) {
+      (upload_file_info->all_bytes_present ||
+       upload_file_info->SizeRemaining() > kUploadChunkSize)) {
     DVLOG(1) << "Resuming upload " << upload_file_info->title;
     upload_file_info->upload_paused = false;
     UploadNextChunk(upload_file_info);
   }
 
-  // Retry opening this file if we failed before.
-  // File open can fail because the downloads system downloads to temporary
-  // locations then renames files.
+  // Retry opening this file if we failed before.  File open can fail because
+  // the downloads system sets the full path on the UI thread and schedules a
+  // rename on the FILE thread. Thus the new path is visible on the UI thread
+  // before the renamed file is available on the file system.
   if (upload_file_info->should_retry_file_open) {
-    // Reset number of file open tries if file_path has changed.
-    // This can happen when the file gets renamed from the intermediate
-    // 'foo.crdownload' to the final 'foo' path.
-    if (upload_file_info->file_path != file_path)
-      upload_file_info->num_file_open_tries = 0;
-    upload_file_info->file_path = file_path;
+    DCHECK(!download->IsComplete());
     // Disallow further retries.
     upload_file_info->should_retry_file_open = false;
-
     OpenFile(upload_file_info);
   }
+
+  if (download->IsComplete())
+    MoveFileToCache(upload_file_info);
 }
 
-UploadFileInfo* GDataUploader::GetUploadFileInfo(int upload_id) {
+int64 GDataUploader::GetUploadedBytes(int upload_id) const {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  UploadFileInfo* upload_info = GetUploadFileInfo(upload_id);
+  // We return the start_range as the count of uploaded bytes since that is the
+  // start of the next or currently uploading chunk.
+  // TODO(asanka): Use a finer grained progress value than this. We end up
+  //               reporting progress in kUploadChunkSize increments.
+  return upload_info ? upload_info->start_range : 0;
+}
+
+UploadFileInfo* GDataUploader::GetUploadFileInfo(int upload_id) const {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
 
-  UploadFileInfoMap::iterator it = pending_uploads_.find(upload_id);
+  UploadFileInfoMap::const_iterator it = pending_uploads_.find(upload_id);
+  DVLOG_IF(1, it == pending_uploads_.end()) << "No upload found for id "
+                                            << upload_id;
   return it != pending_uploads_.end() ? it->second : NULL;
-}
-
-void GDataUploader::RemovePendingUpload(UploadFileInfo* upload_file_info) {
-  pending_uploads_.erase(upload_file_info->upload_id);
-  // The file stream is closed by the destructor asynchronously.
-  delete upload_file_info->file_stream;
-  delete upload_file_info;
 }
 
 void GDataUploader::OpenFile(UploadFileInfo* upload_file_info) {
@@ -149,7 +175,7 @@ void GDataUploader::OpenCompletionCallback(int upload_id, int result) {
         upload_file_info->num_file_open_tries >= kMaxFileOpenTries;
     upload_file_info->should_retry_file_open = !exceeded_max_attempts;
     if (exceeded_max_attempts)
-      RemovePendingUpload(upload_file_info);
+      UploadFailed(upload_file_info);
 
     return;
   }
@@ -182,8 +208,7 @@ void GDataUploader::OnUploadLocationReceived(
 
   if (code != HTTP_SUCCESS) {
     // TODO(achuith): Handle error codes from Google Docs server.
-    RemovePendingUpload(upload_file_info);
-    NOTREACHED();
+    UploadFailed(upload_file_info);
     return;
   }
 
@@ -201,13 +226,19 @@ void GDataUploader::UploadNextChunk(UploadFileInfo* upload_file_info) {
 
   // Determine number of bytes to read for this upload iteration, which cannot
   // exceed size of buf i.e. buf_len.
+  const int64 bytes_remaining = upload_file_info->SizeRemaining();
   const int bytes_to_read = std::min(upload_file_info->SizeRemaining(),
                                      upload_file_info->buf_len);
 
   // Update the content length if the file_size is known.
-  if (upload_file_info->download_complete)
+  if (upload_file_info->all_bytes_present)
     upload_file_info->content_length = upload_file_info->file_size;
-  else if (bytes_to_read < kUploadChunkSize) {
+  else if (bytes_remaining == bytes_to_read) {
+    // Wait for more data if this is the last chunk we have and we don't know
+    // whether we've reached the end of the file. We won't know how much data to
+    // expect until the transfer is complete (the Content-Length might be
+    // incorrect or absent). If we've sent the last chunk out already when we
+    // find out there's no more data, we won't be able to complete the upload.
     DVLOG(1) << "Paused upload " << upload_file_info->title;
     upload_file_info->upload_paused = true;
     return;
@@ -260,7 +291,8 @@ void GDataUploader::ReadCompletionCallback(
 
 void GDataUploader::OnResumeUploadResponseReceived(
     int upload_id,
-    const ResumeUploadResponse& response) {
+    const ResumeUploadResponse& response,
+    scoped_ptr<DocumentEntry> entry) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
 
   UploadFileInfo* upload_file_info = GetUploadFileInfo(upload_id);
@@ -269,18 +301,17 @@ void GDataUploader::OnResumeUploadResponseReceived(
 
   if (response.code == HTTP_CREATED) {
     DVLOG(1) << "Successfully created uploaded file=["
-             << upload_file_info->title
-             << "], with resourceId=[" << response.resource_id
-             << "], and md5Checksum=[" << response.md5_checksum << "]";
+             << upload_file_info->title;
 
     // Done uploading.
-    DCHECK(!response.resource_id.empty());
-    DCHECK(!response.md5_checksum.empty());
-    file_system_->StoreToCache(response.resource_id,
-        response.md5_checksum,
-        upload_file_info->file_path,
-        CacheOperationCallback());
-    RemovePendingUpload(upload_file_info);
+    upload_file_info->entry = entry.Pass();
+    if (!upload_file_info->completion_callback.is_null()) {
+      upload_file_info->completion_callback.Run(base::PLATFORM_FILE_OK,
+                                                upload_file_info);
+      upload_file_info->completion_callback.Reset();
+    }
+    // TODO(achuith): DeleteUpload() here and let clients call
+    // GDataFileSystem::AddUploadedFile.
     return;
   }
 
@@ -305,7 +336,7 @@ void GDataUploader::OnResumeUploadResponseReceived(
                  << ", end_range_received=" << response.end_range_received
                  << ", expected end range=" << upload_file_info->end_range;
 
-    RemovePendingUpload(upload_file_info);
+    UploadFailed(upload_file_info);
     return;
   }
 
@@ -315,6 +346,42 @@ void GDataUploader::OnResumeUploadResponseReceived(
 
   // Continue uploading.
   UploadNextChunk(upload_file_info);
+}
+
+void GDataUploader::MoveFileToCache(UploadFileInfo* upload_file_info) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  if (upload_file_info->entry == NULL)
+    return;
+
+  DVLOG(1) << "MoveFileToCache " << upload_file_info->file_path.value();
+  file_system_->AddUploadedFile(
+      upload_file_info->gdata_path.DirName(),
+      upload_file_info->entry.get(),
+      upload_file_info->file_path,
+      GDataFileSystemInterface::FILE_OPERATION_MOVE);
+  DeleteUpload(upload_file_info);
+}
+
+void GDataUploader::UploadFailed(UploadFileInfo* upload_file_info) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  LOG(ERROR) << "Upload failed " << upload_file_info->DebugString();
+  if (!upload_file_info->completion_callback.is_null()) {
+    upload_file_info->completion_callback.Run(base::PLATFORM_FILE_ERROR_ABORT,
+                                              upload_file_info);
+  }
+  file_system_->CancelOperation(upload_file_info->gdata_path);
+  DeleteUpload(upload_file_info);
+}
+
+void GDataUploader::DeleteUpload(UploadFileInfo* upload_file_info) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+
+  DVLOG(1) << "Deleting upload " << upload_file_info->gdata_path.value();
+  pending_uploads_.erase(upload_file_info->upload_id);
+
+  // The file stream is closed by the destructor asynchronously.
+  delete upload_file_info->file_stream;
+  delete upload_file_info;
 }
 
 }  // namespace gdata

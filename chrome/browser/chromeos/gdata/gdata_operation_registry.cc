@@ -32,6 +32,8 @@ std::string GDataOperationRegistry::OperationTransferStateToString(
     case OPERATION_IN_PROGRESS: return "in_progress";
     case OPERATION_COMPLETED: return "completed";
     case OPERATION_FAILED: return "failed";
+    // Suspended state is opaque to users and looks as same as "in_progress".
+    case OPERATION_SUSPENDED: return "in_progress";
   }
   NOTREACHED();
   return "unknown_transfer_state";
@@ -72,8 +74,9 @@ GDataOperationRegistry::Operation::Operation(GDataOperationRegistry* registry,
 }
 
 GDataOperationRegistry::Operation::~Operation() {
-  DCHECK(progress_status_.transfer_state == OPERATION_COMPLETED
-      || progress_status_.transfer_state == OPERATION_FAILED);
+  DCHECK(progress_status_.transfer_state == OPERATION_COMPLETED ||
+         progress_status_.transfer_state == OPERATION_SUSPENDED ||
+         progress_status_.transfer_state == OPERATION_FAILED);
 }
 
 void GDataOperationRegistry::Operation::Cancel() {
@@ -83,9 +86,12 @@ void GDataOperationRegistry::Operation::Cancel() {
 
 void GDataOperationRegistry::Operation::NotifyStart() {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  progress_status_.transfer_state = OPERATION_STARTED;
-  progress_status_.start_time = base::Time::Now();
-  registry_->OnOperationStart(this, &progress_status_.operation_id);
+  // Some operations may be restarted. Report only the first "start".
+  if (progress_status_.transfer_state == OPERATION_NOT_STARTED) {
+    progress_status_.transfer_state = OPERATION_STARTED;
+    progress_status_.start_time = base::Time::Now();
+    registry_->OnOperationStart(this, &progress_status_.operation_id);
+  }
 }
 
 void GDataOperationRegistry::Operation::NotifyProgress(
@@ -105,6 +111,21 @@ void GDataOperationRegistry::Operation::NotifyFinish(
   DCHECK(status == OPERATION_COMPLETED || status == OPERATION_FAILED);
   progress_status_.transfer_state = status;
   registry_->OnOperationFinish(progress_status().operation_id);
+}
+
+void GDataOperationRegistry::Operation::NotifySuspend() {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  DCHECK(progress_status_.transfer_state >= OPERATION_STARTED);
+  progress_status_.transfer_state = OPERATION_SUSPENDED;
+  registry_->OnOperationSuspend(progress_status().operation_id);
+}
+
+void GDataOperationRegistry::Operation::NotifyResume() {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  if (progress_status_.transfer_state == OPERATION_NOT_STARTED) {
+    progress_status_.transfer_state = OPERATION_IN_PROGRESS;
+    registry_->OnOperationResume(this, &progress_status_);
+  }
 }
 
 GDataOperationRegistry::GDataOperationRegistry() {
@@ -159,8 +180,10 @@ void GDataOperationRegistry::OnOperationStart(
 
   *id = in_flight_operations_.Add(operation);
   DVLOG(1) << "GDataOperation[" << *id << "] started.";
-  FOR_EACH_OBSERVER(Observer, observer_list_,
-                    OnProgressUpdate(GetProgressStatusList()));
+  if (IsFileTransferOperation(operation)) {
+    FOR_EACH_OBSERVER(Observer, observer_list_,
+                      OnProgressUpdate(GetProgressStatusList()));
+  }
 }
 
 void GDataOperationRegistry::OnOperationProgress(OperationID id) {
@@ -171,17 +194,82 @@ void GDataOperationRegistry::OnOperationProgress(OperationID id) {
 
   DVLOG(1) << "GDataOperation[" << id << "] " <<
       operation->progress_status().ToString();
-  FOR_EACH_OBSERVER(Observer, observer_list_,
-                    OnProgressUpdate(GetProgressStatusList()));
+  if (IsFileTransferOperation(operation)) {
+    FOR_EACH_OBSERVER(Observer, observer_list_,
+                      OnProgressUpdate(GetProgressStatusList()));
+  }
 }
 
 void GDataOperationRegistry::OnOperationFinish(OperationID id) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
 
+  Operation* operation = in_flight_operations_.Lookup(id);
+  DCHECK(operation);
+
   DVLOG(1) << "GDataOperation[" << id << "] finished.";
-  FOR_EACH_OBSERVER(Observer, observer_list_,
-                    OnProgressUpdate(GetProgressStatusList()));
+  if (IsFileTransferOperation(operation)) {
+    FOR_EACH_OBSERVER(Observer, observer_list_,
+                      OnProgressUpdate(GetProgressStatusList()));
+  }
   in_flight_operations_.Remove(id);
+}
+
+void GDataOperationRegistry::OnOperationResume(
+    GDataOperationRegistry::Operation* operation,
+    GDataOperationRegistry::ProgressStatus* new_status) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+
+  // Find the corresponding suspended task.
+  Operation* suspended = NULL;
+  for (OperationIDMap::iterator iter(&in_flight_operations_);
+       !iter.IsAtEnd();
+       iter.Advance()) {
+    Operation* in_flight_operation = iter.GetCurrentValue();
+    const ProgressStatus& status = in_flight_operation->progress_status();
+    if (status.transfer_state == OPERATION_SUSPENDED &&
+        status.file_path == operation->progress_status().file_path) {
+      suspended = in_flight_operation;
+      break;
+    }
+  }
+  DCHECK(suspended);
+
+  // Copy the progress status.
+  const ProgressStatus& old_status = suspended->progress_status();
+  OperationID old_id = old_status.operation_id;
+
+  new_status->progress_current = old_status.progress_current;
+  new_status->progress_total = old_status.progress_total;
+  new_status->start_time = old_status.start_time;
+
+  // Remove the old one and initiate the new operation.
+  in_flight_operations_.Remove(old_id);
+  new_status->operation_id = in_flight_operations_.Add(operation);
+  DVLOG(1) << "GDataOperation[" << old_id << " -> " <<
+           new_status->operation_id << "] resumed.";
+  if (IsFileTransferOperation(operation)) {
+    FOR_EACH_OBSERVER(Observer, observer_list_,
+                      OnProgressUpdate(GetProgressStatusList()));
+  }
+}
+
+void GDataOperationRegistry::OnOperationSuspend(OperationID id) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+
+  Operation* operation = in_flight_operations_.Lookup(id);
+  DCHECK(operation);
+
+  DVLOG(1) << "GDataOperation[" << id << "] suspended.";
+  if (IsFileTransferOperation(operation)) {
+    FOR_EACH_OBSERVER(Observer, observer_list_,
+                      OnProgressUpdate(GetProgressStatusList()));
+  }
+}
+
+bool GDataOperationRegistry::IsFileTransferOperation(
+    const Operation* operation) const {
+  OperationType type = operation->progress_status().operation_type;
+  return type == OPERATION_UPLOAD || type == OPERATION_DOWNLOAD;
 }
 
 std::vector<GDataOperationRegistry::ProgressStatus>
@@ -193,7 +281,8 @@ GDataOperationRegistry::GetProgressStatusList() {
        !iter.IsAtEnd();
        iter.Advance()) {
     const Operation* operation = iter.GetCurrentValue();
-    status_list.push_back(operation->progress_status());
+    if (IsFileTransferOperation(operation))
+      status_list.push_back(operation->progress_status());
   }
   return status_list;
 }

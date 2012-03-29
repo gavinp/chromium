@@ -448,13 +448,16 @@ bool RenderProcessHostImpl::Init(bool is_accessibility_enabled) {
 }
 
 void RenderProcessHostImpl::CreateMessageFilters() {
+  content::MediaObserver* media_observer =
+      content::GetContentClient()->browser()->GetMediaObserver();
   scoped_refptr<RenderMessageFilter> render_message_filter(
       new RenderMessageFilter(
           GetID(),
           PluginServiceImpl::GetInstance(),
           GetBrowserContext(),
           GetBrowserContext()->GetRequestContextForRenderProcess(GetID()),
-          widget_helper_));
+          widget_helper_,
+          media_observer));
   channel_->AddFilter(render_message_filter);
   content::BrowserContext* browser_context = GetBrowserContext();
   content::ResourceContext* resource_context =
@@ -471,7 +474,7 @@ void RenderProcessHostImpl::CreateMessageFilters() {
   AudioManager* audio_manager = content::BrowserMainLoop::GetAudioManager();
   channel_->AddFilter(new AudioInputRendererHost(
       resource_context, audio_manager));
-  channel_->AddFilter(new AudioRendererHost(resource_context, audio_manager));
+  channel_->AddFilter(new AudioRendererHost(audio_manager, media_observer));
   channel_->AddFilter(new VideoCaptureHost(resource_context, audio_manager));
 #endif
   channel_->AddFilter(new AppCacheDispatcherHost(
@@ -519,9 +522,9 @@ void RenderProcessHostImpl::CreateMessageFilters() {
 #endif
 
   SocketStreamDispatcherHost* socket_stream_dispatcher_host =
-      new SocketStreamDispatcherHost(
+      new SocketStreamDispatcherHost(GetID(),
           new RendererURLRequestContextSelector(browser_context, GetID()),
-                                                resource_context);
+          resource_context);
   channel_->AddFilter(socket_stream_dispatcher_host);
 
   channel_->AddFilter(new WorkerMessageFilter(GetID(), resource_context,
@@ -667,7 +670,6 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
     switches::kDisableFileSystem,
     switches::kDisableGeolocation,
     switches::kDisableGLMultisampling,
-    switches::kDisableGLSLTranslator,
     switches::kDisableGpuDriverBugWorkarounds,
     switches::kDisableGpuVsync,
     switches::kDisableJavaScriptI18NAPI,
@@ -677,6 +679,7 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
     switches::kDisableSessionStorage,
     switches::kDisableSharedWorkers,
     switches::kDisableSpeechInput,
+    switches::kEnableScriptedSpeech,
     switches::kDisableWebAudio,
     switches::kDisableWebSockets,
     switches::kDomAutomationController,
@@ -705,8 +708,10 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
     switches::kEnableSeccompSandbox,
     switches::kEnableStatsTable,
     switches::kEnableThreadedCompositing,
+    switches::kDisableThreadedCompositing,
     switches::kEnableTouchEvents,
     switches::kEnableVideoTrack,
+    switches::kEnableViewport,
     switches::kFullMemoryCrashReport,
 #if !defined (GOOGLE_CHROME_BUILD)
     // These are unsupported and not fully tested modes, so don't enable them
@@ -1249,8 +1254,9 @@ void RenderProcessHostImpl::ProcessDied(base::ProcessHandle handle,
 }
 
 void RenderProcessHostImpl::OnShutdownRequest() {
-  // Don't shutdown if there are pending RenderViews being swapped back in.
-  if (pending_views_)
+  // Don't shut down if there are more RenderViews than the one asking to
+  // close, or if there are pending RenderViews being swapped back in.
+  if (pending_views_ || render_widget_hosts_.size() > 1)
     return;
 
   // Notify any tabs that might have swapped out renderers from this process.

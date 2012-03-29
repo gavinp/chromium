@@ -59,9 +59,6 @@ void ConstrainedPickerSheetDelegate::DeleteDelegate() {
   if (is_sheet_open())
     [NSApp endSheet:sheet()];
 
-  if (picker_)
-    picker_->OnCancelled();
-
   delete this;
 }
 
@@ -116,6 +113,7 @@ void WebIntentPickerCocoa::OnSheetDidEnd(NSWindow* sheet) {
   [sheet orderOut:sheet_controller_];
   if (window_)
     window_->CloseConstrainedWindow();
+  delegate_->OnClosing();
 }
 
 void WebIntentPickerCocoa::Close() {
@@ -149,7 +147,8 @@ void WebIntentPickerCocoa::OnFaviconChanged(WebIntentPickerModel* model,
 void WebIntentPickerCocoa::OnExtensionIconChanged(
     WebIntentPickerModel* model,
     const string16& extension_id) {
-  // TODO(binji): implement.
+  // We don't handle individual icon changes - just redo the whole model.
+  PerformLayout();
 }
 
 void WebIntentPickerCocoa::OnInlineDisposition(WebIntentPickerModel* model,
@@ -193,3 +192,14 @@ void WebIntentPickerCocoa::OnServiceChosen(size_t index) {
                              installed_service.disposition);
 }
 
+void WebIntentPickerCocoa::OnExtensionInstallRequested(
+    const std::string& extension_id) {
+  delegate_->OnExtensionInstallRequested(extension_id);
+}
+
+void WebIntentPickerCocoa::OnExtensionInstallSuccess(const std::string& id) {
+}
+
+void WebIntentPickerCocoa::OnExtensionInstallFailure(const std::string& id) {
+  // TODO(groby): What to do on failure? (See also binji for views/gtk)
+}

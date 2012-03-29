@@ -57,6 +57,7 @@ class AppList : public aura::EventFilter,
   // is the reverse of the showing animation.
   void ScheduleAnimation();
 
+  void ScheduleBrowserWindowsAnimationForContainer(aura::Window* container);
   void ScheduleBrowserWindowsAnimation();
   void ScheduleDimmingAnimation();
   void ScheduleAppListAnimation();
@@ -73,7 +74,8 @@ class AppList : public aura::EventFilter,
       aura::GestureEvent* event) OVERRIDE;
 
   // aura::RootWindowObserver overrides:
-  virtual void OnRootWindowResized(const gfx::Size& new_size) OVERRIDE;
+  virtual void OnRootWindowResized(const aura::RootWindow* root,
+                                   const gfx::Size& old_size) OVERRIDE;
 
   // ui::ImplicitAnimationObserver overrides:
   virtual void OnImplicitAnimationsCompleted() OVERRIDE;

@@ -42,6 +42,7 @@ bool RcdBetterThan(std::string a, std::string b) {
 // Names of API modules that can be used without listing it in the
 // permissions section of the manifest.
 const char* kNonPermissionModuleNames[] = {
+  "app",
   "browserAction",
   "devtools",
   "extension",
@@ -71,6 +72,7 @@ const size_t kNumNonPermissionFunctionNames =
 
 const char kOldUnlimitedStoragePermission[] = "unlimited_storage";
 const char kWindowsPermission[] = "windows";
+const char kTemporaryBackgroundAlias[] = "background_alias_do_not_use";
 
 void AddPatternsAndRemovePaths(const URLPatternSet& set, URLPatternSet* out) {
   DCHECK(out);
@@ -197,7 +199,6 @@ void ExtensionAPIPermission::RegisterAllPermissions(
       kUnlimitedStorage, "unlimitedStorage", 0,
       ExtensionPermissionMessage::kNone, kFlagCannotBeOptional);
 
-
   // Register hosted and packaged app permissions.
   info->RegisterPermission(
       kAppNotifications, "appNotifications", 0,
@@ -255,6 +256,9 @@ void ExtensionAPIPermission::RegisterAllPermissions(
       kTab, "tabs", IDS_EXTENSION_PROMPT_WARNING_TABS,
       ExtensionPermissionMessage::kTabs, kFlagNone);
   info->RegisterPermission(
+      kTopSites, "topSites", IDS_EXTENSION_PROMPT_WARNING_BROWSING_HISTORY,
+      ExtensionPermissionMessage::kBrowsingHistory, kFlagNone);
+  info->RegisterPermission(
       kTts, "tts", 0,
       ExtensionPermissionMessage::kNone, kFlagCannotBeOptional);
   info->RegisterPermission(
@@ -298,11 +302,11 @@ void ExtensionAPIPermission::RegisterAllPermissions(
       ExtensionPermissionMessage::kNone,
       kFlagCannotBeOptional);
   info->RegisterPermission(
-      kChromePrivate, "chromePrivate", 0, ExtensionPermissionMessage::kNone,
-      kFlagCannotBeOptional);
-  info->RegisterPermission(
       kInputMethodPrivate, "inputMethodPrivate", 0,
       ExtensionPermissionMessage::kNone, kFlagCannotBeOptional);
+  info->RegisterPermission(
+      kOffersPrivate, "offersPrivate", 0, ExtensionPermissionMessage::kNone,
+      kFlagCannotBeOptional);
   info->RegisterPermission(
       kTerminalPrivate, "terminalPrivate", 0, ExtensionPermissionMessage::kNone,
       kFlagCannotBeOptional);
@@ -341,7 +345,13 @@ void ExtensionAPIPermission::RegisterAllPermissions(
 
   // Register aliases.
   info->RegisterAlias("unlimitedStorage", kOldUnlimitedStoragePermission);
+  // TODO(mihaip): Remove this alias for platform apps, and only give them
+  // access to the chrome.windows.* APIs, but not the chrome.tabs.* ones.
   info->RegisterAlias("tabs", kWindowsPermission);
+  // TODO(mihaip): Should be removed for the M20 branch, see
+  // http://crbug.com/120447 for more details.
+  info->RegisterAlias("background", kTemporaryBackgroundAlias);
+
 }
 
 //
@@ -563,6 +573,16 @@ std::set<std::string> ExtensionPermissionSet::GetAPIsAsStrings() const {
       apis_str.insert(permission->name());
   }
   return apis_str;
+}
+
+std::set<std::string> ExtensionPermissionSet::
+    GetAPIsWithAnyAccessAsStrings() const {
+  std::set<std::string> result = GetAPIsAsStrings();
+  for (size_t i = 0; i < kNumNonPermissionModuleNames; ++i)
+    result.insert(kNonPermissionModuleNames[i]);
+  for (size_t i = 0; i < kNumNonPermissionFunctionNames; ++i)
+    result.insert(GetPermissionName(kNonPermissionFunctionNames[i]));
+  return result;
 }
 
 bool ExtensionPermissionSet::HasAnyAccessToAPI(

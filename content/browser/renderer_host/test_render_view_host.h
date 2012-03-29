@@ -19,19 +19,18 @@
 // NavigationController, and other layers above that without running an actual
 // renderer process.
 //
-// To use, derive your test base class from RenderViewHostTestHarness.
+// To use, derive your test base class from RenderViewHostImplTestHarness.
 
-namespace content {
-class SiteInstance;
-}
+struct ViewHostMsg_FrameNavigate_Params;
 
 namespace gfx {
 class Rect;
 }
 
-struct ViewHostMsg_FrameNavigate_Params;
-
 namespace content {
+
+class SiteInstance;
+class TestWebContents;
 
 // Utility function to initialize ViewHostMsg_NavigateParams_Params
 // with given |page_id|, |url| and |transition_type|.
@@ -74,8 +73,6 @@ class TestRenderWidgetHostView : public RenderWidgetHostViewBase {
   virtual gfx::NativeView BuildInputMethodsGtkMenu() OVERRIDE;
 #endif  // !defined(TOOLKIT_VIEWS)
 #endif  // defined(TOOLKIT_USES_GTK)
-  virtual void UnhandledWheelEvent(
-      const WebKit::WebMouseWheelEvent& event) OVERRIDE {}
   virtual bool CopyFromCompositingSurface(
       const gfx::Size& size,
              skia::PlatformCanvas* output) OVERRIDE;
@@ -181,7 +178,7 @@ class TestRenderWidgetHostView : public RenderWidgetHostViewBase {
 
 // TestRenderViewHost ----------------------------------------------------------
 
-// TODO(brettw) this should use a TestTabContents which should be generalized
+// TODO(brettw) this should use a TestWebContents which should be generalized
 // from the TabContents test. We will probably also need that class' version of
 // CreateRenderViewForRenderManager when more complicate tests start using this.
 //
@@ -233,7 +230,6 @@ class TestRenderViewHost
   virtual void SimulateSwapOutACK() OVERRIDE;
   virtual void SimulateWasHidden() OVERRIDE;
   virtual void SimulateWasRestored() OVERRIDE;
-  virtual bool TestOnMessageReceived(const IPC::Message& msg) OVERRIDE;
 
   void TestOnMsgStartDragging(const WebDropData& drop_data);
 
@@ -302,7 +298,8 @@ class TestRenderViewHost
 #endif
 
 // Adds methods to get straight at the impl classes.
-class RenderViewHostImplTestHarness : public RenderViewHostTestHarness {
+class RenderViewHostImplTestHarness
+    : public content::RenderViewHostTestHarness {
  public:
   RenderViewHostImplTestHarness();
   virtual ~RenderViewHostImplTestHarness();
@@ -310,6 +307,7 @@ class RenderViewHostImplTestHarness : public RenderViewHostTestHarness {
   TestRenderViewHost* test_rvh();
   TestRenderViewHost* pending_test_rvh();
   TestRenderViewHost* active_test_rvh();
+  TestWebContents* contents();
 
  private:
   DISALLOW_COPY_AND_ASSIGN(RenderViewHostImplTestHarness);

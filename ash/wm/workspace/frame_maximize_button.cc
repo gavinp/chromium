@@ -4,14 +4,17 @@
 
 #include "ash/wm/workspace/frame_maximize_button.h"
 
+#include "ash/screen_ash.h"
 #include "ash/shell.h"
 #include "ash/wm/property_util.h"
 #include "ash/launcher/launcher.h"
 #include "ash/wm/workspace/phantom_window_controller.h"
 #include "ash/wm/workspace/snap_sizer.h"
+#include "grit/ash_strings.h"
 #include "grit/ui_resources.h"
 #include "ui/aura/event.h"
 #include "ui/aura/event_filter.h"
+#include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/screen.h"
@@ -93,10 +96,13 @@ FrameMaximizeButton::FrameMaximizeButton(views::ButtonListener* listener,
     : ImageButton(listener),
       frame_(frame),
       is_snap_enabled_(false),
+      is_left_right_enabled_(true),
+      is_maximize_enabled_(true),
       exceeded_drag_threshold_(false),
       snap_type_(SNAP_NONE) {
   // TODO(sky): nuke this. It's temporary while we don't have good images.
   SetImageAlignment(ALIGN_LEFT, ALIGN_BOTTOM);
+  SetTooltipText(l10n_util::GetStringUTF16(IDS_FRAME_MAXIMIZE_BUTTON_TOOLTIP));
 }
 
 FrameMaximizeButton::~FrameMaximizeButton() {
@@ -158,6 +164,14 @@ void FrameMaximizeButton::OnMouseCaptureLost() {
   ImageButton::OnMouseCaptureLost();
 }
 
+void FrameMaximizeButton::SetIsLeftRightEnabled(bool e) {
+  is_left_right_enabled_ = e;
+  int id = is_left_right_enabled_ ?
+      IDS_FRAME_MAXIMIZE_BUTTON_TOOLTIP :
+      IDS_FRAME_MAXIMIZE_BUTTON_NO_SIDE_SNAP_TOOLTIP;
+  SetTooltipText(l10n_util::GetStringUTF16(id));
+}
+
 SkBitmap FrameMaximizeButton::GetImageToPaint() {
   if (is_snap_enabled_) {
     int id = 0;
@@ -199,6 +213,9 @@ SkBitmap FrameMaximizeButton::GetImageToPaint() {
       }
     }
     return *ResourceBundle::GetSharedInstance().GetImageNamed(id).ToSkBitmap();
+  } else if (state() == BS_HOT) {
+    return *ResourceBundle::GetSharedInstance().GetImageNamed(
+        IDR_AURA_WINDOW_MAXIMIZED_RESTORE_SNAP_P).ToSkBitmap();
   }
   return ImageButton::GetImageToPaint();
 }
@@ -251,10 +268,13 @@ void FrameMaximizeButton::UpdateSnap(const gfx::Point& location) {
   }
   if (!phantom_window_.get()) {
     phantom_window_.reset(new internal::PhantomWindowController(
-                              frame_->GetWidget()->GetNativeWindow(),
-                              internal::PhantomWindowController::TYPE_EDGE, 0));
+                              frame_->GetWidget()->GetNativeWindow()));
   }
   phantom_window_->Show(BoundsForType(snap_type_));
+}
+
+bool FrameMaximizeButton::AllowMaximize() const {
+  return !frame_->GetWidget()->IsMaximized() && is_maximize_enabled_;
 }
 
 FrameMaximizeButton::SnapType FrameMaximizeButton::SnapTypeForLocation(
@@ -262,14 +282,16 @@ FrameMaximizeButton::SnapType FrameMaximizeButton::SnapTypeForLocation(
   int delta_x = location.x() - press_location_.x();
   int delta_y = location.y() - press_location_.y();
   if (!views::View::ExceededDragThreshold(delta_x, delta_y))
-    return frame_->GetWidget()->IsMaximized() ? SNAP_NONE : SNAP_MAXIMIZE;
+    return AllowMaximize() ? SNAP_MAXIMIZE : SNAP_NONE;
   else if (delta_x < 0 && delta_y > delta_x && delta_y < -delta_x)
-    return SNAP_LEFT;
+    return is_left_right_enabled_ ? SNAP_LEFT : SNAP_NONE;
   else if (delta_x > 0 && delta_y > -delta_x && delta_y < delta_x)
-    return SNAP_RIGHT;
+    return is_left_right_enabled_ ? SNAP_RIGHT : SNAP_NONE;
   else if (delta_y > 0)
     return SNAP_MINIMIZE;
-  return frame_->GetWidget()->IsMaximized() ? SNAP_NONE : SNAP_MAXIMIZE;
+  else if (AllowMaximize())
+    return SNAP_MAXIMIZE;
+  return SNAP_NONE;
 }
 
 gfx::Rect FrameMaximizeButton::BoundsForType(SnapType type) const {
@@ -279,7 +301,7 @@ gfx::Rect FrameMaximizeButton::BoundsForType(SnapType type) const {
     case SNAP_RIGHT:
       return snap_sizer_->target_bounds();
     case SNAP_MAXIMIZE:
-      return gfx::Screen::GetMonitorWorkAreaNearestWindow(window);
+      return ScreenAsh::GetMaximizedWindowBounds(window);
     case SNAP_MINIMIZE: {
       Launcher* launcher = Shell::GetInstance()->launcher();
       gfx::Rect item_rect(launcher->GetScreenBoundsOfItemIconForWindow(window));

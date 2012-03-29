@@ -44,12 +44,12 @@ extern const char kChromeUIHistoryURL[];
 extern const char kChromeUIHistoryFrameURL[];
 extern const char kChromeUIHungRendererDialogURL[];
 extern const char kChromeUIInputWindowDialogURL[];
+extern const char kChromeUIInspectURL[];
 extern const char kChromeUIIPCURL[];
 extern const char kChromeUIKeyboardURL[];
 extern const char kChromeUIMemoryRedirectURL[];
 extern const char kChromeUIMemoryURL[];
 extern const char kChromeUINetInternalsURL[];
-extern const char kChromeUINetworkViewCacheURL[];
 extern const char kChromeUINewProfile[];
 extern const char kChromeUINewTabURL[];
 extern const char kChromeUIOmniboxURL[];
@@ -67,7 +67,6 @@ extern const char kChromeUIThumbnailURL[];
 extern const char kChromeUIUberURL[];
 extern const char kChromeUIUberFrameURL[];
 extern const char kChromeUIVersionURL[];
-extern const char kChromeUIWorkersURL[];
 
 #if defined(OS_CHROMEOS)
 extern const char kChromeUIActivationMessage[];
@@ -91,6 +90,10 @@ extern const char kChromeUITermsOemURL[];
 extern const char kChromeUIUserImageURL[];
 #endif
 
+#if defined(USE_ASH)
+extern const char kChromeUITransparencyURL[];
+#endif
+
 #if defined(FILE_MANAGER_EXTENSION)
 extern const char kChromeUIFileManagerURL[];
 #endif
@@ -104,9 +107,7 @@ extern const char kChromeUITabModalConfirmDialogURL[];
 // chrome components of URLs. Should be kept in sync with the full URLs above.
 extern const char kChromeUIAboutHost[];
 extern const char kChromeUIAboutPageFrameHost[];
-extern const char kChromeUIAppCacheInternalsHost[];
 extern const char kChromeUIBlankHost[];
-extern const char kChromeUIBlobInternalsHost[];
 extern const char kChromeUIBookmarksHost[];
 extern const char kChromeUICacheHost[];
 extern const char kChromeUICertificateViewerHost[];
@@ -142,6 +143,7 @@ extern const char kChromeUIHistoryHost[];
 extern const char kChromeUIHistoryFrameHost[];
 extern const char kChromeUIHungRendererDialogHost[];
 extern const char kChromeUIInputWindowDialogHost[];
+extern const char kChromeUIInspectHost[];
 extern const char kChromeUIIPCHost[];
 extern const char kChromeUIKeyboardHost[];
 extern const char kChromeUIKillHost[];
@@ -150,7 +152,6 @@ extern const char kChromeUIMemoryHost[];
 extern const char kChromeUIMemoryRedirectHost[];
 extern const char kChromeUINetInternalsHost[];
 extern const char kChromeUINetworkActionPredictorHost[];
-extern const char kChromeUINetworkViewCacheHost[];
 extern const char kChromeUINewTabHost[];
 extern const char kChromeUIOmniboxHost[];
 extern const char kChromeUIPluginsHost[];
@@ -194,6 +195,7 @@ extern const char kChromeUIActiveDownloadsHost[];
 extern const char kChromeUIChooseMobileNetworkHost[];
 extern const char kChromeUICryptohomeHost[];
 extern const char kChromeUIDiscardsHost[];
+extern const char kChromeUIGDataHost[];
 extern const char kChromeUIIdleLogoutDialogHost[];
 extern const char kChromeUIImageBurnerHost[];
 extern const char kChromeUIKeyboardOverlayHost[];
@@ -221,6 +223,10 @@ extern const char kEULAPathFormat[];
 extern const char kOemEulaURLPath[];
 #endif
 
+#if defined(USE_ASH)
+extern const char kChromeUITransparencyHost[];
+#endif
+
 #if defined(FILE_MANAGER_EXTENSION)
 extern const char kChromeUIFileManagerHost[];
 #endif
@@ -233,9 +239,7 @@ extern const char kChromeUITabModalConfirmDialogHost[];
 
 // Options sub-pages.
 extern const char kAboutOptionsSubPage[];
-extern const char kAdvancedOptionsSubPage[];
 extern const char kAutofillSubPage[];
-extern const char kBrowserOptionsSubPage[];
 extern const char kClearBrowserDataSubPage[];
 extern const char kContentSettingsExceptionsSubPage[];
 extern const char kContentSettingsSubPage[];
@@ -246,13 +250,13 @@ extern const char kInstantConfirmPage[];
 extern const char kLanguageOptionsSubPage[];
 extern const char kManageProfileSubPage[];
 extern const char kPasswordManagerSubPage[];
-extern const char kPersonalOptionsSubPage[];
 extern const char kSearchEnginesSubPage[];
+extern const char kSearchSubPage[];
 extern const char kSyncSetupForceLoginSubPage[];
 extern const char kSyncSetupSubPage[];
 #if defined(OS_CHROMEOS)
 extern const char kInternetOptionsSubPage[];
-extern const char kSystemOptionsSubPage[];
+extern const char kBluetoothAddDeviceSubPage[];
 #endif
 
 extern const char kSyncGoogleDashboardURL[];

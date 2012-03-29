@@ -238,15 +238,9 @@ class BrowserInit {
     // Returns true if so.
     bool CheckIfAutoLaunched(Profile* profile);
 
-    // Shows a sync promo dialog if necessary. When called |browser| should be
-    // the browser that's being used for startup. On return |browser| is set
-    // to the browser spawned from the sync promo dialog (if any). On input
-    // |tabs| should be the set of tabs to show on startup.  On return |tabs|
-    // will contain the new set of tabs to show on startup. Returns the index
-    // of the tab to activate.
-    size_t ShowSyncPromoDialog(bool process_startup,
-                               Browser** browser,
-                               std::vector<Tab>* tabs);
+    // Checks whether the Preferences backup is invalid and notifies user in
+    // that case.
+    void CheckPreferencesBackup(Profile* profile);
 
     const FilePath cur_dir_;
     const CommandLine& command_line_;

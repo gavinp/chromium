@@ -1735,13 +1735,6 @@
    fun:BookmarkEditorGtkTest_*_Test::TestBody
 }
 {
-   bug_115296
-   Heapcheck:Leak
-   fun:::GetResource
-   fun:ModuleSystem::EnsureRequireLoaded
-   fun:ModuleSystem::Require
-}
-{
    bug_115611_a
    Heapcheck:Leak
    fun:base::Bind
@@ -1771,81 +1764,6 @@
    fun:ash::Shell::Init
    fun:ash::Shell::CreateInstance
    fun:chromeos::DesktopNotificationsTest::SetUp
-}
-{
-   bug_116996_a
-   Heapcheck:Leak
-   fun:chromeos::UserManagerImpl::CreateUser
-   ...
-   fun:chromeos::UserManagerImpl::UserLoggedIn
-   fun:chromeos::*_Test::TestBody
-}
-{
-   bug_116996_b
-   Heapcheck:Leak
-   ...
-   fun:SkBitmap::HeapAllocator::allocPixelRef
-   fun:SkBitmap::allocPixels
-   fun:SkBitmap::allocPixels
-   fun:gfx::::DecodeInfoCallback
-   fun:wk_png_push_have_info
-   fun:wk_png_push_read_chunk
-   fun:wk_png_process_some_data
-   fun:wk_png_process_data
-   fun:gfx::PNGCodec::Decode
-   fun:ui::ResourceBundle::LoadBitmap
-   fun:ui::ResourceBundle::GetImageNamed
-   fun:ui::ResourceBundle::GetBitmapNamed
-}
-{
-   bug_116996_c
-   Heapcheck:Leak
-   fun:std::*string::_Rep::_S_create
-   fun:std::*string::copy
-   fun:std::basic_string::basic_string
-   fun:chromeos::*_Test::TestBody
-}
-{
-   bug_116996_d
-   Heapcheck:Leak
-   fun:chromeos::UserManagerImpl::CreateUser
-   fun:chromeos::UserManagerImpl::EnsureUsersLoaded
-   fun:chromeos::UserManagerImpl::GetUsers
-   fun:chromeos::UserManagerTest_*_Test::TestBody
-}
-{
-   bug_117098_a
-   Heapcheck:Leak
-   fun:base::internal::WeakReferenceOwner::GetRef
-   fun:base::SupportsWeakPtr::AsWeakPtr
-   fun:ProfileSyncServicePreferenceTest::StartSyncService
-}
-{
-   bug_117098_b
-   Heapcheck:Leak
-   fun:__gnu_cxx::new_allocator::allocate
-   fun:std::_Vector_base::_M_allocate
-   fun:std::vector::_M_insert_aux
-   fun:std::vector::push_back
-   fun:browser_sync::GenericChangeProcessor::ApplyChangesFromSyncModel
-}
-{
-   bug_117098_c
-   Heapcheck:Leak
-   fun:CreateAndSaveChangeProcessorActionP::gmock_Impl::gmock_PerformImpl
-   fun:testing::internal::ActionHelper::Perform
-   fun:CreateAndSaveChangeProcessorActionP::gmock_Impl::Perform
-   fun:testing::Action::Perform
-   fun:testing::internal::ActionResultHolder::PerformAction
-   fun:testing::internal::FunctionMockerBase::UntypedPerformAction
-   fun:testing::internal::UntypedFunctionMockerBase::UntypedInvokeWith
-   fun:testing::internal::FunctionMockerBase::InvokeWith
-   fun:testing::internal::FunctionMocker::Invoke
-   fun:ProfileSyncComponentsFactoryMock::CreateGenericChangeProcessor
-   fun:browser_sync::UIDataTypeController::Associate
-   fun:browser_sync::UIDataTypeController::Start
-   fun:browser_sync::DataTypeManagerImpl::StartNextType
-   fun:browser_sync::DataTypeManagerImpl::DownloadReady
 }
 {
    bug_117389
@@ -1879,8 +1797,16 @@
    fun:SelectFileDialogExtensionTest_SelfDeleting_Test::TestBody
 }
 {
-   bug_118575
+   bug_119714_a
    Heapcheck:Leak
    ...
-   fun:ModuleSystemTest*
+   fun:*AudioInputControllerTest_CreateAndClose_Test*
+}
+{
+   # This should be removed soon!  It's a pretty broad suppression.
+   bug_119714_b
+   Heapcheck:Leak
+   fun:MessageLoop::MessageLoop
+   fun:base::Thread::ThreadMain
+   fun:base::::ThreadFunc
 }

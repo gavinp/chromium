@@ -9,6 +9,7 @@
 #include "ash/app_list/app_list_model_view.h"
 #include "ash/app_list/app_list_view_delegate.h"
 #include "ash/shell.h"
+#include "ash/shell_window_ids.h"
 #include "ui/gfx/compositor/layer.h"
 #include "ui/gfx/compositor/scoped_layer_animation_settings.h"
 #include "ui/gfx/screen.h"
@@ -19,10 +20,6 @@
 namespace ash {
 
 namespace {
-
-// Margins in pixels from work area edges.
-const int kLeftRightMargin = 45;
-const int kTopBottomMargin = 32;
 
 // 0.2 black
 const SkColor kBackgroundColor = SkColorSetARGB(0x33, 0, 0, 0);
@@ -80,6 +77,8 @@ void AppListView::Init(const gfx::Rect& bounds) {
   widget_params.delegate = this;
   widget_params.keep_on_top = true;
   widget_params.transparent = true;
+  widget_params.parent = Shell::GetInstance()->GetContainer(
+      internal::kShellWindowId_AppListContainer);
 
   views::Widget* widget = new views::Widget;
   widget->Init(widget_params);
@@ -127,7 +126,6 @@ void AppListView::Layout() {
   workarea.Offset(-origin.x(), -origin.y());
 
   rect = rect.Intersect(workarea);
-  rect.Inset(kLeftRightMargin, kTopBottomMargin);
   model_view_->SetBoundsRect(rect);
 }
 

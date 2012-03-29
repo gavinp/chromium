@@ -17,6 +17,7 @@
 #include "ui/aura/window.h"
 #include "ui/aura/window_observer.h"
 #include "ui/aura/window_property.h"
+#include "ui/gfx/compositor/layer.h"
 #include "ui/gfx/compositor/layer_animation_observer.h"
 #include "ui/gfx/compositor/layer_animation_sequence.h"
 #include "ui/gfx/compositor/layer_animator.h"
@@ -292,9 +293,14 @@ ui::Transform BuildWorkspaceSwitchTransform(aura::Window* window) {
 
 void AnimateShowWindow_Workspace(aura::Window* window) {
   ui::Transform transform(BuildWorkspaceSwitchTransform(window));
-  window->layer()->SetVisible(true);
+  // When we call SetOpacity here, if a hide sequence is already running,
+  // the default animation preemption strategy fast forwards the hide sequence
+  // to completion and notify the WorkspaceHidingWindowAnimationObserver to
+  // set the layer to be invisible. We should call SetVisible after SetOpacity
+  // to ensure our layer is visible again.
   window->layer()->SetOpacity(0.0f);
   window->layer()->SetTransform(transform);
+  window->layer()->SetVisible(true);
 
   {
     // Property sets within this scope will be implicitly animated.

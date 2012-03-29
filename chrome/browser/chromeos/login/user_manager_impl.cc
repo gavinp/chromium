@@ -20,6 +20,7 @@
 #include "base/metrics/histogram.h"
 #include "base/path_service.h"
 #include "base/rand_util.h"
+#include "base/stl_util.h"
 #include "base/string_util.h"
 #include "base/stringprintf.h"
 #include "base/time.h"
@@ -158,8 +159,7 @@ void RemoveUserInternal(const std::string& user_email,
   CrosSettings* cros_settings = CrosSettings::Get();
 
   // Ensure the value of owner email has been fetched.
-  if (!cros_settings->GetTrusted(
-          kDeviceOwner,
+  if (!cros_settings->PrepareTrustedValues(
           base::Bind(&RemoveUserInternal, user_email, delegate))) {
     // Value of owner email is not fetched yet.  RemoveUserInternal will be
     // called again after fetch completion.
@@ -221,7 +221,8 @@ RealTPMTokenInfoDelegate::~RealTPMTokenInfoDelegate() {}
 bool RealTPMTokenInfoDelegate::IsTokenAvailable() const {
   CHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   bool result = false;
-  DBusThreadManager::Get()->GetCryptohomeClient()->TpmIsEnabled(&result);
+  DBusThreadManager::Get()->GetCryptohomeClient()->CallTpmIsEnabledAndBlock(
+      &result);
   return result;
 }
 
@@ -284,21 +285,24 @@ void RealTPMTokenInfoDelegate::OnPkcs11GetTpmTokenInfo(
 
 UserManagerImpl::UserManagerImpl()
     : ALLOW_THIS_IN_INITIALIZER_LIST(image_loader_(new UserImageLoader)),
-      demo_user_(kDemoUser, false),
-      guest_user_(kGuestUser, true),
-      stub_user_(kStubUser, false),
       logged_in_user_(NULL),
       is_current_user_owner_(false),
       is_current_user_new_(false),
       is_current_user_ephemeral_(false),
-      is_user_logged_in_(false),
+      key_store_loaded_(false),
       ephemeral_users_enabled_(false),
       observed_sync_service_(NULL),
       last_image_set_async_(false),
       downloaded_profile_image_data_url_(chrome::kAboutBlankURL) {
-  // Use stub as the logged-in user for test paths without login.
-  if (!base::chromeos::IsRunningOnChromeOS())
+  // If we're not running on ChromeOS, and are not showing the login manager
+  // or attempting a command line login? Then login the stub user.
+  CommandLine* command_line = CommandLine::ForCurrentProcess();
+  if (!base::chromeos::IsRunningOnChromeOS() &&
+      !command_line->HasSwitch(switches::kLoginManager) &&
+      !command_line->HasSwitch(switches::kLoginPassword)) {
     StubUserLoggedIn();
+  }
+
   registrar_.Add(this, chrome::NOTIFICATION_OWNER_KEY_FETCH_ATTEMPT_SUCCEEDED,
       content::NotificationService::AllSources());
   registrar_.Add(this, chrome::NOTIFICATION_PROFILE_ADDED,
@@ -307,6 +311,12 @@ UserManagerImpl::UserManagerImpl()
 }
 
 UserManagerImpl::~UserManagerImpl() {
+  // Can't use STLDeleteElements because of the private destructor of User.
+  for (size_t i = 0; i < users_.size();++i)
+    delete users_[i];
+  users_.clear();
+  if (is_current_user_ephemeral_)
+    delete logged_in_user_;
 }
 
 const UserList& UserManagerImpl::GetUsers() const {
@@ -315,9 +325,16 @@ const UserList& UserManagerImpl::GetUsers() const {
 }
 
 void UserManagerImpl::UserLoggedIn(const std::string& email) {
-  DCHECK(!is_user_logged_in_);
+  // Get a random wallpaper each time a user logged in.
+  current_user_wallpaper_index_ = ash::GetDefaultWallpaperIndex();
 
-  is_user_logged_in_ = true;
+  // Remove the stub user if it is still around.
+  if (logged_in_user_) {
+    DCHECK(IsLoggedInAsStub());
+    delete logged_in_user_;
+    logged_in_user_ = NULL;
+    is_current_user_ephemeral_ = false;
+  }
 
   if (email == kGuestUser) {
     GuestUserLoggedIn();
@@ -401,14 +418,16 @@ void UserManagerImpl::UserLoggedIn(const std::string& email) {
 void UserManagerImpl::DemoUserLoggedIn() {
   is_current_user_new_ = true;
   is_current_user_ephemeral_ = true;
-  logged_in_user_ = &demo_user_;
+  logged_in_user_ = new User(kDemoUser, false);
   SetInitialUserImage(kDemoUser);
   NotifyOnLogin();
 }
 
 void UserManagerImpl::GuestUserLoggedIn() {
   is_current_user_ephemeral_ = true;
-  logged_in_user_ = &guest_user_;
+  // Guest user always uses the same wallpaper.
+  current_user_wallpaper_index_ = ash::GetGuestWallpaperIndex();
+  logged_in_user_ = new User(kGuestUser, true);
   NotifyOnLogin();
 }
 
@@ -418,6 +437,14 @@ void UserManagerImpl::EphemeralUserLoggedIn(const std::string& email) {
   logged_in_user_ = CreateUser(email);
   SetInitialUserImage(email);
   NotifyOnLogin();
+}
+
+void UserManagerImpl::StubUserLoggedIn() {
+  is_current_user_ephemeral_ = true;
+  current_user_wallpaper_index_ = ash::GetGuestWallpaperIndex();
+  logged_in_user_ = new User(kStubUser, false);
+  logged_in_user_->SetImage(GetDefaultImage(kStubDefaultImageIndex),
+                            kStubDefaultImageIndex);
 }
 
 void UserManagerImpl::RemoveUser(const std::string& email,
@@ -606,7 +633,7 @@ void UserManagerImpl::Observe(int type,
           base::Unretained(this)));
       break;
     case chrome::NOTIFICATION_PROFILE_ADDED:
-      if (IsUserLoggedIn() && !IsLoggedInAsGuest()) {
+      if (IsUserLoggedIn() && !IsLoggedInAsGuest() && !IsLoggedInAsStub()) {
         Profile* profile = content::Source<Profile>(source).ptr();
         if (!profile->IsOffTheRecord() &&
             profile == ProfileManager::GetDefaultProfile()) {
@@ -624,7 +651,7 @@ void UserManagerImpl::Observe(int type,
 }
 
 void UserManagerImpl::OnStateChanged() {
-  DCHECK(IsUserLoggedIn() && !IsLoggedInAsGuest());
+  DCHECK(IsUserLoggedIn() && !IsLoggedInAsGuest() && !IsLoggedInAsStub());
   if (observed_sync_service_->GetAuthError().state() != AuthError::NONE) {
       // Invalidate OAuth token to force Gaia sign-in flow. This is needed
       // because sign-out/sign-in solution is suggested to the user.
@@ -655,15 +682,19 @@ bool UserManagerImpl::IsCurrentUserEphemeral() const {
 }
 
 bool UserManagerImpl::IsUserLoggedIn() const {
-  return is_user_logged_in_;
+  return logged_in_user_;
 }
 
 bool UserManagerImpl::IsLoggedInAsDemoUser() const {
-  return logged_in_user_ == &demo_user_;
+  return IsUserLoggedIn() && logged_in_user_->email() == kDemoUser;
 }
 
 bool UserManagerImpl::IsLoggedInAsGuest() const {
-  return logged_in_user_ == &guest_user_;
+  return IsUserLoggedIn() && logged_in_user_->email() == kGuestUser;
+}
+
+bool UserManagerImpl::IsLoggedInAsStub() const {
+  return IsUserLoggedIn() && logged_in_user_->email() == kStubUser;
 }
 
 void UserManagerImpl::AddObserver(Observer* obs) {
@@ -783,8 +814,7 @@ void UserManagerImpl::RetrieveTrustedDevicePolicies() {
 
   CrosSettings* cros_settings = CrosSettings::Get();
   // Schedule a callback if device policy has not yet been verified.
-  if (!cros_settings->GetTrusted(
-      kAccountsPrefEphemeralUsersEnabled,
+  if (!cros_settings->PrepareTrustedValues(
       base::Bind(&UserManagerImpl::RetrieveTrustedDevicePolicies,
                  base::Unretained(this)))) {
     return;
@@ -828,7 +858,7 @@ bool UserManagerImpl::AreEphemeralUsersEnabled() const {
 
 bool UserManagerImpl::IsEphemeralUser(const std::string& email) const {
   // The guest user always is ephemeral.
-  if (email == guest_user_.email())
+  if (email == kGuestUser)
     return true;
 
   // The currently logged-in user is ephemeral iff logged in as ephemeral.
@@ -851,18 +881,25 @@ const User* UserManagerImpl::FindUserInList(const std::string& email) const {
   return NULL;
 }
 
-void UserManagerImpl::StubUserLoggedIn() {
-  logged_in_user_ = &stub_user_;
-  stub_user_.SetImage(GetDefaultImage(kStubDefaultImageIndex),
-                      kStubDefaultImageIndex);
-}
-
 void UserManagerImpl::NotifyOnLogin() {
   CHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   content::NotificationService::current()->Notify(
       chrome::NOTIFICATION_LOGIN_USER_CHANGED,
       content::Source<UserManagerImpl>(this),
       content::Details<const User>(logged_in_user_));
+
+  LoadKeyStore();
+
+  // Schedules current user ownership check on file thread.
+  BrowserThread::PostTask(BrowserThread::FILE, FROM_HERE,
+                          base::Bind(&UserManagerImpl::CheckOwnership,
+                                     base::Unretained(this)));
+}
+
+void UserManagerImpl::LoadKeyStore() {
+  CHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  if (key_store_loaded_)
+    return;
 
   // Ensure we've opened the real user's key/certificate database.
   crypto::OpenPersistentNSSDB();
@@ -878,11 +915,7 @@ void UserManagerImpl::NotifyOnLogin() {
     // Note: this calls crypto::EnsureTPMTokenReady()
     cert_library->RequestCertificates();
   }
-
-  // Schedules current user ownership check on file thread.
-  BrowserThread::PostTask(BrowserThread::FILE, FROM_HERE,
-                          base::Bind(&UserManagerImpl::CheckOwnership,
-                                     base::Unretained(this)));
+  key_store_loaded_ = true;
 }
 
 void UserManagerImpl::SetInitialUserImage(const std::string& username) {
@@ -891,29 +924,51 @@ void UserManagerImpl::SetInitialUserImage(const std::string& username) {
   SaveUserDefaultImageIndex(username, image_id);
 }
 
-int UserManagerImpl::GetUserWallpaper(const std::string& username) {
+int UserManagerImpl::GetUserWallpaperIndex() {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+
+  // If at login screen, use the default guest wallpaper.
+  if (!IsUserLoggedIn())
+    return ash::GetGuestWallpaperIndex();
+  // If logged in as other ephemeral users (Demo/Stub/Normal user with
+  // ephemeral policy enabled/Guest), use the index in memory.
+  if (IsCurrentUserEphemeral())
+    return current_user_wallpaper_index_;
+
+  const chromeos::User& user = GetLoggedInUser();
+  std::string username = user.email();
+  DCHECK(!username.empty());
 
   PrefService* local_state = g_browser_process->local_state();
   const DictionaryValue* user_wallpapers =
       local_state->GetDictionary(UserManager::kUserWallpapers);
-  int index = ash::GetDefaultWallpaperIndex();
-  user_wallpapers->GetIntegerWithoutPathExpansion(username,
-                                                  &index);
+  int index;
+  if (!user_wallpapers->GetIntegerWithoutPathExpansion(username, &index))
+    index = current_user_wallpaper_index_;
+
+  DCHECK(index >=0 && index < ash::GetWallpaperCount());
   return index;
 }
 
-void UserManagerImpl::SaveWallpaperDefaultIndex(const std::string& username,
-                                                int wallpaper_index) {
+void UserManagerImpl::SaveUserWallpaperIndex(int wallpaper_index) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+
+  current_user_wallpaper_index_ = wallpaper_index;
+  // Ephemeral users can not save data to local state. We just cache the index
+  // in memory for them.
+  if (IsCurrentUserEphemeral() || !IsUserLoggedIn()) {
+    return;
+  }
+
+  const chromeos::User& user = GetLoggedInUser();
+  std::string username = user.email();
+  DCHECK(!username.empty());
 
   PrefService* local_state = g_browser_process->local_state();
   DictionaryPrefUpdate wallpapers_update(local_state,
                                          UserManager::kUserWallpapers);
   wallpapers_update->SetWithoutPathExpansion(username,
       new base::FundamentalValue(wallpaper_index));
-  ash::Shell::GetInstance()->desktop_background_controller()->
-      OnDesktopBackgroundChanged(wallpaper_index);
 }
 
 void UserManagerImpl::SetUserImage(const std::string& username,

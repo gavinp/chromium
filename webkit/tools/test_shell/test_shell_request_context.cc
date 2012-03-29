@@ -9,9 +9,9 @@
 #include "base/compiler_specific.h"
 #include "base/file_path.h"
 #include "net/base/cert_verifier.h"
-#include "net/base/default_origin_bound_cert_store.h"
+#include "net/base/default_server_bound_cert_store.h"
 #include "net/base/host_resolver.h"
-#include "net/base/origin_bound_cert_service.h"
+#include "net/base/server_bound_cert_service.h"
 #include "net/base/ssl_config_service_defaults.h"
 #include "net/cookies/cookie_monster.h"
 #include "net/ftp/ftp_network_layer.h"
@@ -49,8 +49,8 @@ void TestShellRequestContext::Init(
     net::HttpCache::Mode cache_mode,
     bool no_proxy) {
   storage_.set_cookie_store(new net::CookieMonster(NULL, NULL));
-  storage_.set_origin_bound_cert_service(new net::OriginBoundCertService(
-      new net::DefaultOriginBoundCertStore(NULL)));
+  storage_.set_server_bound_cert_service(new net::ServerBoundCertService(
+      new net::DefaultServerBoundCertStore(NULL)));
 
   // hard-code A-L and A-C for test shells
   set_accept_language("en-us,en");
@@ -77,7 +77,7 @@ void TestShellRequestContext::Init(
       net::CreateSystemHostResolver(net::HostResolver::kDefaultParallelism,
                                     net::HostResolver::kDefaultRetryAttempts,
                                     NULL));
-  storage_.set_cert_verifier(new net::CertVerifier);
+  storage_.set_cert_verifier(net::CertVerifier::CreateDefault());
   storage_.set_proxy_service(net::ProxyService::CreateUsingSystemProxyResolver(
       proxy_config_service.release(), 0, NULL));
   storage_.set_ssl_config_service(
@@ -95,7 +95,7 @@ void TestShellRequestContext::Init(
   net::HttpCache* cache =
       new net::HttpCache(host_resolver(),
                          cert_verifier(),
-                         origin_bound_cert_service(),
+                         server_bound_cert_service(),
                          NULL, // transport_security_state
                          proxy_service(),
                          "",  // ssl_session_cache_shard

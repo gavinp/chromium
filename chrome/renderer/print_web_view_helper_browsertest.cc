@@ -196,6 +196,18 @@ TEST_F(PrintWebViewHelperTest, BlockScriptInitiatedPrinting) {
   VerifyPagesPrinted(true);
 }
 
+TEST_F(PrintWebViewHelperTest, BlockScriptInitiatedPrintingFromPopup) {
+  PrintWebViewHelper* print_web_view_helper = PrintWebViewHelper::Get(view_);
+  print_web_view_helper->SetScriptedPrintBlocked(true);
+  LoadHTML(kPrintWithJSHTML);
+  VerifyPagesPrinted(false);
+
+  print_web_view_helper->SetScriptedPrintBlocked(false);
+  LoadHTML(kPrintWithJSHTML);
+  VerifyPageCount(1);
+  VerifyPagesPrinted(true);
+}
+
 #if defined(OS_WIN) || defined(OS_MACOSX)
 // TODO(estade): I don't think this test is worth porting to Linux. We will have
 // to rip out and replace most of the IPC code if we ever plan to improve
@@ -601,7 +613,7 @@ TEST_F(PrintWebViewHelperPreviewTest, PrintPreviewShrinkToFitPage) {
   OnPrintPreview(dict);
 
   EXPECT_EQ(0, chrome_render_thread_->print_preview_pages_remaining());
-  VerifyDefaultPageLayout(576, 652, 69, 71, 18, 18, true);
+  VerifyDefaultPageLayout(612, 693, 49, 50, 0, 0, true);
   VerifyPrintPreviewCancelled(false);
   VerifyPrintPreviewFailed(false);
 }

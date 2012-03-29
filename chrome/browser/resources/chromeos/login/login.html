@@ -42,14 +42,9 @@
 <script src="user_pod_row.js"></script>
 </head>
 <body class="login-display" i18n-values=".style.fontFamily:fontfamily;">
-  <include src="header_bar.html">
-  <div id="notification-area">
-    <div id="enterprise-info-container" class="butter-bar" hidden>
-      <span id="enterprise-info-message"></span>
-      <!-- TODO(dubroy): Add "Learn more" link here. -->
-    </div>
-  </div>
+  <include src="version.html">
   <div id="outer-container">
+    <include src="notification_area.html">
     <div id="oobe" class="faded">
       <div id="header">
         <span i18n-content="productName"></span>
@@ -71,7 +66,7 @@
     </div>
   </div>
   <div id="bubble" class="bubble faded" hidden></div>
-  <include src="version.html">
+  <include src="header_bar.html">
   <include src="user_pod_template.html">
 </body>
 </html>

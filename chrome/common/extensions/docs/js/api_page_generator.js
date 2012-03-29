@@ -24,7 +24,6 @@ var MODULE_SCHEMAS = [
   '../api/browserAction.json',
   '../api/browsingData.json',
   '../api/chromeAuthPrivate.json',
-  '../api/chromePrivate.json',
   '../api/chromeosInfoPrivate.json',
   '../api/contentSettings.json',
   '../api/contextMenus.json',
@@ -32,23 +31,24 @@ var MODULE_SCHEMAS = [
   '../api/debugger.json',
   '../api/devtools.json',
   '../api/experimental.accessibility.json',
+  '../api/experimental.alarms.json',
   '../api/experimental.app.json',
   '../api/experimental.bookmarkManager.json',
-  '../api/experimental.dns.json',
   '../api/experimental.downloads.json',
   '../api/experimental.extension.json',
   '../api/experimental.fontSettings.json',
+  '../api/experimental.identity.json',
   '../api/experimental.infobars.json',
   '../api/experimental.input.ui.json',
   '../api/experimental.input.virtualKeyboard.json',
   '../api/experimental.keybinding.json',
   '../api/experimental.managedMode.json',
+  '../api/experimental.offscreenTabs.json',
   '../api/experimental.processes.json',
   '../api/experimental.rlz.json',
   '../api/experimental.serial.json',
   '../api/experimental.socket.json',
   '../api/experimental.speechInput.json',
-  '../api/experimental.topSites.json',
   '../api/experimental.webRequest.json',
   '../api/extension.json',
   '../api/fileBrowserHandler.json',
@@ -72,12 +72,14 @@ var MODULE_SCHEMAS = [
   '../api/systemPrivate.json',
   '../api/tabs.json',
   '../api/test.json',
+  '../api/topSites.json',
   '../api/tts.json',
   '../api/ttsEngine.json',
   '../api/types.json',
   '../api/webNavigation.json',
   '../api/webRequest.json',
   '../api/webSocketProxyPrivate.json',
+  '../api/webstore.json',
   '../api/webstorePrivate.json',
   '../api/windows.json',
 ]
@@ -650,10 +652,21 @@ function hasPrimitiveValue(schema) {
 }
 
 function getPrimitiveValue(schema) {
-  if (schema.type === 'string')
+  if (schema.type === 'string') {
     return '"' + schema.value + '"';
-  else
+  } else if (schema.type === 'integer') {
+    // Comma-separate large numbers (e.g. 5,000,000), easier to read.
+    var value = String(schema.value);
+    var groupsOfThree = [];
+    while (value.length > 3) {
+      groupsOfThree.unshift(value.slice(value.length - 3));
+      value = value.slice(0, value.length - 3);
+    }
+    groupsOfThree.unshift(value);
+    return groupsOfThree.join(',');
+  } else {
     return schema.value;
+  }
 }
 
 function getSignatureString(parameters) {

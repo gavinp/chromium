@@ -13,6 +13,8 @@
 #include "base/values.h"
 #include "chrome/browser/chromeos/extensions/file_handler_util.h"
 #include "chrome/browser/chromeos/gdata/gdata_operation_registry.h"
+#include "chrome/browser/chromeos/gdata/gdata_system_service.h"
+#include "chrome/browser/chromeos/gdata/gdata_util.h"
 #include "chrome/browser/extensions/crx_installer.h"
 #include "chrome/browser/extensions/extension_install_ui.h"
 #include "chrome/browser/extensions/extension_service.h"
@@ -78,7 +80,8 @@ const char* kBrowserSupportedExtensions[] = {
 #if defined(GOOGLE_CHROME_BUILD)
     ".pdf",
 #endif
-    ".bmp", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".txt", ".html", ".htm"
+    ".bmp", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".txt", ".html", ".htm",
+    ".mhtml", ".mht"
 };
 // List of file extension that can be handled with the media player.
 const char* kAVExtensions[] = {
@@ -175,7 +178,8 @@ DictionaryValue* ProgessStatusToDictionaryValue(
   scoped_ptr<DictionaryValue> result(new DictionaryValue());
   GURL file_url;
   if (file_manager_util::ConvertFileToFileSystemUrl(profile,
-          FilePath(status.file_path),
+          gdata::util::GetSpecialRemoteRootPath().Append(
+              FilePath(status.file_path)),
           origin_url,
           &file_url)) {
     result->SetString("fileUrl", file_url.spec());
@@ -190,6 +194,29 @@ DictionaryValue* ProgessStatusToDictionaryValue(
   result->SetInteger("total", static_cast<int>(status.progress_total));
   return result.release();
 }
+
+class GetFilePropertiesDelegate : public gdata::FindFileDelegate {
+ public:
+  explicit GetFilePropertiesDelegate() {}
+  virtual ~GetFilePropertiesDelegate() {}
+
+  const std::string& resource_id() const { return resource_id_; }
+  const std::string& file_name() const { return file_name_; }
+
+ private:
+  // GDataFileSystem::FindFileDelegate overrides.
+  virtual void OnDone(base::PlatformFileError error,
+                      const FilePath& directory_path,
+                      gdata::GDataFileBase* file) OVERRIDE {
+    if (error == base::PLATFORM_FILE_OK && file && file->AsGDataFile()) {
+      resource_id_ = file->AsGDataFile()->resource_id();
+      file_name_ = file->AsGDataFile()->file_name();
+    }
+  }
+
+  std::string resource_id_;
+  std::string file_name_;
+};
 
 }  // namespace
 
@@ -458,7 +485,31 @@ bool TryViewingFile(const FilePath& full_path) {
   // in a tab.
   if (IsSupportedBrowserExtension(file_extension.data()) ||
       ShouldBeOpenedWithPdfPlugin(file_extension.data())) {
-    browser->AddSelectedTabWithURL(net::FilePathToFileURL(full_path),
+    GURL page_url =  net::FilePathToFileURL(full_path);
+#if defined(OS_CHROMEOS)
+    // Override gdata resource to point to internal handler instead of file:
+    // URL.
+    // There is nothing we can do if the browser is not present.
+    if (gdata::util::GetSpecialRemoteRootPath().IsParent(full_path)) {
+      Browser* browser = BrowserList::GetLastActive();
+      if (!browser)
+        return false;
+
+      gdata::GDataSystemService* system_service =
+          gdata::GDataSystemServiceFactory::GetForProfile(browser->profile());
+      if (!system_service)
+        return false;
+
+      GetFilePropertiesDelegate delegate;
+      system_service->file_system()->FindFileByPathSync(
+          gdata::util::ExtractGDataPath(full_path), &delegate);
+      if (delegate.resource_id().empty())
+        return false;
+      page_url =  gdata::util::GetFileResourceUrl(delegate.resource_id(),
+                                                  delegate.file_name());
+    }
+#endif
+    browser->AddSelectedTabWithURL(page_url,
                                    content::PAGE_TRANSITION_LINK);
     return true;
   }

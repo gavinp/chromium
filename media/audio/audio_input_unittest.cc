@@ -25,7 +25,7 @@ class TestInputCallback : public AudioInputStream::AudioInputCallback {
         max_data_bytes_(max_data_bytes) {
   }
   virtual void OnData(AudioInputStream* stream, const uint8* data,
-                      uint32 size, uint32 hardware_delay_bytes) {
+                      uint32 size, uint32 hardware_delay_bytes, double volume) {
     ++callback_count_;
     // Read the first byte to make sure memory is good.
     if (size) {
@@ -90,7 +90,7 @@ TEST(AudioInputTest, SanityOnMakeParams) {
 
   AudioParameters::Format fmt = AudioParameters::AUDIO_PCM_LINEAR;
   EXPECT_TRUE(NULL == audio_man->MakeAudioInputStream(
-      AudioParameters(fmt, CHANNEL_LAYOUT_7POINT1, 8000, 16,
+      AudioParameters(fmt, CHANNEL_LAYOUT_7_1, 8000, 16,
                       kSamplesPerPacket), AudioManagerBase::kDefaultDeviceId));
   EXPECT_TRUE(NULL == audio_man->MakeAudioInputStream(
       AudioParameters(fmt, CHANNEL_LAYOUT_MONO, 1024 * 1024, 16,

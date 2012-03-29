@@ -45,6 +45,7 @@
         'layer_animation_sequence.h',
         'layer_animator.cc',
         'layer_animator.h',
+        'layer_type.h',
         'scoped_layer_animation_settings.cc',
         'scoped_layer_animation_settings.h',
         'screen_rotation.cc',
@@ -61,11 +62,6 @@
             '<(DEPTH)/ui/ui.gyp:gfx_resources',
             '<(DEPTH)/third_party/angle/src/build_angle.gyp:libEGL',
             '<(DEPTH)/third_party/angle/src/build_angle.gyp:libGLESv2',
-          ],
-        }],
-        ['use_canvas_skia==1', {
-            'defines': [
-              'PER_TILE_PAINTING',
           ],
         }],
       ],

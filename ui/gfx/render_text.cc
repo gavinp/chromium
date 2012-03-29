@@ -198,31 +198,22 @@ void SkiaTextRenderer::SetTextSize(int size) {
   paint_.setTextSize(size);
 }
 
-void SkiaTextRenderer::SetFontStyle(int style) {
+void SkiaTextRenderer::SetFontFamilyWithStyle(const std::string& family,
+                                              int style) {
+  DCHECK(!family.empty());
+
   SkTypeface::Style skia_style = ConvertFontStyleToSkiaTypefaceStyle(style);
-  SkTypeface* current_typeface = paint_.getTypeface();
-
-  if (current_typeface->style() == skia_style)
-    return;
-
-  SkAutoTUnref<SkTypeface> typeface(
-      SkTypeface::CreateFromTypeface(current_typeface, skia_style));
-  if (typeface.get()) {
+  SkTypeface* typeface = SkTypeface::CreateFromName(family.c_str(), skia_style);
+  SkAutoUnref auto_unref(typeface);
+  if (typeface) {
     // |paint_| adds its own ref. So don't |release()| it from the ref ptr here.
-    SetTypeface(typeface.get());
-  }
-}
+    SetTypeface(typeface);
 
-void SkiaTextRenderer::SetFont(const gfx::Font& font) {
-  SkTypeface::Style skia_style =
-      ConvertFontStyleToSkiaTypefaceStyle(font.GetStyle());
-  SkAutoTUnref<SkTypeface> typeface(
-      SkTypeface::CreateFromName(font.GetFontName().c_str(), skia_style));
-  if (typeface.get()) {
-    // |paint_| adds its own ref. So don't |release()| it from the ref ptr here.
-    SetTypeface(typeface.get());
+    // Enable fake bold text if bold style is needed but new typeface does not
+    // have it.
+    paint_.setFakeBoldText((skia_style & SkTypeface::kBold) &&
+                           !typeface->isBold());
   }
-  SetTextSize(font.GetFontSize());
 }
 
 void SkiaTextRenderer::SetForegroundColor(SkColor foreground) {
@@ -748,8 +739,8 @@ Point RenderText::GetOriginForSkiaDrawing() {
   DCHECK_LE(height, display_rect().height());
   // Center the text vertically in the display area.
   origin.Offset(0, (display_rect().height() - height) / 2);
-  // Offset by the font size to account for Skia expecting y to be the bottom.
-  origin.Offset(0, font.GetFontSize());
+  // Offset to account for Skia expecting y to be the baseline.
+  origin.Offset(0, font.GetBaseline());
   return origin;
 }
 
@@ -792,11 +783,11 @@ void RenderText::ApplyFadeEffects(internal::SkiaTextRenderer* renderer) {
   text_rect.Inset(GetAlignmentOffset().x(), 0, 0, 0);
 
   const SkColor color = default_style().foreground;
-  SkAutoTUnref<SkShader> shader(
-      CreateFadeShader(text_rect, left_part, right_part, color));
-  if (shader.get()) {
+  SkShader* shader = CreateFadeShader(text_rect, left_part, right_part, color);
+  SkAutoUnref auto_unref(shader);
+  if (shader) {
     // |renderer| adds its own ref. So don't |release()| it from the ref ptr.
-    renderer->SetShader(shader.get());
+    renderer->SetShader(shader);
   }
 }
 

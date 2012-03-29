@@ -36,24 +36,24 @@ class JSChecker(object):
           self.error_highlight(start, length))
     return ''
 
+  def ChromeSendCheck(self, i, line):
+    """Checks for a particular misuse of 'chrome.send'."""
+    return self.RegexCheck(i, line, r"chrome\.send\('[^']+'\s*(, \[\])\)",
+        'Passing an empty array to chrome.send is unnecessary.')
+
   def ConstCheck(self, i, line):
     """Check for use of the 'const' keyword."""
-    if self.input_api.re.search(r'\*\s+@const\s*', line):
+    if self.input_api.re.search(r'\*\s+@const', line):
       # Probably a JsDoc line
       return ''
 
-    return self.RegexCheck(i, line, r'(?:^|\s)(const)\s',
+    return self.RegexCheck(i, line, r'(?:^|\s|\()(const)\s',
         'Use var instead of const.')
 
   def GetElementByIdCheck(self, i, line):
-    """Checks for use of 'getElementById' instead of '$'."""
-    return self.RegexCheck(i, line, r"(document\.getElementById\(')",
+    """Checks for use of 'document.getElementById' instead of '$'."""
+    return self.RegexCheck(i, line, r"(document\.getElementById)\('",
         "Use $('id') instead of document.getElementById('id')")
-
-  def ChromeSendCheck(self, i, line):
-    """Checks for a particular misuse of 'chrome.send'."""
-    return self.RegexCheck(i, line, r"chrome\.send\('[^']+', (\[\])\)",
-        'Passing an empty array to chrome.send is unnecessary.')
 
   def error_highlight(self, start, length):
     """Takes a start position and a length, and produces a row of '^'s to
@@ -126,6 +126,7 @@ class JSChecker(object):
             errors.COMMA_AT_END_OF_LITERAL,
             errors.JSDOC_ILLEGAL_QUESTION_WITH_PIPE,
             errors.JSDOC_TAG_DESCRIPTION_ENDS_WITH_INVALID_CHARACTER,
+            errors.LINE_TOO_LONG,
         ]
 
     results = []
@@ -139,14 +140,14 @@ class JSChecker(object):
       error_lines = []
 
       # Check for the following:
-      # * getElementById()
-      # * the |const| keyword
-      # * Passing an empty array to |chrome.send()|
+      # * document.getElementById()
+      # * the 'const' keyword
+      # * Passing an empty array to 'chrome.send()'
       for i, line in enumerate(f.NewContents(), start=1):
         error_lines += filter(None, [
-            self.GetElementByIdCheck(i, line),
-            self.ConstCheck(i, line),
             self.ChromeSendCheck(i, line),
+            self.ConstCheck(i, line),
+            self.GetElementByIdCheck(i, line),
         ])
 
       # Use closure_linter to check for several different errors

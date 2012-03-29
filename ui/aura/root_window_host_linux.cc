@@ -6,13 +6,17 @@
 
 #include <X11/cursorfont.h>
 #include <X11/extensions/XInput2.h>
+#include <X11/extensions/Xfixes.h>
+#include <X11/extensions/Xrandr.h>
 #include <algorithm>
 
 #include "base/message_pump_x.h"
+#include "base/stl_util.h"
 #include "ui/aura/cursor.h"
 #include "ui/aura/dispatcher_linux.h"
 #include "ui/aura/env.h"
 #include "ui/aura/event.h"
+#include "ui/aura/monitor.h"
 #include "ui/aura/monitor_manager.h"
 #include "ui/aura/root_window.h"
 #include "ui/base/keycodes/keyboard_codes.h"
@@ -276,7 +280,9 @@ RootWindowHostLinux::RootWindowHostLinux(const gfx::Rect& bounds)
       x_root_window_(DefaultRootWindow(xdisplay_)),
       current_cursor_(aura::kCursorNull),
       cursor_shown_(true),
-      bounds_(bounds) {
+      bounds_(bounds),
+      focus_when_shown_(false),
+      pointer_barriers_(NULL) {
   XSetWindowAttributes swa;
   memset(&swa, 0, sizeof(swa));
   swa.background_pixmap = None;
@@ -290,7 +296,7 @@ RootWindowHostLinux::RootWindowHostLinux(const gfx::Rect& bounds)
       CWBackPixmap,
       &swa);
   static_cast<DispatcherLinux*>(Env::GetInstance()->GetDispatcher())->
-      RootWindowHostCreated(xwindow_, x_root_window_, this);
+      WindowDispatcherCreated(xwindow_, this);
 
   long event_mask = ButtonPressMask | ButtonReleaseMask | FocusChangeMask |
                     KeyPressMask | KeyReleaseMask |
@@ -299,7 +305,6 @@ RootWindowHostLinux::RootWindowHostLinux(const gfx::Rect& bounds)
                     StructureNotifyMask | PropertyChangeMask |
                     PointerMotionMask;
   XSelectInput(xdisplay_, xwindow_, event_mask);
-  XSelectInput(xdisplay_, x_root_window_, StructureNotifyMask);
   XFlush(xdisplay_);
 
   if (base::MessagePumpForUI::HasXInput2())
@@ -319,7 +324,10 @@ RootWindowHostLinux::RootWindowHostLinux(const gfx::Rect& bounds)
 
 RootWindowHostLinux::~RootWindowHostLinux() {
   static_cast<DispatcherLinux*>(Env::GetInstance()->GetDispatcher())->
-      RootWindowHostDestroying(xwindow_, x_root_window_);
+      WindowDispatcherDestroying(xwindow_);
+
+  UnConfineCursor();
+
   XDestroyWindow(xdisplay_, xwindow_);
 
   // Clears XCursorCache.
@@ -361,16 +369,16 @@ base::MessagePumpDispatcher::DispatchStatus RootWindowHostLinux::Dispatch(
         root_window_->SetCapture(NULL);
       break;
     case ConfigureNotify: {
-      if (xev->xconfigure.window == x_root_window_) {
-        Env::GetInstance()->monitor_manager()->OnNativeMonitorResized(
-            gfx::Size(xev->xconfigure.width, xev->xconfigure.height));
-        handled = true;
-        break;
-      }
-
       DCHECK_EQ(xwindow_, xev->xconfigure.window);
       DCHECK_EQ(xwindow_, xev->xconfigure.event);
-
+      // Update barrier and mouse location when the root window has
+      // moved/resized.
+      if (pointer_barriers_.get()) {
+        UnConfineCursor();
+        gfx::Point p = root_window_->last_mouse_location();
+        XWarpPointer(xdisplay_, None,  xwindow_, 0, 0, 0, 0, p.x(), p.y());
+        ConfineCursorToRootWindow();
+      }
       // It's possible that the X window may be resized by some other means than
       // from within aura (e.g. the X window manager can change the size). Make
       // sure the root window size is maintained properly.
@@ -441,7 +449,7 @@ base::MessagePumpDispatcher::DispatchStatus RootWindowHostLinux::Dispatch(
     case MapNotify: {
       // If there's no window manager running, we need to assign the X input
       // focus to our host window.
-      if (!IsWindowManagerPresent())
+      if (!IsWindowManagerPresent() && focus_when_shown_)
         XSetInputFocus(xdisplay_, xwindow_, RevertToNone, CurrentTime);
       handled = true;
       break;
@@ -510,8 +518,10 @@ gfx::Rect RootWindowHostLinux::GetBounds() const {
 
 void RootWindowHostLinux::SetBounds(const gfx::Rect& bounds) {
   bool size_changed = bounds_.size() != bounds.size();
-  if (bounds == bounds_)
+  if (bounds == bounds_) {
+    root_window_->SchedulePaintInRect(root_window_->bounds());
     return;
+  }
   if (bounds.size() != bounds_.size())
     XResizeWindow(xdisplay_, xwindow_, bounds.width(), bounds.height());
   if (bounds.origin() != bounds_.origin())
@@ -573,24 +583,66 @@ gfx::Point RootWindowHostLinux::QueryMouseLocation() {
 }
 
 bool RootWindowHostLinux::ConfineCursorToRootWindow() {
-  return XGrabPointer(xdisplay_,
-                      xwindow_,  // grab_window
-                      False,  // owner_events
-                      ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
-                      GrabModeAsync,
-                      GrabModeAsync,
-                      xwindow_,  // confine_to
-                      None,  // cursor
-                      CurrentTime) == GrabSuccess;
+#if XFIXES_MAJOR >= 5
+  DCHECK(!pointer_barriers_.get());
+  if (pointer_barriers_.get())
+    return false;
+  // Pointer barriers extend all the way across the screen to
+  // avoid leaks at the corners.
+  gfx::Size screen_size = RootWindowHost::GetNativeScreenSize();
+  pointer_barriers_.reset(new XID[4]);
+  // Horizontal barriers.
+  pointer_barriers_[0] = XFixesCreatePointerBarrier(
+      xdisplay_, x_root_window_,
+      0, bounds_.y(), screen_size.width(), bounds_.y(),
+      BarrierPositiveY,
+      0, NULL);  // default device
+  pointer_barriers_[1] = XFixesCreatePointerBarrier(
+      xdisplay_, x_root_window_,
+      0, bounds_.bottom(), screen_size.width(),  bounds_.bottom(),
+      BarrierNegativeY,
+      0, NULL);  // default device
+  // Vertical barriers.
+  pointer_barriers_[2] = XFixesCreatePointerBarrier(
+      xdisplay_, x_root_window_,
+      bounds_.x(), 0, bounds_.x(), screen_size.height(),
+      BarrierPositiveX,
+      0, NULL);  // default device
+  pointer_barriers_[3] = XFixesCreatePointerBarrier(
+      xdisplay_, x_root_window_,
+      bounds_.right(), 0, bounds_.right(), screen_size.height(),
+      BarrierNegativeX,
+      0, NULL);  // default device
+#endif
+  return true;
 }
 
 void RootWindowHostLinux::UnConfineCursor() {
-  XUngrabPointer(xdisplay_, CurrentTime);
+#if XFIXES_MAJOR >= 5
+  if (pointer_barriers_.get()) {
+    XFixesDestroyPointerBarrier(xdisplay_, pointer_barriers_[0]);
+    XFixesDestroyPointerBarrier(xdisplay_, pointer_barriers_[1]);
+    XFixesDestroyPointerBarrier(xdisplay_, pointer_barriers_[2]);
+    XFixesDestroyPointerBarrier(xdisplay_, pointer_barriers_[3]);
+    pointer_barriers_.reset();
+  }
+#endif
 }
 
 void RootWindowHostLinux::MoveCursorTo(const gfx::Point& location) {
   XWarpPointer(xdisplay_, None, xwindow_, 0, 0, 0, 0, location.x(),
       location.y());
+}
+
+void RootWindowHostLinux::SetFocusWhenShown(bool focus_when_shown) {
+  static const char* k_NET_WM_USER_TIME = "_NET_WM_USER_TIME";
+  focus_when_shown_ = focus_when_shown;
+  if (IsWindowManagerPresent() && !focus_when_shown_) {
+    ui::SetIntProperty(xwindow_,
+                       k_NET_WM_USER_TIME,
+                       k_NET_WM_USER_TIME,
+                       0);
+  }
 }
 
 void RootWindowHostLinux::PostNativeEvent(
