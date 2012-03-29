@@ -44,7 +44,6 @@ CONTENT_EXPORT extern const char kBlacklistWebGL[];
 extern const char kDisableFileSystem[];
 extern const char kDisableGeolocation[];
 CONTENT_EXPORT extern const char kDisableGLMultisampling[];
-extern const char kDisableGLSLTranslator[];
 extern const char kDisableGpuDriverBugWorkarounds[];
 extern const char kDisableGpuSandbox[];
 extern const char kReduceGpuSandbox[];
@@ -68,6 +67,8 @@ extern const char kDisableSessionStorage[];
 extern const char kDisableSharedWorkers[];
 extern const char kDisableSiteSpecificQuirks[];
 CONTENT_EXPORT extern const char kDisableSpeechInput[];
+CONTENT_EXPORT extern const char kEnableScriptedSpeech[];
+CONTENT_EXPORT extern const char kDisableThreadedAnimation[];
 CONTENT_EXPORT extern const char kDisableWebAudio[];
 extern const char kDisableWebSecurity[];
 extern const char kDisableWebSockets[];
@@ -81,6 +82,7 @@ extern const char kEnableAccessibilityLogging[];
 extern const char kEnableBrowserPlugin[];
 CONTENT_EXPORT extern const char kEnableCompositingForFixedPosition[];
 extern const char kEnableCssRegions[];
+extern const char kEnableCssShaders[];
 CONTENT_EXPORT extern const char kEnableDeferred2dCanvas[];
 extern const char kEnableCompositeToTexture[];
 CONTENT_EXPORT extern const char kEnableDeviceMotion[];
@@ -106,11 +108,12 @@ extern const char kEnableStyleScoped[];
 CONTENT_EXPORT extern const char kEnableSmoothScrolling[];
 CONTENT_EXPORT extern const char kEnableStatsTable[];
 extern const char kEnableStrictSiteIsolation[];
-CONTENT_EXPORT extern const char kEnableThreadedAnimation[];
 CONTENT_EXPORT extern const char kEnableThreadedCompositing[];
+CONTENT_EXPORT extern const char kDisableThreadedCompositing[];
 CONTENT_EXPORT extern const char kEnableTcpFastOpen[];
 CONTENT_EXPORT extern const char kEnableTouchEvents[];
 CONTENT_EXPORT extern const char kEnableVideoTrack[];
+extern const char kEnableViewport[];
 CONTENT_EXPORT extern const char kDisableWebIntents[];
 CONTENT_EXPORT extern const char kExperimentalLocationFeatures[];
 extern const char kExtraPluginDir[];
@@ -202,6 +205,8 @@ CONTENT_EXPORT extern const char kRendererCheckFalseTest[];
 extern const char kEnablePerTilePainting[];
 
 #if defined(USE_AURA)
+CONTENT_EXPORT extern const char kFlingTapSuppressMaxDown[];
+CONTENT_EXPORT extern const char kFlingTapSuppressMaxGap[];
 CONTENT_EXPORT extern const char kTestCompositor[];
 #endif
 

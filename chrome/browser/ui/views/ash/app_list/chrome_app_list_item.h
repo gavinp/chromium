@@ -15,7 +15,7 @@ class ChromeAppListItem : public ash::AppListItemModel {
  public:
   enum Type {
     TYPE_APP,
-    TYPE_BROWSER_COMMAND,
+    TYPE_OTHER,
   };
 
   // Activates the item. |event_flags| holds flags of a mouse/keyboard event
@@ -32,6 +32,8 @@ class ChromeAppListItem : public ash::AppListItemModel {
 
  private:
   Type type_;
+
+  DISALLOW_COPY_AND_ASSIGN(ChromeAppListItem);
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_ASH_APP_LIST_CHROME_APP_LIST_ITEM_H_

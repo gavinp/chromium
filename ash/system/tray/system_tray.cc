@@ -12,14 +12,21 @@
 #include "ash/system/tray/system_tray_item.h"
 #include "ash/system/user/login_status.h"
 #include "ash/wm/shadow_types.h"
+#include "ash/wm/shelf_layout_manager.h"
 #include "ash/wm/window_animations.h"
+#include "base/message_loop.h"
 #include "base/logging.h"
 #include "base/timer.h"
 #include "base/utf_string_conversions.h"
+#include "grit/ash_strings.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "third_party/skia/include/core/SkPaint.h"
 #include "third_party/skia/include/core/SkPath.h"
+#include "ui/aura/root_window.h"
+#include "ui/base/events.h"
+#include "ui/base/accessibility/accessible_view_state.h"
+#include "ui/base/l10n/l10n_util.h"
 #include "ui/gfx/canvas.h"
 #include "ui/gfx/skia_util.h"
 #include "ui/views/border.h"
@@ -28,12 +35,13 @@
 #include "ui/views/layout/fill_layout.h"
 #include "ui/views/layout/box_layout.h"
 #include "ui/views/view.h"
+#include "ui/views/widget/widget.h"
 
 namespace ash {
 
 namespace {
 
-const int kPaddingFromRightEdgeOfScreen = 10;
+const int kPaddingFromRightEdgeOfScreen = 16;
 const int kPaddingFromBottomOfScreen = 10;
 
 const int kAnimationDurationForPopupMS = 200;
@@ -48,12 +56,10 @@ const int kShadowHeight = 3;
 const int kLeftPadding = 4;
 const int kBottomLineHeight = 1;
 
-const SkColor kDarkColor = SkColorSetRGB(120, 120, 120);
-const SkColor kLightColor = SkColorSetRGB(240, 240, 240);
 const SkColor kShadowColor = SkColorSetARGB(25, 0, 0, 0);
 
-const SkColor kTrayBackgroundColor = SkColorSetARGB(100, 0, 0, 0);
-const SkColor kTrayBackgroundHover = SkColorSetARGB(150, 0, 0, 0);
+const SkColor kTrayBackgroundAlpha = 100;
+const SkColor kTrayBackgroundHoverAlpha = 150;
 
 // Container for items in the tray. It makes sure the widget is updated
 // correctly when the visibility/size of the tray item changes.
@@ -129,6 +135,9 @@ class TrayPopupItemContainer : public views::View {
   }
 
   virtual void OnPaintBackground(gfx::Canvas* canvas) OVERRIDE {
+    if (child_count() == 0)
+      return;
+
     views::View* view = child_at(0);
     if (!view->background()) {
       canvas->FillRect(gfx::Rect(size()),
@@ -161,19 +170,20 @@ class SystemTrayBubbleBackground : public views::Background {
       views::View* v = owner_->child_at(i);
 
       if (!v->border()) {
-        canvas->DrawLine(gfx::Point(v->x() - 1, v->y() - 1),
-            gfx::Point(v->x() + v->width() + 1, v->y() - 1),
-            !last_view || last_view->border() ? kDarkColor : kLightColor);
+        canvas->DrawLine(gfx::Point(v->x(), v->y() - 1),
+            gfx::Point(v->x() + v->width(), v->y() - 1),
+            !last_view || last_view->border() ? kBorderDarkColor :
+                                                kBorderLightColor);
         canvas->DrawLine(gfx::Point(v->x() - 1, v->y() - 1),
             gfx::Point(v->x() - 1, v->y() + v->height() + 1),
-            kDarkColor);
+            kBorderDarkColor);
         canvas->DrawLine(gfx::Point(v->x() + v->width(), v->y() - 1),
             gfx::Point(v->x() + v->width(), v->y() + v->height() + 1),
-            kDarkColor);
+            kBorderDarkColor);
       } else if (last_view && !last_view->border()) {
         canvas->DrawLine(gfx::Point(v->x() - 1, v->y() - 1),
             gfx::Point(v->x() + v->width() + 1, v->y() - 1),
-            kDarkColor);
+            kBorderDarkColor);
       }
 
       last_view = v;
@@ -200,34 +210,36 @@ class SystemTrayBubbleBorder : public views::Border {
     // Draw a line first.
     int y = owner_->height() + 1;
     canvas->FillRect(gfx::Rect(kLeftPadding, y, owner_->width(),
-                               kBottomLineHeight), kDarkColor);
+                               kBottomLineHeight), kBorderDarkColor);
 
     // Now, draw a shadow.
     canvas->FillRect(gfx::Rect(kLeftPadding + kShadowOffset, y,
                                owner_->width() - kShadowOffset, kShadowHeight),
                      kShadowColor);
 
-    // Draw the arrow.
-    int left_base_x = owner_->width() - kArrowPaddingFromRight - kArrowWidth;
-    int left_base_y = y;
-    int tip_x = left_base_x + kArrowWidth / 2;
-    int tip_y = left_base_y + kArrowHeight;
-    SkPath path;
-    path.incReserve(4);
-    path.moveTo(SkIntToScalar(left_base_x), SkIntToScalar(left_base_y));
-    path.lineTo(SkIntToScalar(tip_x), SkIntToScalar(tip_y));
-    path.lineTo(SkIntToScalar(left_base_x + kArrowWidth),
-                SkIntToScalar(left_base_y));
+    if (Shell::GetInstance()->shelf()->IsVisible()) {
+      // Draw the arrow.
+      int left_base_x = owner_->width() - kArrowPaddingFromRight - kArrowWidth;
+      int left_base_y = y;
+      int tip_x = left_base_x + kArrowWidth / 2;
+      int tip_y = left_base_y + kArrowHeight;
+      SkPath path;
+      path.incReserve(4);
+      path.moveTo(SkIntToScalar(left_base_x), SkIntToScalar(left_base_y));
+      path.lineTo(SkIntToScalar(tip_x), SkIntToScalar(tip_y));
+      path.lineTo(SkIntToScalar(left_base_x + kArrowWidth),
+                  SkIntToScalar(left_base_y));
 
-    SkPaint paint;
-    paint.setStyle(SkPaint::kFill_Style);
-    paint.setColor(kBackgroundColor);
-    canvas->sk_canvas()->drawPath(path, paint);
+      SkPaint paint;
+      paint.setStyle(SkPaint::kFill_Style);
+      paint.setColor(kBackgroundColor);
+      canvas->sk_canvas()->drawPath(path, paint);
 
-    // Now the draw the outline.
-    paint.setStyle(SkPaint::kStroke_Style);
-    paint.setColor(kDarkColor);
-    canvas->sk_canvas()->drawPath(path, paint);
+      // Now the draw the outline.
+      paint.setStyle(SkPaint::kStroke_Style);
+      paint.setColor(kBorderDarkColor);
+      canvas->sk_canvas()->drawPath(path, paint);
+    }
   }
 
   virtual void GetInsets(gfx::Insets* insets) const OVERRIDE {
@@ -239,12 +251,16 @@ class SystemTrayBubbleBorder : public views::Border {
   DISALLOW_COPY_AND_ASSIGN(SystemTrayBubbleBorder);
 };
 
+}  // namespace
+
+namespace internal {
+
 class SystemTrayBackground : public views::Background {
  public:
-  SystemTrayBackground() : hovering_(false) {}
+  SystemTrayBackground() : alpha_(kTrayBackgroundAlpha) {}
   virtual ~SystemTrayBackground() {}
 
-  void set_hovering(bool hover) { hovering_ = hover; }
+  void set_alpha(int alpha) { alpha_ = alpha; }
 
  private:
   // Overridden from views::Background.
@@ -252,22 +268,18 @@ class SystemTrayBackground : public views::Background {
     SkPaint paint;
     paint.setAntiAlias(true);
     paint.setStyle(SkPaint::kFill_Style);
-    paint.setColor(hovering_ ? kTrayBackgroundHover : kTrayBackgroundColor);
+    paint.setColor(SkColorSetARGB(alpha_, 0, 0, 0));
     SkPath path;
-    gfx::Rect bounds(view->GetContentsBounds());
-    SkScalar radius = SkIntToScalar(4);
+    gfx::Rect bounds(view->bounds());
+    SkScalar radius = SkIntToScalar(kTrayRoundedBorderRadius);
     path.addRoundRect(gfx::RectToSkRect(bounds), radius, radius);
     canvas->sk_canvas()->drawPath(path, paint);
   }
 
-  bool hovering_;
+  int alpha_;
 
   DISALLOW_COPY_AND_ASSIGN(SystemTrayBackground);
 };
-
-}  // namespace
-
-namespace internal {
 
 class SystemTrayBubble : public views::BubbleDelegateView {
  public:
@@ -298,6 +310,7 @@ class SystemTrayBubble : public views::BubbleDelegateView {
     }
   }
 
+  bool detailed() const { return detailed_; }
   void set_can_activate(bool activate) { can_activate_ = activate; }
 
   void StartAutoCloseTimer(int seconds) {
@@ -332,6 +345,13 @@ class SystemTrayBubble : public views::BubbleDelegateView {
       if (view)
         AddChildView(new TrayPopupItemContainer(view));
     }
+  }
+
+  // Overridden from views::View.
+  virtual void GetAccessibleState(ui::AccessibleViewState* state) OVERRIDE {
+    state->role = ui::AccessibilityTypes::ROLE_WINDOW;
+    state->name = l10n_util::GetStringUTF16(
+        IDS_ASH_STATUS_TRAY_ACCESSIBLE_NAME);
   }
 
   virtual bool CanActivate() const OVERRIDE {
@@ -369,44 +389,83 @@ class SystemTrayBubble : public views::BubbleDelegateView {
 
 }  // namespace internal
 
-NetworkIconInfo::NetworkIconInfo() {
+NetworkIconInfo::NetworkIconInfo()
+    : highlight(false),
+      tray_icon_visible(true) {
 }
 
 NetworkIconInfo::~NetworkIconInfo() {
+}
+
+BluetoothDeviceInfo::BluetoothDeviceInfo()
+    : connected(false) {
+}
+
+BluetoothDeviceInfo::~BluetoothDeviceInfo() {
+}
+
+IMEInfo::IMEInfo()
+    : selected(false) {
+}
+
+IMEInfo::~IMEInfo() {
+}
+
+IMEPropertyInfo::IMEPropertyInfo()
+    : selected(false) {
+}
+
+IMEPropertyInfo::~IMEPropertyInfo() {
 }
 
 SystemTray::SystemTray()
     : items_(),
       accessibility_observer_(NULL),
       audio_observer_(NULL),
+      bluetooth_observer_(NULL),
       brightness_observer_(NULL),
       caps_lock_observer_(NULL),
       clock_observer_(NULL),
+      ime_observer_(NULL),
       network_observer_(NULL),
       power_status_observer_(NULL),
       update_observer_(NULL),
+      user_observer_(NULL),
       bubble_(NULL),
-      popup_(NULL) {
+      popup_(NULL),
+      background_(new internal::SystemTrayBackground),
+      should_show_launcher_(false),
+      ALLOW_THIS_IN_INITIALIZER_LIST(hide_background_animator_(this,
+          0, kTrayBackgroundAlpha)),
+      ALLOW_THIS_IN_INITIALIZER_LIST(hover_background_animator_(this,
+          0, kTrayBackgroundHoverAlpha - kTrayBackgroundAlpha)) {
   container_ = new views::View;
   container_->SetLayoutManager(new views::BoxLayout(
-      views::BoxLayout::kHorizontal, 5, 0, kTrayPaddingBetweenItems));
-  container_->set_background(new SystemTrayBackground);
+      views::BoxLayout::kHorizontal, 0, 0, 0));
+  container_->set_background(background_);
+  container_->set_border(
+      views::Border::CreateEmptyBorder(1, 1, 1, 1));
   set_border(views::Border::CreateEmptyBorder(0, 0,
         kPaddingFromBottomOfScreen, kPaddingFromRightEdgeOfScreen));
   set_notify_enter_exit_on_child(true);
   set_focusable(true);
   SetLayoutManager(new views::BoxLayout(views::BoxLayout::kVertical, 0, 0, 0));
   AddChildView(container_);
+
+  // Initially we want to paint the background, but without the hover effect.
+  SetPaintsBackground(true, internal::BackgroundAnimator::CHANGE_IMMEDIATE);
+  hover_background_animator_.SetPaintsBackground(false,
+      internal::BackgroundAnimator::CHANGE_IMMEDIATE);
 }
 
 SystemTray::~SystemTray() {
-  if (popup_)
-    popup_->CloseNow();
   for (std::vector<SystemTrayItem*>::iterator it = items_.begin();
       it != items_.end();
       ++it) {
     (*it)->DestroyTrayView();
   }
+  if (popup_)
+    popup_->CloseNow();
 }
 
 void SystemTray::AddTrayItem(SystemTrayItem* item) {
@@ -426,6 +485,7 @@ void SystemTray::RemoveTrayItem(SystemTrayItem* item) {
 
 void SystemTray::ShowDefaultView() {
   if (popup_) {
+    MessageLoopForUI::current()->RemoveObserver(this);
     popup_->RemoveObserver(this);
     popup_->Close();
   }
@@ -439,6 +499,7 @@ void SystemTray::ShowDetailedView(SystemTrayItem* item,
                                   int close_delay,
                                   bool activate) {
   if (popup_) {
+    MessageLoopForUI::current()->RemoveObserver(this);
     popup_->RemoveObserver(this);
     popup_->Close();
   }
@@ -449,6 +510,11 @@ void SystemTray::ShowDetailedView(SystemTrayItem* item,
   items.push_back(item);
   ShowItems(items, true, activate);
   bubble_->StartAutoCloseTimer(close_delay);
+}
+
+void SystemTray::SetDetailedViewCloseDelay(int close_delay) {
+  if (bubble_ && bubble_->detailed())
+    bubble_->StartAutoCloseTimer(close_delay);
 }
 
 void SystemTray::UpdateAfterLoginStatusChange(user::LoginStatus login_status) {
@@ -469,7 +535,14 @@ void SystemTray::UpdateAfterLoginStatusChange(user::LoginStatus login_status) {
     if (view)
       container_->AddChildViewAt(new TrayItemContainer(view), 0);
   }
+  SetVisible(true);
   PreferredSizeChanged();
+}
+
+void SystemTray::SetPaintsBackground(
+      bool value,
+      internal::BackgroundAnimator::ChangeType change_type) {
+  hide_background_animator_.SetPaintsBackground(value, change_type);
 }
 
 void SystemTray::ShowItems(std::vector<SystemTrayItem*>& items,
@@ -484,6 +557,7 @@ void SystemTray::ShowItems(std::vector<SystemTrayItem*>& items,
   popup_->non_client_view()->frame_view()->set_background(NULL);
   popup_->non_client_view()->frame_view()->set_border(
       new SystemTrayBubbleBorder(bubble_));
+  MessageLoopForUI::current()->AddObserver(this);
   popup_->AddObserver(this);
 
   // Setup animation.
@@ -500,39 +574,98 @@ void SystemTray::ShowItems(std::vector<SystemTrayItem*>& items,
 bool SystemTray::OnKeyPressed(const views::KeyEvent& event) {
   if (event.key_code() == ui::VKEY_SPACE ||
       event.key_code() == ui::VKEY_RETURN) {
-    if (popup_)
+    if (popup_ && bubble_ && !bubble_->detailed())
       popup_->Hide();
     else
-      ShowItems(items_.get(), false, true);
+      ShowDefaultView();
     return true;
   }
   return false;
 }
 
 bool SystemTray::OnMousePressed(const views::MouseEvent& event) {
-  if (popup_)
+  // If we're already showing the default view, hide it; otherwise, show it
+  // (and hide any popup that's currently shown).
+  if (popup_ && bubble_ && !bubble_->detailed())
     popup_->Hide();
   else
-    ShowItems(items_.get(), false, true);
+    ShowDefaultView();
   return true;
 }
 
 void SystemTray::OnMouseEntered(const views::MouseEvent& event) {
-  static_cast<SystemTrayBackground*>(container_->background())->
-      set_hovering(true);
-  SchedulePaint();
+  should_show_launcher_ = true;
+  hover_background_animator_.SetPaintsBackground(true,
+      internal::BackgroundAnimator::CHANGE_ANIMATE);
 }
 
 void SystemTray::OnMouseExited(const views::MouseEvent& event) {
-  static_cast<SystemTrayBackground*>(container_->background())->
-      set_hovering(false);
-  SchedulePaint();
+  // When the popup closes we'll update |should_show_launcher_|.
+  if (!popup_)
+    should_show_launcher_ = false;
+  hover_background_animator_.SetPaintsBackground(false,
+      internal::BackgroundAnimator::CHANGE_ANIMATE);
+}
+
+void SystemTray::AboutToRequestFocusFromTabTraversal(bool reverse) {
+  views::View* v = GetNextFocusableView();
+  if (v && v->GetWidget())
+    v->GetWidget()->Activate();
+}
+
+void SystemTray::GetAccessibleState(ui::AccessibleViewState* state) {
+  state->role = ui::AccessibilityTypes::ROLE_PUSHBUTTON;
+  state->name = l10n_util::GetStringUTF16(
+      IDS_ASH_STATUS_TRAY_ACCESSIBLE_NAME);
+}
+
+void SystemTray::OnPaintFocusBorder(gfx::Canvas* canvas) {
+  if (GetWidget() && GetWidget()->IsActive())
+    views::View::OnPaintFocusBorder(canvas);
 }
 
 void SystemTray::OnWidgetClosing(views::Widget* widget) {
   CHECK_EQ(popup_, widget);
+  MessageLoopForUI::current()->RemoveObserver(this);
   popup_ = NULL;
   bubble_ = NULL;
+  if (should_show_launcher_) {
+    // No need to show the launcher if the mouse isn't over the status area
+    // anymore.
+    aura::RootWindow* root = GetWidget()->GetNativeView()->GetRootWindow();
+    should_show_launcher_ = GetWidget()->GetWindowScreenBounds().Contains(
+        root->last_mouse_location());
+    if (!should_show_launcher_)
+      Shell::GetInstance()->shelf()->UpdateAutoHideState();
+  }
+}
+
+void SystemTray::OnWidgetVisibilityChanged(views::Widget* widget,
+                                           bool visible) {
+  if (!visible)
+    MessageLoopForUI::current()->RemoveObserver(this);
+}
+
+void SystemTray::UpdateBackground(int alpha) {
+  background_->set_alpha(hide_background_animator_.alpha() +
+                         hover_background_animator_.alpha());
+  SchedulePaint();
+}
+
+base::EventStatus SystemTray::WillProcessEvent(const base::NativeEvent& event) {
+  // Check if the user clicked outside of the system tray bubble and hide it
+  // if they did.
+  if (bubble_ && ui::EventTypeFromNative(event) == ui::ET_MOUSE_PRESSED) {
+    gfx::Point cursor_in_view = ui::EventLocationFromNative(event);
+    View::ConvertPointFromScreen(bubble_, &cursor_in_view);
+    if (!bubble_->HitTest(cursor_in_view)) {
+      popup_->Hide();
+    }
+  }
+  return base::EVENT_CONTINUE;
+}
+
+void SystemTray::DidProcessEvent(const base::NativeEvent& event) {
 }
 
 }  // namespace ash

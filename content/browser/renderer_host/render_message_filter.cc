@@ -46,7 +46,6 @@
 #include "media/audio/audio_manager_base.h"
 #include "media/audio/audio_util.h"
 #include "media/base/media_log_event.h"
-#include "net/base/host_resolver_impl.h"
 #include "net/base/io_buffer.h"
 #include "net/base/keygen_handler.h"
 #include "net/base/mime_util.h"
@@ -270,7 +269,8 @@ RenderMessageFilter::RenderMessageFilter(
     PluginServiceImpl* plugin_service,
     content::BrowserContext* browser_context,
     net::URLRequestContextGetter* request_context,
-    RenderWidgetHelper* render_widget_helper)
+    RenderWidgetHelper* render_widget_helper,
+    content::MediaObserver* media_observer)
     : resource_dispatcher_host_(ResourceDispatcherHostImpl::Get()),
       plugin_service_(plugin_service),
       browser_context_(browser_context),
@@ -281,7 +281,8 @@ RenderMessageFilter::RenderMessageFilter(
       dom_storage_context_(static_cast<DOMStorageContextImpl*>(
           BrowserContext::GetDOMStorageContext(browser_context))),
       render_process_id_(render_process_id),
-      cpu_usage_(0) {
+      cpu_usage_(0),
+      media_observer_(media_observer) {
   DCHECK(request_context_);
 
   render_widget_helper_->Init(render_process_id_, resource_dispatcher_host_);
@@ -380,8 +381,8 @@ bool RenderMessageFilter::OnMessageReceived(const IPC::Message& message,
                         OnGetHardwareInputSampleRate)
     IPC_MESSAGE_HANDLER(ViewHostMsg_GetHardwareSampleRate,
                         OnGetHardwareSampleRate)
-    IPC_MESSAGE_HANDLER(ViewHostMsg_GetHardwareInputChannelCount,
-                        OnGetHardwareInputChannelCount)
+    IPC_MESSAGE_HANDLER(ViewHostMsg_GetHardwareInputChannelLayout,
+                        OnGetHardwareInputChannelLayout)
     IPC_MESSAGE_HANDLER(ViewHostMsg_MediaLogEvent, OnMediaLogEvent)
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP_EX()
@@ -402,10 +403,17 @@ void RenderMessageFilter::OnMsgCreateWindow(
     int* route_id,
     int* surface_id,
     int64* cloned_session_storage_namespace_id) {
-  if (!content::GetContentClient()->browser()->CanCreateWindow(
-          GURL(params.opener_url), GURL(params.opener_security_origin),
-          params.window_container_type, resource_context_,
-          render_process_id_)) {
+  bool no_javascript_access;
+  bool can_create_window =
+      content::GetContentClient()->browser()->CanCreateWindow(
+          GURL(params.opener_url),
+          GURL(params.opener_security_origin),
+          params.window_container_type,
+          resource_context_,
+          render_process_id_,
+          &no_javascript_access);
+
+  if (!can_create_window) {
     *route_id = MSG_ROUTING_NONE;
     *surface_id = 0;
     return;
@@ -427,6 +435,7 @@ void RenderMessageFilter::OnMsgCreateWindow(
 #endif
 
   render_widget_helper_->CreateNewWindow(params,
+                                         no_javascript_access,
                                          peer_handle(),
                                          route_id,
                                          surface_id);
@@ -680,20 +689,21 @@ void RenderMessageFilter::OnGetHardwareBufferSize(uint32* buffer_size) {
   *buffer_size = static_cast<uint32>(media::GetAudioHardwareBufferSize());
 }
 
-void RenderMessageFilter::OnGetHardwareInputSampleRate(double* sample_rate) {
+void RenderMessageFilter::OnGetHardwareInputSampleRate(int* sample_rate) {
   // TODO(henrika): add support for all available input devices.
   *sample_rate = media::GetAudioInputHardwareSampleRate(
       AudioManagerBase::kDefaultDeviceId);
 }
 
-void RenderMessageFilter::OnGetHardwareSampleRate(double* sample_rate) {
+void RenderMessageFilter::OnGetHardwareSampleRate(int* sample_rate) {
   *sample_rate = media::GetAudioHardwareSampleRate();
 }
 
-void RenderMessageFilter::OnGetHardwareInputChannelCount(uint32* channels) {
+void RenderMessageFilter::OnGetHardwareInputChannelLayout(
+    ChannelLayout* layout) {
   // TODO(henrika): add support for all available input devices.
-  *channels = static_cast<uint32>(media::GetAudioInputHardwareChannelCount(
-      AudioManagerBase::kDefaultDeviceId));
+  *layout = media::GetAudioInputHardwareChannelLayout(
+      AudioManagerBase::kDefaultDeviceId);
 }
 
 void RenderMessageFilter::OnDownloadUrl(const IPC::Message& message,
@@ -881,10 +891,8 @@ void RenderMessageFilter::AsyncOpenFileOnFileThread(const FilePath& path,
 }
 
 void RenderMessageFilter::OnMediaLogEvent(const media::MediaLogEvent& event) {
-  if (!resource_context_->GetMediaObserver())
-    return;
-  resource_context_->GetMediaObserver()->OnMediaEvent(
-      render_process_id_, event);
+  if (media_observer_)
+    media_observer_->OnMediaEvent(render_process_id_, event);
 }
 
 void RenderMessageFilter::CheckPolicyForCookies(

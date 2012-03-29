@@ -4,8 +4,6 @@
 
 #include "media/audio/win/wavein_input_win.h"
 
-#include <windows.h>
-#include <mmsystem.h>
 #pragma comment(lib, "winmm.lib")
 
 #include "base/logging.h"
@@ -15,7 +13,7 @@
 #include "media/audio/win/device_enumeration_win.h"
 
 namespace {
-const int kStopInputStreamCallbackTimeout = 3000; // Three seconds.
+const int kStopInputStreamCallbackTimeout = 3000;  // Three seconds.
 }
 
 using media::AudioDeviceNames;
@@ -36,15 +34,15 @@ PCMWaveInAudioInputStream::PCMWaveInAudioInputStream(
       callback_(NULL),
       num_buffers_(num_buffers),
       buffer_(NULL),
-      channels_(params.channels) {
+      channels_(params.channels()) {
   format_.wFormatTag = WAVE_FORMAT_PCM;
-  format_.nChannels = params.channels > 2 ? 2 : params.channels;
-  format_.nSamplesPerSec = params.sample_rate;
-  format_.wBitsPerSample = params.bits_per_sample;
+  format_.nChannels = params.channels() > 2 ? 2 : params.channels();
+  format_.nSamplesPerSec = params.sample_rate();
+  format_.wBitsPerSample = params.bits_per_sample();
   format_.cbSize = 0;
   format_.nBlockAlign = (format_.nChannels * format_.wBitsPerSample) / 8;
   format_.nAvgBytesPerSec = format_.nBlockAlign * format_.nSamplesPerSec;
-  buffer_size_ = params.samples_per_packet * format_.nBlockAlign;
+  buffer_size_ = params.frames_per_buffer() * format_.nBlockAlign;
   // If we don't have a packet size we use 100ms.
   if (!buffer_size_)
     buffer_size_ = format_.nAvgBytesPerSec / 10;
@@ -201,6 +199,17 @@ double PCMWaveInAudioInputStream::GetVolume() {
   return 0.0;
 }
 
+void PCMWaveInAudioInputStream::SetAutomaticGainControl(bool enabled) {
+  // TODO(henrika): Add AGC support when volume control has been added.
+  NOTIMPLEMENTED();
+}
+
+bool PCMWaveInAudioInputStream::GetAutomaticGainControl() {
+  // TODO(henrika): Add AGC support when volume control has been added.
+  NOTIMPLEMENTED();
+  return false;
+}
+
 void PCMWaveInAudioInputStream::HandleError(MMRESULT error) {
   DLOG(WARNING) << "PCMWaveInAudio error " << error;
   callback_->OnError(this, error);
@@ -260,10 +269,13 @@ void PCMWaveInAudioInputStream::WaveCallback(HWAVEIN hwi, UINT msg,
     // to the callback and check if we need to stop playing.
     // It should be OK to assume the data in the buffer is what has been
     // recorded in the soundcard.
+    // TODO(henrika): the |volume| parameter is always set to zero since there
+    // is currently no support for controlling the microphone volume level.
     WAVEHDR* buffer = reinterpret_cast<WAVEHDR*>(param1);
     obj->callback_->OnData(obj, reinterpret_cast<const uint8*>(buffer->lpData),
                            buffer->dwBytesRecorded,
-                           buffer->dwBytesRecorded);
+                           buffer->dwBytesRecorded,
+                           0.0);
 
     if (obj->state_ == kStateStopping) {
       // The main thread has called Stop() and is waiting to issue waveOutReset

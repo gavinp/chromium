@@ -788,6 +788,10 @@ enum NotificationType {
   // Sent when a chromium os user logs in.
   NOTIFICATION_LOGIN_USER_CHANGED,
 
+  // Sent immediately after the logged-in user's profile is ready.
+  // The details are a Profile object.
+  NOTIFICATION_LOGIN_USER_PROFILE_PREPARED,
+
   // Sent when the chromium session is first started. If this is a new user this
   // will not be sent until a profile picture has been selected, unlike
   // NOTIFICATION_LOGIN_USER_CHANGED which is sent immediately after the user
@@ -1039,6 +1043,14 @@ enum NotificationType {
   // The source is a Source<net::HttpNetworkSession>.  Details is a
   // (std::pair<net::SSLCertRequestInfo*, net::X509Certificate*>).
   NOTIFICATION_SSL_CLIENT_AUTH_CERT_SELECTED,
+
+  // Blocked content.
+  // Sent when content changes to or from the blocked state in
+  // BlockedContentTabHelper.
+  // The source is the TabContentsWrapper of the blocked content and details
+  // is a boolean: true if the content is entering the blocked state, false
+  // if it is leaving.
+  NOTIFICATION_CONTENT_BLOCKED_STATE_CHANGED,
 
   // Note:-
   // Currently only Content and Chrome define and use notifications.

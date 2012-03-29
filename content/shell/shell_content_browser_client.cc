@@ -7,22 +7,12 @@
 #include "base/command_line.h"
 #include "base/file_path.h"
 #include "content/shell/shell.h"
-#include "content/shell/shell_browser_main.h"
+#include "content/shell/shell_browser_main_parts.h"
 #include "content/shell/shell_devtools_delegate.h"
 #include "content/shell/shell_render_view_host_observer.h"
 #include "content/shell/shell_switches.h"
 #include "googleurl/src/gurl.h"
 #include "third_party/skia/include/core/SkBitmap.h"
-
-#if defined(OS_WIN)
-#include "content/browser/tab_contents/tab_contents.h"
-#include "content/browser/tab_contents/tab_contents_view_win.h"
-#include "content/common/view_messages.h"
-#elif defined(OS_LINUX)
-#include "content/browser/tab_contents/tab_contents_view_gtk.h"
-#elif defined(OS_MACOSX)
-#include "content/browser/tab_contents/web_contents_view_mac.h"
-#endif
 
 namespace content {
 
@@ -230,6 +220,10 @@ void ShellContentBrowserClient::RequestMediaAccessPermission(
     const content::MediaResponseCallback& callback) {
 }
 
+MediaObserver* ShellContentBrowserClient::GetMediaObserver() {
+  return NULL;
+}
+
 void ShellContentBrowserClient::RequestDesktopNotificationPermission(
     const GURL& source_origin,
     int callback_context,
@@ -263,7 +257,9 @@ bool ShellContentBrowserClient::CanCreateWindow(
     const GURL& origin,
     WindowContainerType container_type,
     content::ResourceContext* context,
-    int render_process_id) {
+    int render_process_id,
+    bool* no_javascript_access) {
+  *no_javascript_access = false;
   return true;
 }
 
@@ -350,5 +346,9 @@ crypto::CryptoModuleBlockingPasswordDelegate*
   return NULL;
 }
 #endif
+
+ShellBrowserContext* ShellContentBrowserClient::browser_context() {
+  return shell_browser_main_parts_->browser_context();
+}
 
 }  // namespace content

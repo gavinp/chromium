@@ -13,7 +13,7 @@ namespace ui {
 
 namespace {
 
-// Adjust the window to fit, returning true if the window was resized or moved.
+// Adjust the window to fit.
 void AdjustWindowToFit(HWND hwnd, const RECT& bounds, bool fit_to_monitor) {
   if (fit_to_monitor) {
     // Get the monitor.
@@ -37,7 +37,7 @@ void AdjustWindowToFit(HWND hwnd, const RECT& bounds, bool fit_to_monitor) {
       NOTREACHED() << "Unable to find default monitor";
       // Fall through.
     }
-  } // Else fall through.
+  }  // Else fall through.
 
   // The window is not being fit to monitor, or the window fits on the monitor
   // as is, or we have no monitor info; reset the bounds.
@@ -120,8 +120,10 @@ void CenterAndSizeWindow(HWND parent,
   if (parent) {
     // If there is a parent, center over the parents bounds.
     ::GetWindowRect(parent, &center_bounds);
-  } else {
-    // No parent. Center over the monitor the window is on.
+  }
+
+  if (::IsRectEmpty(&center_bounds)) {
+    // No parent or no parent rect. Center over the monitor the window is on.
     HMONITOR monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
     if (monitor) {
       MONITORINFO mi = {0};
@@ -132,11 +134,19 @@ void CenterAndSizeWindow(HWND parent,
       NOTREACHED() << "Unable to get default monitor";
     }
   }
-  window_bounds.left = center_bounds.left +
-      (center_bounds.right - center_bounds.left - pref.width()) / 2;
+
+  window_bounds.left = center_bounds.left;
+  if (pref.width() < (center_bounds.right - center_bounds.left)) {
+    window_bounds.left +=
+        (center_bounds.right - center_bounds.left - pref.width()) / 2;
+  }
   window_bounds.right = window_bounds.left + pref.width();
-  window_bounds.top = center_bounds.top +
-      (center_bounds.bottom - center_bounds.top - pref.height()) / 2;
+
+  window_bounds.top = center_bounds.top;
+  if (pref.height() < (center_bounds.bottom - center_bounds.top)) {
+    window_bounds.top +=
+        (center_bounds.bottom - center_bounds.top - pref.height()) / 2;
+  }
   window_bounds.bottom = window_bounds.top + pref.height();
 
   // If we're centering a child window, we are positioning in client

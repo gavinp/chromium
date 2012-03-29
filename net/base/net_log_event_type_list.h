@@ -457,14 +457,14 @@ EVENT_TYPE(SSL_SERVER_HANDSHAKE)
 // The SSL server requested a client certificate.
 EVENT_TYPE(SSL_CLIENT_CERT_REQUESTED)
 
-// The start/end of getting an origin-bound certificate and private key.
+// The start/end of getting a domain-bound certificate and private key.
 //
 // The END event will contain the following parameters on failure:
 //
 //   {
 //     "net_error": <Net integer error code>,
 //   }
-EVENT_TYPE(SSL_GET_ORIGIN_BOUND_CERT)
+EVENT_TYPE(SSL_GET_DOMAIN_BOUND_CERT)
 
 // A client certificate (or none) was provided to the SSL library to be sent
 // to the SSL server.
@@ -975,12 +975,14 @@ EVENT_TYPE(SPDY_SESSION_SYN_REPLY)
 //   }
 EVENT_TYPE(SPDY_SESSION_SEND_SETTINGS)
 
-// Receipt of a SPDY SETTINGS frame.
+// Receipt of a SPDY SETTING frame.
 // The following parameters are attached:
 //   {
-//     "settings": <The list of setting id:value pairs>,
+//     "id":    <The setting id>,
+//     "flags": <The setting flags>,
+//     "value": <The setting value>,
 //   }
-EVENT_TYPE(SPDY_SESSION_RECV_SETTINGS)
+EVENT_TYPE(SPDY_SESSION_RECV_SETTING)
 
 // The receipt of a RST_STREAM
 // The following parameters are attached:

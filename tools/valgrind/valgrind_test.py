@@ -33,8 +33,24 @@ class BaseTool(object):
   """
 
   def __init__(self):
-    self.temp_dir = tempfile.mkdtemp(prefix="vg_logs_")  # Generated every time
-    self.log_dir = self.temp_dir  # overridable by --keep_logs
+    temp_parent_dir = None
+    self.log_parent_dir = ""
+    if common.IsWindows():
+      # gpu process on Windows Vista+ runs at Low Integrity and can only
+      # write to certain directories (http://crbug.com/119131)
+      #
+      # TODO(bruening): if scripts die in middle and don't clean up temp
+      # dir, we'll accumulate files in profile dir.  should remove
+      # really old files automatically.
+      profile = os.getenv("USERPROFILE")
+      if profile:
+        self.log_parent_dir = profile + "\\AppData\\LocalLow\\"
+        if os.path.exists(self.log_parent_dir):
+          self.log_parent_dir = common.NormalizeWindowsPath(self.log_parent_dir)
+          temp_parent_dir = self.log_parent_dir
+    # Generated every time (even when overridden)
+    self.temp_dir = tempfile.mkdtemp(prefix="vg_logs_", dir=temp_parent_dir)
+    self.log_dir = self.temp_dir # overridable by --keep_logs
     self.option_parser_hooks = []
     # TODO(glider): we may not need some of the env vars on some of the
     # platforms.
@@ -125,10 +141,12 @@ class BaseTool(object):
     self._timeout = int(self._options.timeout)
     self._source_dir = self._options.source_dir
     if self._options.keep_logs:
-      self.log_dir = "%s.logs" % self.ToolName()
+      # log_parent_dir has trailing slash if non-empty
+      self.log_dir = self.log_parent_dir + "%s.logs" % self.ToolName()
       if os.path.exists(self.log_dir):
         shutil.rmtree(self.log_dir)
       os.mkdir(self.log_dir)
+      logging.info("Logs are in " + self.log_dir)
 
     self._ignore_exit_code = self._options.ignore_exit_code
     if self._options.gtest_filter != "":
@@ -751,9 +769,9 @@ class DrMemory(BaseTool):
   It is not very mature at the moment, some things might not work properly.
   """
 
-  def __init__(self, handle_uninits_and_leaks):
+  def __init__(self, full_mode):
     super(DrMemory, self).__init__()
-    self.handle_uninits_and_leaks = handle_uninits_and_leaks
+    self.full_mode = full_mode
     self.RegisterOptionParserHook(DrMemory.ExtendOptionParser)
 
   def ToolName(self):
@@ -831,7 +849,7 @@ class DrMemory(BaseTool):
 
     suppression_count = 0
     supp_files = self._options.suppressions
-    if self.handle_uninits_and_leaks:
+    if self.full_mode:
       supp_files += [s.replace(".txt", "_full.txt") for s in supp_files]
     for suppression_file in supp_files:
       if os.path.exists(suppression_file):
@@ -852,11 +870,16 @@ class DrMemory(BaseTool):
 
     proc += ["-logdir", common.NormalizeWindowsPath(self.log_dir)]
 
-    if self._options.build_dir:
+    if self.log_parent_dir:
+      # gpu process on Windows Vista+ runs at Low Integrity and can only
+      # write to certain directories (http://crbug.com/119131)
+      symcache_dir = os.path.join(self.log_parent_dir, "drmemory.symcache")
+    elif self._options.build_dir:
       # The other case is only possible with -t cmdline.
       # Anyways, if we omit -symcache_dir the -logdir's value is used which
       # should be fine.
       symcache_dir = os.path.join(self._options.build_dir, "drmemory.symcache")
+    if symcache_dir:
       if not os.path.exists(symcache_dir):
         try:
           os.mkdir(symcache_dir)
@@ -885,8 +908,8 @@ class DrMemory(BaseTool):
     # TODO(timurrrr): In fact, we want "starting from .." instead of "below .."
     proc += ["-callstack_truncate_below", ",".join(boring_callers)]
 
-    if not self.handle_uninits_and_leaks:
-      proc += ["-no_check_uninitialized", "-no_count_leaks"]
+    if not self.full_mode:
+      proc += ["-light"]
 
     proc += self._tool_flags
 
@@ -898,6 +921,7 @@ class DrMemory(BaseTool):
       wrapper_path = os.path.join(self._source_dir,
                                   "tools", "valgrind", "browser_wrapper_win.py")
       self.CreateBrowserWrapper(" ".join(["python", wrapper_path] + proc))
+      logging.info("browser wrapper = " + " ".join(proc))
       proc = []
 
     # Note that self._args begins with the name of the exe to be run.

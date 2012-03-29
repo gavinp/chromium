@@ -20,6 +20,7 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/range/range.h"
 #include "ui/gfx/canvas.h"
+#include "ui/gfx/compositor/layer.h"
 #include "ui/gfx/insets.h"
 #include "ui/gfx/render_text.h"
 #include "ui/views/background.h"
@@ -36,10 +37,6 @@
 #include "ui/views/metrics.h"
 #include "ui/views/views_delegate.h"
 #include "ui/views/widget/widget.h"
-
-#if defined(OS_LINUX)
-#include "ui/gfx/gtk_util.h"
-#endif
 
 #if defined(USE_AURA)
 #include "ui/aura/cursor.h"
@@ -273,8 +270,6 @@ gfx::NativeCursor NativeTextfieldViews::GetCursor(const MouseEvent& event) {
   static HCURSOR ibeam = LoadCursor(NULL, IDC_IBEAM);
   static HCURSOR arrow = LoadCursor(NULL, IDC_ARROW);
   return text_cursor ? ibeam : arrow;
-#else
-  return text_cursor ? gfx::GetCursor(GDK_XTERM) : NULL;
 #endif
 }
 
@@ -974,8 +969,9 @@ void NativeTextfieldViews::UpdateContextMenu() {
     context_menu_contents_->AddSeparator();
     context_menu_contents_->AddItemWithStringId(IDS_APP_SELECT_ALL,
                                                 IDS_APP_SELECT_ALL);
-    textfield_->GetController()->UpdateContextMenu(
-        context_menu_contents_.get());
+    TextfieldController* controller = textfield_->GetController();
+    if (controller)
+      controller->UpdateContextMenu(context_menu_contents_.get());
 
     context_menu_delegate_.reset(
         new views::MenuModelAdapter(context_menu_contents_.get()));

@@ -125,9 +125,11 @@ class MEDIA_EXPORT Pipeline
   // |start_cb|, which will be executed when initialization completes.
   //
   // The following permanent callbacks will be executed as follows:
-  //   |ended_cb| will be executed whenever the media reaches the end.
-  //   |error_cb_| will be executed whenever an error occurs.
+  //   |start_cb_| will be executed when Start is done (successfully or not).
   //   |network_cb_| will be executed whenever there's a network activity.
+  //   |ended_cb| will be executed whenever the media reaches the end.
+  //   |error_cb_| will be executed whenever an error occurs but hasn't
+  //               been reported already through another callback.
   //
   // These callbacks are only executed after Start() has been called and until
   // Stop() has completed.
@@ -155,7 +157,7 @@ class MEDIA_EXPORT Pipeline
   //
   // TODO(scherkus): ideally clients would destroy the pipeline after calling
   // Stop() and create a new pipeline as needed.
-  void Stop(const PipelineStatusCB& stop_cb);
+  void Stop(const base::Closure& stop_cb);
 
   // Attempt to seek to the position specified by time.  |seek_cb| will be
   // executed when the all filters in the pipeline have processed the seek.
@@ -366,7 +368,7 @@ class MEDIA_EXPORT Pipeline
   void InitializeTask(PipelineStatus last_stage_status);
 
   // Stops and destroys all filters, placing the pipeline in the kStopped state.
-  void StopTask(const PipelineStatusCB& stop_cb);
+  void StopTask(const base::Closure& stop_cb);
 
   // Carries out stopping and destroying all filters, placing the pipeline in
   // the kError state.
@@ -410,10 +412,6 @@ class MEDIA_EXPORT Pipeline
 
   // Internal methods used in the implementation of the pipeline thread.  All
   // of these methods are only called on the pipeline thread.
-
-  // PrepareFilter() creates the filter's thread and injects a FilterHost and
-  // MessageLoop.
-  bool PrepareFilter(scoped_refptr<Filter> filter);
 
   // The following initialize methods are used to select a specific type of
   // Filter object from FilterCollection and initialize it asynchronously.
@@ -473,6 +471,9 @@ class MEDIA_EXPORT Pipeline
   void NotifyCanPlayThrough();
 
   void StartClockIfWaitingForTimeUpdate_Locked();
+
+  // Report pipeline |status| through |cb| avoiding duplicate error reporting.
+  void ReportStatus(const PipelineStatusCB& cb, PipelineStatus status);
 
   // Message loop used to execute pipeline tasks.
   MessageLoop* message_loop_;
@@ -592,7 +593,7 @@ class MEDIA_EXPORT Pipeline
 
   // Callbacks for various pipeline operations.
   PipelineStatusCB seek_cb_;
-  PipelineStatusCB stop_cb_;
+  base::Closure stop_cb_;
   PipelineStatusCB ended_cb_;
   PipelineStatusCB error_cb_;
   NetworkEventCB network_cb_;
@@ -603,7 +604,9 @@ class MEDIA_EXPORT Pipeline
   // Decoder reference used for signalling imminent shutdown.
   // This is a HACK necessary because WebMediaPlayerImpl::Destroy() holds the
   // renderer thread loop hostage for until PipelineImpl::Stop() calls its
-  // callback.  http://crbug.com/110228 tracks removing this hack.
+  // callback.
+  // This reference should only be used for this hack and no other purposes.
+  // http://crbug.com/110228 tracks removing this hack.
   scoped_refptr<VideoDecoder> video_decoder_;
 
   // Renderer references used for setting the volume and determining

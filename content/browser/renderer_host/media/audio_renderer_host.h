@@ -54,7 +54,7 @@
 #include "media/audio/simple_sources.h"
 
 class AudioManager;
-struct AudioParameters;
+class AudioParameters;
 
 namespace content {
 class MediaObserver;
@@ -89,8 +89,8 @@ class CONTENT_EXPORT AudioRendererHost
   typedef std::map<int, AudioEntry*> AudioEntryMap;
 
   // Called from UI thread from the owner of this object.
-  AudioRendererHost(content::ResourceContext* resource_context,
-                    AudioManager* audio_manager);
+  AudioRendererHost(AudioManager* audio_manager,
+                    content::MediaObserver* media_observer);
 
   // content::BrowserMessageFilter implementation.
   virtual void OnChannelClosing() OVERRIDE;
@@ -159,9 +159,6 @@ class CONTENT_EXPORT AudioRendererHost
   // is closed.
   void CloseAndDeleteStream(AudioEntry* entry);
 
-  // Called on the audio thread after the audio stream is closed.
-  void OnStreamClosed(AudioEntry* entry);
-
   // Delete an audio entry and close the related audio stream.
   void DeleteEntry(AudioEntry* entry);
 
@@ -178,14 +175,11 @@ class CONTENT_EXPORT AudioRendererHost
   // event is received.
   AudioEntry* LookupByController(media::AudioOutputController* controller);
 
-  // Returns the MediaObserver from |resource_context_| or NULL if none exists.
-  content::MediaObserver* GetMediaObserver();
-
   // A map of stream IDs to audio sources.
   AudioEntryMap audio_entries_;
 
-  content::ResourceContext* resource_context_;
   AudioManager* audio_manager_;
+  content::MediaObserver* media_observer_;
 
   DISALLOW_COPY_AND_ASSIGN(AudioRendererHost);
 };

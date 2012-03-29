@@ -57,7 +57,7 @@ static const int kChannel_R = 1;
 static const int kChannel_C = 2;
 
 template<class Fixed, int min_value, int max_value>
-static int AddChannel(int val, int adder) {
+static int AddSaturated(int val, int adder) {
   Fixed sum = static_cast<Fixed>(val) + static_cast<Fixed>(adder);
   if (sum > max_value)
     return max_value;
@@ -93,9 +93,9 @@ static void FoldChannels(Format* buf_out,
     right = ScaleChannel<Fixed>(right, fixed_volume);
 
     buf_out[0] = static_cast<Format>(
-        AddChannel<Fixed, min_value, max_value>(left, center) + bias);
+        AddSaturated<Fixed, min_value, max_value>(left, center) + bias);
     buf_out[1] = static_cast<Format>(
-        AddChannel<Fixed, min_value, max_value>(right, center) + bias);
+        AddSaturated<Fixed, min_value, max_value>(right, center) + bias);
 
     buf_out += 2;
     buf_in += channels;
@@ -241,7 +241,69 @@ void InterleaveFloatToInt16(const std::vector<float*>& source,
   }
 }
 
-double GetAudioHardwareSampleRate() {
+// TODO(enal): use template specialization and size-specific intrinsics.
+//             Call is on the time-critical path, and by using SSE/AVX
+//             instructions we can speed things up by ~4-8x, more for the case
+//             when we have to adjust volume as well.
+template<class Format, class Fixed, int min_value, int max_value, int bias>
+static void MixStreams(Format* dst, Format* src, int count, float volume) {
+  if (volume == 1.0f) {
+    // Most common case -- no need to adjust volume.
+    for (int i = 0; i < count; ++i) {
+      Fixed value = AddSaturated<Fixed, min_value, max_value>(dst[i] - bias,
+                                                              src[i] - bias);
+      dst[i] = static_cast<Format>(value + bias);
+    }
+  } else {
+    // General case -- have to adjust volume before mixing.
+    const int fixed_volume = static_cast<int>(volume * 65536);
+    for (int i = 0; i < count; ++i) {
+      Fixed adjusted_src = ScaleChannel<Fixed>(src[i] - bias, fixed_volume);
+      Fixed value = AddSaturated<Fixed, min_value, max_value>(dst[i] - bias,
+                                                              adjusted_src);
+      dst[i] = static_cast<Format>(value + bias);
+    }
+  }
+}
+
+void MixStreams(void* dst,
+                void* src,
+                size_t buflen,
+                int bytes_per_sample,
+                float volume) {
+  DCHECK(dst);
+  DCHECK(src);
+  DCHECK_GE(volume, 0.0f);
+  DCHECK_LE(volume, 1.0f);
+  switch (bytes_per_sample) {
+    case 1:
+      MixStreams<uint8, int32, -128, 127, 128>(static_cast<uint8*>(dst),
+                                               static_cast<uint8*>(src),
+                                               buflen,
+                                               volume);
+      break;
+    case 2:
+      DCHECK_EQ(0u, buflen % 2);
+      MixStreams<int16, int32, -32768, 32767, 0>(static_cast<int16*>(dst),
+                                                 static_cast<int16*>(src),
+                                                 buflen / 2,
+                                                 volume);
+      break;
+    case 4:
+      DCHECK_EQ(0u, buflen % 4);
+      MixStreams<int32, int64, 0x80000000, 0x7fffffff, 0>(
+          static_cast<int32*>(dst),
+          static_cast<int32*>(src),
+          buflen / 4,
+          volume);
+      break;
+    default:
+      NOTREACHED() << "Illegal bytes per sample";
+      break;
+  }
+}
+
+int GetAudioHardwareSampleRate() {
 #if defined(OS_MACOSX)
     // Hardware sample-rate on the Mac can be configured, so we must query.
     return AUAudioOutputStream::HardwareSampleRate();
@@ -249,7 +311,7 @@ double GetAudioHardwareSampleRate() {
   if (!IsWASAPISupported()) {
     // Fall back to Windows Wave implementation on Windows XP or lower
     // and use 48kHz as default input sample rate.
-    return 48000.0;
+    return 48000;
   }
 
   // Hardware sample-rate on Windows can be configured, so we must query.
@@ -259,22 +321,22 @@ double GetAudioHardwareSampleRate() {
 #else
     // Hardware for Linux is nearly always 48KHz.
     // TODO(crogers) : return correct value in rare non-48KHz cases.
-    return 48000.0;
+    return 48000;
 #endif
 }
 
-double GetAudioInputHardwareSampleRate(const std::string& device_id) {
+int GetAudioInputHardwareSampleRate(const std::string& device_id) {
   // TODO(henrika): add support for device selection on all platforms.
   // Only exists on Windows today.
 #if defined(OS_MACOSX)
   return AUAudioInputStream::HardwareSampleRate();
 #elif defined(OS_WIN)
   if (!IsWASAPISupported()) {
-    return 48000.0;
+    return 48000;
   }
   return WASAPIAudioInputStream::HardwareSampleRate(device_id);
 #else
-  return 48000.0;
+  return 48000;
 #endif
 }
 
@@ -297,7 +359,7 @@ size_t GetAudioHardwareBufferSize() {
   // This call must be done on a COM thread configured as MTA.
   // TODO(tommi): http://code.google.com/p/chromium/issues/detail?id=103835.
   int mixing_sample_rate =
-      static_cast<int>(WASAPIAudioOutputStream::HardwareSampleRate(eConsole));
+      WASAPIAudioOutputStream::HardwareSampleRate(eConsole);
   if (mixing_sample_rate == 48000)
     return 480;
   else if (mixing_sample_rate == 44100)
@@ -309,21 +371,21 @@ size_t GetAudioHardwareBufferSize() {
 #endif
 }
 
-uint32 GetAudioInputHardwareChannelCount(const std::string& device_id) {
+ChannelLayout GetAudioInputHardwareChannelLayout(const std::string& device_id) {
   // TODO(henrika): add support for device selection on all platforms.
   // Only exists on Windows today.
-  enum channel_layout { MONO = 1, STEREO = 2 };
 #if defined(OS_MACOSX)
-  return MONO;
+  return CHANNEL_LAYOUT_MONO;
 #elif defined(OS_WIN)
   if (!IsWASAPISupported()) {
     // Fall back to Windows Wave implementation on Windows XP or lower and
     // use stereo by default.
-    return STEREO;
+    return CHANNEL_LAYOUT_STEREO;
   }
-  return WASAPIAudioInputStream::HardwareChannelCount(device_id);
+  return WASAPIAudioInputStream::HardwareChannelCount(device_id) == 1 ?
+      CHANNEL_LAYOUT_MONO : CHANNEL_LAYOUT_STEREO;
 #else
-  return STEREO;
+  return CHANNEL_LAYOUT_STEREO;
 #endif
 }
 

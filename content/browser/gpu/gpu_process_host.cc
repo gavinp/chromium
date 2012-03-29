@@ -29,6 +29,7 @@
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/result_codes.h"
+#include "gpu/command_buffer/service/gpu_switches.h"
 #include "ipc/ipc_channel_handle.h"
 #include "ipc/ipc_switches.h"
 #include "ui/gfx/gl/gl_context.h"
@@ -37,6 +38,10 @@
 
 #if defined(TOOLKIT_USES_GTK)
 #include "ui/gfx/gtk_native_view_id_manager.h"
+#endif
+
+#if defined(OS_WIN) && !defined(USE_AURA)
+#include "ui/gfx/surface/accelerated_surface_win.h"
 #endif
 
 using content::BrowserThread;
@@ -159,8 +164,7 @@ class GpuMainThread : public base::Thread {
 
  protected:
   virtual void Init() {
-    if (CommandLine::ForCurrentProcess()->HasSwitch(switches::kSingleProcess) ||
-        CommandLine::ForCurrentProcess()->HasSwitch(switches::kInProcessGPU)) {
+    if (CommandLine::ForCurrentProcess()->HasSwitch(switches::kSingleProcess)) {
       child_thread_ = new GpuChildThread(channel_id_);
     } else {
       gpu_process_ = new GpuProcess();
@@ -555,12 +559,28 @@ void GpuProcessHost::OnAcceleratedSurfaceBuffersSwapped(
   TRACE_EVENT0("renderer",
       "GpuProcessHost::OnAcceleratedSurfaceBuffersSwapped");
 
-  GpuSurfaceTracker::Get()->AsyncPresentAndAcknowledge(
-      params.surface_id,
+  base::ScopedClosureRunner scoped_completion_runner(
+      base::Bind(&AcceleratedSurfaceBuffersSwappedCompleted,
+                 host_id_,
+                 params.route_id,
+                 true));
+
+  gfx::PluginWindowHandle handle =
+      GpuSurfaceTracker::Get()->GetSurfaceWindowHandle(params.surface_id);
+  if (!handle)
+    return;
+
+  scoped_refptr<AcceleratedPresenter> presenter(
+      AcceleratedPresenter::GetForWindow(handle));
+  if (!presenter)
+    return;
+
+  scoped_completion_runner.Release();
+  presenter->AsyncPresentAndAcknowledge(
       params.size,
       params.surface_handle,
       base::Bind(&AcceleratedSurfaceBuffersSwappedCompleted,
-                 GpuProcessHost::GPU_PROCESS_KIND_SANDBOXED,
+                 host_id_,
                  params.route_id));
 }
 
@@ -576,7 +596,17 @@ void GpuProcessHost::OnAcceleratedSurfaceSuspend(int32 surface_id) {
   TRACE_EVENT0("renderer",
       "GpuProcessHost::OnAcceleratedSurfaceSuspend");
 
-  GpuSurfaceTracker::Get()->Suspend(surface_id);
+  gfx::GLSurfaceHandle handle = GpuSurfaceTracker::Get()->GetSurfaceHandle(
+      surface_id);
+  if (!handle.handle)
+    return;
+
+  scoped_refptr<AcceleratedPresenter> presenter(
+      AcceleratedPresenter::GetForWindow(handle.handle));
+  if (!presenter)
+    return;
+
+  presenter->Suspend();
 }
 
 #endif  // OS_WIN && !USE_AURA
@@ -652,15 +682,19 @@ bool GpuProcessHost::LaunchGpuProcess(const std::string& channel_id) {
 
   // Propagate relevant command line switches.
   static const char* const kSwitchNames[] = {
+    switches::kCompileShaderAlwaysSucceeds,
     switches::kDisableBreakpad,
     switches::kDisableGLMultisampling,
     switches::kDisableGpuDriverBugWorkarounds,
     switches::kDisableGpuSandbox,
     switches::kReduceGpuSandbox,
+    switches::kDisableGLSLTranslator,
     switches::kDisableGpuVsync,
     switches::kDisableGpuWatchdog,
     switches::kDisableImageTransportSurface,
     switches::kDisableLogging,
+    switches::kEnableGPUCommandLogging,
+    switches::kEnableGPUDebugging,
     switches::kEnableGPUServiceLogging,
     switches::kEnableLogging,
 #if defined(OS_MACOSX)

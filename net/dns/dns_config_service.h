@@ -19,6 +19,10 @@
 #include "net/base/net_export.h"
 #include "net/dns/dns_hosts.h"
 
+namespace base {
+class Value;
+}
+
 namespace net {
 
 // DnsConfig stores configuration of the system resolver.
@@ -31,6 +35,11 @@ struct NET_EXPORT_PRIVATE DnsConfig {
   bool EqualsIgnoreHosts(const DnsConfig& d) const;
 
   void CopyIgnoreHosts(const DnsConfig& src);
+
+  // Returns a Value representation of |this|.  Caller takes ownership of the
+  // returned Value.  For performance reasons, the Value only contains the
+  // number of hosts rather than the full list.
+  base::Value* ToValue() const;
 
   bool IsValid() const {
     return !nameservers.empty();
@@ -68,8 +77,7 @@ struct NET_EXPORT_PRIVATE DnsConfig {
 class NET_EXPORT_PRIVATE DnsConfigService
   : NON_EXPORTED_BASE(public base::NonThreadSafe) {
  public:
-  // Callback interface for the client. The observer is called on the same
-  // thread as Watch(). Observer must outlive the service.
+  // Callback interface for the client, called on the same thread as Watch().
   typedef base::Callback<void(const DnsConfig& config)> CallbackType;
 
   // Creates the platform-specific DnsConfigService.
@@ -123,7 +131,6 @@ class NET_EXPORT_PRIVATE DnsConfigService
  private:
   DISALLOW_COPY_AND_ASSIGN(DnsConfigService);
 };
-
 
 }  // namespace net
 

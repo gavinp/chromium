@@ -20,7 +20,7 @@ namespace ppapi {
 // Some of the backend functionality of this class is implemented by the
 // PPB_AudioInput_Shared so it can be shared with the proxy.
 class PPB_AudioInput_Impl : public ::ppapi::PPB_AudioInput_Shared,
-                            public PluginDelegate::PlatformAudioCommonClient,
+                            public PluginDelegate::PlatformAudioInputClient,
                             public base::SupportsWeakPtr<PPB_AudioInput_Impl> {
  public:
   typedef std::vector< ::ppapi::DeviceRefData> DeviceRefDataVector;
@@ -36,17 +36,19 @@ class PPB_AudioInput_Impl : public ::ppapi::PPB_AudioInput_Shared,
                                void* user_data);
 
   // Implementation of PPB_AudioInput_API trusted methods.
-  virtual int32_t OpenTrusted(const std::string& device_id,
-                              PP_Resource config,
-                              PP_CompletionCallback create_callback) OVERRIDE;
+  virtual int32_t OpenTrusted(
+      const std::string& device_id,
+      PP_Resource config,
+      const PP_CompletionCallback& create_callback) OVERRIDE;
   virtual int32_t GetSyncSocket(int* sync_socket) OVERRIDE;
   virtual int32_t GetSharedMemory(int* shm_handle, uint32_t* shm_size) OVERRIDE;
   virtual const DeviceRefDataVector& GetDeviceRefData() const OVERRIDE;
 
-  // PluginDelegate::PlatformAudioCommonClient implementation.
+  // PluginDelegate::PlatformAudioInputClient implementation.
   virtual void StreamCreated(base::SharedMemoryHandle shared_memory_handle,
                              size_t shared_memory_size,
                              base::SyncSocket::Handle socket) OVERRIDE;
+  virtual void StreamCreationFailed() OVERRIDE;
 
  private:
   // PPB_AudioInput_Shared implementation.

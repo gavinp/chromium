@@ -24,6 +24,7 @@
 
 class OAuth2AccessTokenFetcher;
 class CloudPrintURL;
+class MockChromeToMobileService;
 class Profile;
 
 namespace base {
@@ -70,6 +71,10 @@ class ChromeToMobileService : public ProfileKeyedService,
     RequestType type;
   };
 
+  // Returns whether Chrome To Mobile is enabled. Check for the 'disable' or
+  // 'enable' command line switches, otherwise relay the default enabled state.
+  static bool IsChromeToMobileEnabled();
+
   explicit ChromeToMobileService(Profile* profile);
   virtual ~ChromeToMobileService();
 
@@ -80,12 +85,14 @@ class ChromeToMobileService : public ProfileKeyedService,
   void RequestMobileListUpdate();
 
   // Callback with an MHTML snapshot of the profile's selected WebContents.
-  void GenerateSnapshot(base::WeakPtr<Observer> observer);
+  // Virtual for unit test mocking.
+  virtual void GenerateSnapshot(base::WeakPtr<Observer> observer);
 
   // Send the profile's selected WebContents to the specified mobile device.
-  void SendToMobile(const string16& mobile_id,
-                    const FilePath& snapshot,
-                    base::WeakPtr<Observer> observer);
+  // Virtual for unit test mocking.
+  virtual void SendToMobile(const string16& mobile_id,
+                            const FilePath& snapshot,
+                            base::WeakPtr<Observer> observer);
 
   // content::URLFetcherDelegate method.
   virtual void OnURLFetchComplete(const content::URLFetcher* source) OVERRIDE;
@@ -100,13 +107,16 @@ class ChromeToMobileService : public ProfileKeyedService,
   virtual void OnGetTokenFailure(const GoogleServiceAuthError& error) OVERRIDE;
 
  private:
+  friend class MockChromeToMobileService;
+
   // Utility function to initialize the ScopedTempDir.
   void CreateUniqueTempDir();
 
   // Utility function to create URLFetcher requests.
   content::URLFetcher* CreateRequest(const RequestData& data);
 
-  // Send the OAuth2AccessTokenFetcher request; virtual for unit test mocking.
+  // Send the OAuth2AccessTokenFetcher request.
+  // Virtual for unit test mocking.
   virtual void RefreshAccessToken();
 
   // Send the cloud print URLFetcher search request.
@@ -135,12 +145,13 @@ class ChromeToMobileService : public ProfileKeyedService,
       RequestObserverMap;
   RequestObserverMap request_observer_map_;
 
-  // The pending URL requests.
+  // The pending OAuth access token request and a timer for retrying on failure.
   scoped_ptr<OAuth2AccessTokenFetcher> access_token_fetcher_;
-  scoped_ptr<content::URLFetcher> search_request_;
+  base::OneShotTimer<ChromeToMobileService> auth_retry_timer_;
 
-  // A timer for authentication retries and mobile device list updates.
-  base::OneShotTimer<ChromeToMobileService> request_timer_;
+  // The pending mobile device search request; and the time of the last request.
+  scoped_ptr<content::URLFetcher> search_request_;
+  base::TimeTicks previous_search_time_;
 
   DISALLOW_COPY_AND_ASSIGN(ChromeToMobileService);
 };

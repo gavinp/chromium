@@ -101,23 +101,7 @@ remoting.cancelConnect = function() {
  * @return {void} Nothing.
  */
 remoting.toggleScaleToFit = function() {
-  remoting.setScaleToFit(!remoting.clientSession.getScaleToFit());
-};
-
-/**
- * Enable or disable scale-to-fit for the current client session.
- *
- * @param {boolean} scaleToFit True to enable scale-to-fit, false otherwise.
- * @return {void} Nothing.
- */
-remoting.setScaleToFit = function(scaleToFit) {
-  remoting.clientSession.setScaleToFit(scaleToFit);
-  var button = document.getElementById('toggle-scaling');
-  if (remoting.clientSession.getScaleToFit()) {
-    button.classList.add('toggle-button-active');
-  } else {
-    button.classList.remove('toggle-button-active');
-  }
+  remoting.clientSession.setScaleToFit(!remoting.clientSession.getScaleToFit());
 };
 
 /**
@@ -212,6 +196,7 @@ function onClientStateChange_(oldState, newState) {
   } else if (newState == remoting.ClientSession.State.CONNECTED) {
     if (remoting.clientSession) {
       clearPin = true;
+      setConnectionInterruptedButtonsText_();
       remoting.setMode(remoting.AppMode.IN_SESSION);
       remoting.toolbar.center();
       remoting.toolbar.preview();
@@ -252,6 +237,9 @@ function onClientStateChange_(oldState, newState) {
     } else if (remoting.clientSession.error ==
                remoting.ClientSession.ConnectionError.NETWORK_FAILURE) {
       showConnectError_(remoting.Error.NETWORK_FAILURE);
+    } else if (remoting.clientSession.error ==
+               remoting.ClientSession.ConnectionError.HOST_OVERLOAD) {
+      showConnectError_(remoting.Error.HOST_OVERLOAD);
     } else {
       showConnectError_(remoting.Error.GENERIC);
     }
@@ -318,7 +306,6 @@ function startSession_() {
     remoting.clientSession.createPluginAndConnect(
         document.getElementById('session-mode'),
         token);
-    remoting.setScaleToFit(remoting.clientSession.getScaleToFit());
   };
   remoting.oauth2.callWithToken(createPluginAndConnect);
 }
@@ -344,6 +331,20 @@ function showConnectError_(errorTag) {
   } else {
     remoting.setMode(remoting.AppMode.CLIENT_CONNECT_FAILED_ME2ME);
   }
+}
+
+/**
+ * Set the text on the buttons shown under the error message so that they are
+ * easy to understand in the case where a successful connection failed, as
+ * opposed to the case where a connection never succeeded.
+ */
+function setConnectionInterruptedButtonsText_() {
+  var button1 = document.getElementById('client-reconnect-button');
+  l10n.localizeElementFromTag(button1, /*i18n-content*/'RECONNECT');
+  button1.removeAttribute('autofocus');
+  var button2 = document.getElementById('client-finished-me2me-button');
+  l10n.localizeElementFromTag(button2, /*i18n-content*/'OK');
+  button2.setAttribute('autofocus', 'autofocus');
 }
 
 /**
@@ -511,7 +512,6 @@ function connectMe2MeWithAccessToken_(token) {
     remoting.clientSession.createPluginAndConnect(
         document.getElementById('session-mode'),
         token);
-    remoting.setScaleToFit(remoting.clientSession.getScaleToFit());
   } else {
     showConnectError_(remoting.Error.AUTHENTICATION_FAILED);
   }

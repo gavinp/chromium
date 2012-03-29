@@ -117,6 +117,7 @@ IPC_STRUCT_TRAITS_BEGIN(content::GPUInfo)
   IPC_STRUCT_TRAITS_MEMBER(gl_renderer)
   IPC_STRUCT_TRAITS_MEMBER(gl_extensions)
   IPC_STRUCT_TRAITS_MEMBER(can_lose_context)
+  IPC_STRUCT_TRAITS_MEMBER(gpu_accessible)
   IPC_STRUCT_TRAITS_MEMBER(performance_stats)
   IPC_STRUCT_TRAITS_MEMBER(software_rendering)
 #if defined(OS_WIN)
@@ -444,6 +445,9 @@ IPC_MESSAGE_ROUTED0(GpuCommandBufferMsg_EchoAck)
 
 // Send to stub on surface visibility change.
 IPC_MESSAGE_ROUTED1(GpuCommandBufferMsg_SetSurfaceVisible, bool /* visible */)
+
+IPC_MESSAGE_ROUTED0(GpuCommandBufferMsg_DiscardBackbuffer)
+IPC_MESSAGE_ROUTED0(GpuCommandBufferMsg_EnsureBackbuffer)
 
 // Sent to proxy when the gpu memory manager changes its memory allocation.
 IPC_MESSAGE_ROUTED1(GpuCommandBufferMsg_SetMemoryAllocation,

@@ -10,14 +10,18 @@ const SIMULTANEOUS_RESCAN_INTERVAL = 1000;
  * Data model of the file manager.
  *
  * @param {DirectoryEntry} root File system root.
- * @param {boolean} singleSelection True if only one file could be seletet
+ * @param {boolean} singleSelection True if only one file could be selected
  *                                  at the time.
+ * @param {boolean} showGData Defines whether GData root should be should
+ *   (regardless of its mounts status).
  */
-function DirectoryModel(root, singleSelection) {
+function DirectoryModel(root, singleSelection, showGData) {
   this.root_ = root;
   this.fileList_ = new cr.ui.ArrayDataModel([]);
   this.fileListSelection_ = singleSelection ?
       new cr.ui.ListSingleSelectionModel() : new cr.ui.ListSelectionModel();
+
+  this.showGData_ = showGData;
 
   this.runningScan_ = null;
   this.pendingScan_ = null;
@@ -121,6 +125,14 @@ DirectoryModel.prototype = {
 
   get rootType() {
     return DirectoryModel.getRootType(this.currentEntry.fullPath);
+  },
+
+  get rootName() {
+    return DirectoryModel.getRootName(this.currentEntry.fullPath);
+  },
+
+  get rootEntry() {
+    return this.rootsList.item(this.rootsListSelection.selectedIndex);
   },
 
   /**
@@ -344,8 +356,10 @@ DirectoryModel.prototype = {
       clearTimeout(this.rescanTimeout_);
       this.rescanTimeout_ = 0;
     }
-    if (this.runningScan_)
+    if (this.runningScan_) {
       this.runningScan_.cancel();
+      this.runningScan_ = null;
+    }
     this.pendingScan_ = null;
 
     var onDone = function() {
@@ -356,6 +370,10 @@ DirectoryModel.prototype = {
     // Clear the table first.
     this.fileList_.splice(0, this.fileList_.length);
     cr.dispatchSimpleEvent(this, 'scan-started');
+    if (this.currentDirEntry_ == this.unmountedGDataEntry_) {
+      onDone();
+      return;
+    }
     this.runningScan_ = this.createScanner_(this.fileList_, onDone);
     this.runningScan_.run();
   },
@@ -473,7 +491,7 @@ DirectoryModel.prototype = {
   },
 
   /**
-   * Canges directory. Causes 'directory-change' event.
+   * Changes directory. Causes 'directory-change' event.
    *
    * @param {string} path New current directory path.
    */
@@ -482,6 +500,19 @@ DirectoryModel.prototype = {
       var autoSelect = this.selectIndex.bind(this, this.autoSelectIndex_);
       this.changeDirectoryEntry_(dirEntry, autoSelect, false);
     }.bind(this);
+
+    if (this.unmountedGDataEntry_ &&
+        DirectoryModel.getRootType(path) == DirectoryModel.RootType.GDATA) {
+      this.readonly_ = true;
+      // TODO(kaznacheeev): Currently if path points to some GData subdirectory
+      // and GData is not mounted we will change to the fake GData root and
+      // ignore the rest of the path. Consider remembering the path and
+      // changing to it once GDdata is mounted. This is only relevant for cases
+      // when we open the File Manager with an URL pointing to GData (e.g. via
+      // a bookmark).
+      onDirectoryResolved(this.unmountedGDataEntry_);
+      return;
+    }
 
     this.readonly_ = false;
     if (path == '/')
@@ -511,7 +542,7 @@ DirectoryModel.prototype = {
    *                          false if caused by an user action.
    */
   changeDirectoryEntry_: function(dirEntry, action, initial) {
-    var current = this.currentEntry;
+    var previous = this.currentEntry;
     this.currentDirEntry_ = dirEntry;
     function onRescanComplete() {
       action();
@@ -523,7 +554,7 @@ DirectoryModel.prototype = {
     this.scan_(onRescanComplete);
 
     var e = new cr.Event('directory-changed');
-    e.previousDirEntry = this.currentEntry;
+    e.previousDirEntry = previous;
     e.newDirEntry = dirEntry;
     e.initial = initial;
     this.dispatchEvent(e);
@@ -537,83 +568,99 @@ DirectoryModel.prototype = {
    * @param {Function=} opt_loadedCallback Invoked when the entire directory
    *     has been loaded and any default file selected.  If there are any
    *     errors loading the directory this will not get called (even if the
-   *     directory loads OK on retry later).
+   *     directory loads OK on retry later). Will NOT be called if another
+   *     directory change happened while setupPath was in progress.
    * @param {Function=} opt_pathResolveCallback Invoked as soon as the path has
    *     been resolved, and called with the base and leaf portions of the path
-   *     name, and a flag indicating if the entry exists.
+   *     name, and a flag indicating if the entry exists. Will be called even
+   *     if another directory change happened while setupPath was in progress,
+   *     but will pass |false| as |exist| parameter.
    */
   setupPath: function(path, opt_loadedCallback, opt_pathResolveCallback) {
+    var overridden = false;
+    function onExternalDirChange() { overridden = true }
+    this.addEventListener('directory-changed', onExternalDirChange);
+
+    var resolveCallback = function(exists) {
+      this.removeEventListener('directory-changed', onExternalDirChange);
+      if (opt_pathResolveCallback)
+        opt_pathResolveCallback(baseName, leafName, exists && !overridden);
+    }.bind(this);
+
+    var changeDirectoryEntry = function(entry, callback, initial, exists) {
+      resolveCallback(exists);
+      if (!overridden)
+        this.changeDirectoryEntry_(entry, callback, initial);
+    }.bind(this);
+
+    var INITIAL = true;
+    var EXISTS = true;
+
     // Split the dirname from the basename.
     var ary = path.match(/^(?:(.*)\/)?([^\/]*)$/);
     var autoSelect = function() {
-          this.selectIndex(this.autoSelectIndex_);
-          if (opt_loadedCallback)
-            opt_loadedCallback();
+      this.selectIndex(this.autoSelectIndex_);
+      if (opt_loadedCallback)
+        opt_loadedCallback();
     }.bind(this);
 
     if (!ary) {
       console.warn('Unable to split default path: ' + path);
-      this.changeDirectoryEntry_(this.root_, autoSelect, true);
+      changeDirectoryEntry(this.root_, autoSelect, INITIAL, !EXISTS);
       return;
     }
 
     var baseName = ary[1];
     var leafName = ary[2];
 
-    function resolveCallback(exists) {
-      if (opt_pathResolveCallback)
-        opt_pathResolveCallback(baseName, leafName, exists);
-    }
-
     function onLeafFound(baseDirEntry, leafEntry) {
       if (leafEntry.isDirectory) {
         baseName = path;
         leafName = '';
-        resolveCallback(true);
-        this.changeDirectoryEntry_(leafEntry, autoSelect, true);
+        changeDirectoryEntry(leafEntry, autoSelect, INITIAL, EXISTS);
         return;
       }
 
-      resolveCallback(true);
       // Leaf is an existing file, cd to its parent directory and select it.
-      this.changeDirectoryEntry_(baseDirEntry,
-                                 function() {
-                                   this.selectEntry(leafEntry.name);
-                                   if (opt_loadedCallback)
-                                     opt_loadedCallback();
-                                 }.bind(this),
-                                 false /*HACK*/);
+      changeDirectoryEntry(baseDirEntry,
+                           function() {
+                             this.selectEntry(leafEntry.name);
+                             if (opt_loadedCallback)
+                               opt_loadedCallback();
+                           }.bind(this),
+                           !INITIAL /*HACK*/,
+                           EXISTS);
       // TODO(kaznacheev): Fix history.replaceState for the File Browser and
-      // change the last parameter back to |true|. Passing |false| makes things
+      // change !INITIAL to INITIAL. Passing |false| makes things
       // less ugly for now.
     }
 
     function onLeafError(baseDirEntry, err) {
-      resolveCallback(false);
       // Usually, leaf does not exist, because it's just a suggested file name.
-      if (err != FileError.NOT_FOUND_ERR)
+      if (err.code != FileError.NOT_FOUND_ERR)
         console.log('Unexpected error resolving default leaf: ' + err);
-      this.changeDirectoryEntry_(baseDirEntry, autoSelect, true);
+      changeDirectoryEntry(baseDirEntry, autoSelect, INITIAL, !EXISTS);
     }
 
     var onBaseError = function(err) {
-      resolveCallback(false);
       console.log('Unexpected error resolving default base "' +
                   baseName + '": ' + err);
       if (path != '/' + DirectoryModel.DOWNLOADS_DIRECTORY) {
         // Can't find the provided path, let's go to default one instead.
-        this.setupDefaultPath(opt_loadedCallback);
+        resolveCallback(!EXISTS);
+        if (!overridden)
+          this.setupDefaultPath(opt_loadedCallback);
       } else {
         // Well, we can't find the downloads dir. Let's just show something,
         // or we will get an infinite recursion.
-        this.changeDirectoryEntry_(this.root_, opt_loadedCallback, true);
+        changeDirectoryEntry(this.root_, opt_loadedCallback, INITIAL, !EXISTS);
       }
     }.bind(this);
 
     var onBaseFound = function(baseDirEntry) {
       if (!leafName) {
         // Default path is just a directory, cd to it and we're done.
-        this.changeDirectoryEntry_(baseDirEntry, autoSelect, true);
+        changeDirectoryEntry(baseDirEntry, autoSelect, INITIAL, !EXISTS);
         return;
       }
 
@@ -636,8 +683,14 @@ DirectoryModel.prototype = {
   },
 
   setupDefaultPath: function(opt_callback) {
+    var overridden = false;
+    function onExternalDirChange() { overridden = true }
+    this.addEventListener('directory-changed', onExternalDirChange);
+
     this.getDefaultDirectory_(function(path) {
-      this.setupPath(path, opt_callback);
+      this.removeEventListener('directory-changed', onExternalDirChange);
+      if (!overridden)
+        this.setupPath(path, opt_callback);
     }.bind(this));
   },
 
@@ -723,10 +776,11 @@ DirectoryModel.prototype = {
   },
 
   /**
-   * Get root entries asynchronously. Invokes callback
-   * when have finished.
+   * Get root entries asynchronously.
+   * @param {function(Array.<Entry>} callback Called when roots are resolved.
+   * @param {boolean} resolveGData See comment for updateRoots.
    */
-  resolveRoots_: function(callback) {
+  resolveRoots_: function(callback, resolveGData) {
     var groups = {
       downloads: null,
       archives: null,
@@ -762,17 +816,23 @@ DirectoryModel.prototype = {
       done();
     }
 
+    var self = this;
+
     function onGData(entry) {
-      console.log('onGData');
-      console.log(entry);
+      console.log('GData found:', entry);
+      self.unmountedGDataEntry_ = null;
       groups.gdata = [entry];
       done();
     }
 
     function onGDataError(error) {
-      console.log('onGDataError');
-      console.log(error);
-      groups.gdata = [];
+      console.log('GData error: ', error);
+      self.unmountedGDataEntry_ = {
+        unmounted: true,  // Clients use this field to distinguish a fake root.
+        toURL: function() { return '' },
+        fullPath: '/' + DirectoryModel.GDATA_DIRECTORY
+      };
+      groups.gdata = [self.unmountedGDataEntry_];
       done();
     }
 
@@ -783,16 +843,28 @@ DirectoryModel.prototype = {
                        append.bind(this, 'archives'));
     util.readDirectory(root, DirectoryModel.REMOVABLE_DIRECTORY,
                        append.bind(this, 'removables'));
-    root.getDirectory(DirectoryModel.GDATA_DIRECTORY, { create: false },
-                      onGData, onGDataError);
+    if (this.showGData_) {
+      if (resolveGData) {
+        root.getDirectory(DirectoryModel.GDATA_DIRECTORY, { create: false },
+                          onGData, onGDataError);
+      } else {
+        onGDataError('lazy mount');
+      }
+    } else {
+      groups.gdata = [];
+    }
   },
 
-  updateRoots: function(opt_callback) {
-    console.log('directoryModel_.updateRoots');
+  /**
+  * @param {function} opt_callback Called when all roots are resolved.
+  * @param {boolean} opt_resolveGData If true GData should be resolved for real,
+  *                                   If false a stub entry should be created.
+  */
+  updateRoots: function(opt_callback, opt_resolveGData) {
+    console.log('resolving roots');
     var self = this;
     this.resolveRoots_(function(rootEntries) {
-      console.log('rootsList_ = ');
-      console.log(self.rootsList_);
+      console.log('resolved roots:', rootEntries);
       var dm = self.rootsList_;
       var args = [0, dm.length].concat(rootEntries);
       dm.splice.apply(dm, args);
@@ -801,12 +873,11 @@ DirectoryModel.prototype = {
 
       if (opt_callback)
         opt_callback();
-    });
+    }, opt_resolveGData);
   },
 
   onRootsSelectionChanged_: function(event) {
     var root = this.rootsList.item(this.rootsListSelection.selectedIndex);
-    var current = this.currentEntry.fullPath;
     if (root && this.rootPath != root.fullPath)
       this.changeDirectory(root.fullPath);
   },
@@ -842,6 +913,12 @@ DirectoryModel.getRootPath = function(path) {
   if (type == DirectoryModel.REMOVABLE_DIRECTORY)
     return subdir(DirectoryModel.REMOVABLE_DIRECTORY);
   return '/';
+};
+
+DirectoryModel.getRootName = function(path) {
+  var root = DirectoryModel.getRootPath(path);
+  var index = root.lastIndexOf('/');
+  return index == -1 ? root : root.substring(index + 1);
 };
 
 DirectoryModel.getRootType = function(path) {

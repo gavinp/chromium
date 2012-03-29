@@ -5,6 +5,7 @@
 #include "webkit/media/buffered_data_source.h"
 
 #include "base/bind.h"
+#include "base/message_loop.h"
 #include "media/base/media_log.h"
 #include "net/base/net_errors.h"
 
@@ -107,6 +108,20 @@ void BufferedDataSource::Initialize(
       frame_);
 }
 
+bool BufferedDataSource::HasSingleOrigin() {
+  DCHECK(MessageLoop::current() == render_loop_);
+  DCHECK(initialize_cb_.is_null() && loader_.get())
+      << "Initialize() must complete before calling HasSingleOrigin()";
+  return loader_->HasSingleOrigin();
+}
+
+void BufferedDataSource::Abort() {
+  DCHECK(MessageLoop::current() == render_loop_);
+
+  CleanupTask();
+  frame_ = NULL;
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // media::Filter implementation.
 void BufferedDataSource::Stop(const base::Closure& closure) {
@@ -139,7 +154,7 @@ void BufferedDataSource::SetBitrate(int bitrate) {
 /////////////////////////////////////////////////////////////////////////////
 // media::DataSource implementation.
 void BufferedDataSource::Read(
-    int64 position, size_t size, uint8* data,
+    int64 position, int size, uint8* data,
     const media::DataSource::ReadCB& read_cb) {
   DVLOG(1) << "Read: " << position << " offset, " << size << " bytes";
   DCHECK(!read_cb.is_null());
@@ -157,8 +172,7 @@ void BufferedDataSource::Read(
   }
 
   render_loop_->PostTask(FROM_HERE, base::Bind(
-      &BufferedDataSource::ReadTask, this,
-      position, static_cast<int>(size), data));
+      &BufferedDataSource::ReadTask, this, position, size, data));
 }
 
 bool BufferedDataSource::GetSize(int64* size_out) {
@@ -172,18 +186,6 @@ bool BufferedDataSource::GetSize(int64* size_out) {
 
 bool BufferedDataSource::IsStreaming() {
   return streaming_;
-}
-
-bool BufferedDataSource::HasSingleOrigin() {
-  DCHECK(MessageLoop::current() == render_loop_);
-  return loader_.get() ? loader_->HasSingleOrigin() : true;
-}
-
-void BufferedDataSource::Abort() {
-  DCHECK(MessageLoop::current() == render_loop_);
-
-  CleanupTask();
-  frame_ = NULL;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -334,7 +336,7 @@ void BufferedDataSource::DoneRead_Locked(int error) {
   lock_.AssertAcquired();
 
   if (error >= 0) {
-    read_cb_.Run(static_cast<size_t>(error));
+    read_cb_.Run(error);
   } else {
     read_cb_.Run(kReadError);
   }

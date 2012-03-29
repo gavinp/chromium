@@ -4,7 +4,6 @@
 
 #include "chrome/browser/chromeos/dbus/dbus_thread_manager.h"
 
-#include "base/command_line.h"
 #include "base/threading/thread.h"
 #include "chrome/browser/chromeos/dbus/bluetooth_adapter_client.h"
 #include "chrome/browser/chromeos/dbus/bluetooth_device_client.h"
@@ -12,17 +11,15 @@
 #include "chrome/browser/chromeos/dbus/bluetooth_manager_client.h"
 #include "chrome/browser/chromeos/dbus/bluetooth_node_client.h"
 #include "chrome/browser/chromeos/dbus/cashew_client.h"
-#include "chrome/browser/chromeos/dbus/cros_dbus_service.h"
 #include "chrome/browser/chromeos/dbus/cros_disks_client.h"
 #include "chrome/browser/chromeos/dbus/cryptohome_client.h"
+#include "chrome/browser/chromeos/dbus/flimflam_network_client.h"
 #include "chrome/browser/chromeos/dbus/image_burner_client.h"
 #include "chrome/browser/chromeos/dbus/introspectable_client.h"
 #include "chrome/browser/chromeos/dbus/power_manager_client.h"
-#include "chrome/browser/chromeos/dbus/sensors_client.h"
 #include "chrome/browser/chromeos/dbus/session_manager_client.h"
 #include "chrome/browser/chromeos/dbus/speech_synthesizer_client.h"
 #include "chrome/browser/chromeos/dbus/update_engine_client.h"
-#include "chrome/common/chrome_switches.h"
 #include "dbus/bus.h"
 
 namespace chromeos {
@@ -47,15 +44,6 @@ class DBusThreadManagerImpl : public DBusThreadManager {
         dbus_thread_->message_loop_proxy();
     system_bus_ = new dbus::Bus(system_bus_options);
 
-    // Create and start the cros D-Bus service.
-    cros_dbus_service_.reset(CrosDBusService::Create(system_bus_.get()));
-    cros_dbus_service_->Start();
-
-    // Start monitoring sensors if needed.
-    const CommandLine& command_line = *CommandLine::ForCurrentProcess();
-    if (command_line.HasSwitch(switches::kEnableSensors))
-      sensors_client_.reset(SensorsClient::Create(system_bus_.get()));
-
     // Create the bluetooth clients.
     bluetooth_manager_client_.reset(BluetoothManagerClient::Create(
         system_bus_.get()));
@@ -75,6 +63,9 @@ class DBusThreadManagerImpl : public DBusThreadManager {
     // Create the Cryptohome client.
     cryptohome_client_.reset(
         CryptohomeClient::Create(system_bus_.get()));
+    // Create the Flimflam Network client.
+    flimflam_network_client_.reset(
+        FlimflamNetworkClient::Create(system_bus_.get()));
     // Create the image burner client.
     image_burner_client_.reset(ImageBurnerClient::Create(system_bus_.get()));
     // Create the introspectable object client.
@@ -148,6 +139,11 @@ class DBusThreadManagerImpl : public DBusThreadManager {
   }
 
   // DBusThreadManager override.
+  virtual FlimflamNetworkClient* GetFlimflamNetworkClient() OVERRIDE {
+    return flimflam_network_client_.get();
+  }
+
+  // DBusThreadManager override.
   virtual ImageBurnerClient* GetImageBurnerClient() OVERRIDE {
     return image_burner_client_.get();
   }
@@ -160,11 +156,6 @@ class DBusThreadManagerImpl : public DBusThreadManager {
   // DBusThreadManager override.
   virtual PowerManagerClient* GetPowerManagerClient() OVERRIDE {
     return power_manager_client_.get();
-  }
-
-  // DBusThreadManager override.
-  virtual SensorsClient* GetSensorsClient() OVERRIDE {
-    return sensors_client_.get();
   }
 
   // DBusThreadManager override.
@@ -184,7 +175,6 @@ class DBusThreadManagerImpl : public DBusThreadManager {
 
   scoped_ptr<base::Thread> dbus_thread_;
   scoped_refptr<dbus::Bus> system_bus_;
-  scoped_ptr<CrosDBusService> cros_dbus_service_;
   scoped_ptr<BluetoothAdapterClient> bluetooth_adapter_client_;
   scoped_ptr<BluetoothDeviceClient> bluetooth_device_client_;
   scoped_ptr<BluetoothInputClient> bluetooth_input_client_;
@@ -193,10 +183,10 @@ class DBusThreadManagerImpl : public DBusThreadManager {
   scoped_ptr<CashewClient> cashew_client_;
   scoped_ptr<CrosDisksClient> cros_disks_client_;
   scoped_ptr<CryptohomeClient> cryptohome_client_;
+  scoped_ptr<FlimflamNetworkClient> flimflam_network_client_;
   scoped_ptr<ImageBurnerClient> image_burner_client_;
   scoped_ptr<IntrospectableClient> introspectable_client_;
   scoped_ptr<PowerManagerClient> power_manager_client_;
-  scoped_ptr<SensorsClient> sensors_client_;
   scoped_ptr<SessionManagerClient> session_manager_client_;
   scoped_ptr<SpeechSynthesizerClient> speech_synthesizer_client_;
   scoped_ptr<UpdateEngineClient> update_engine_client_;

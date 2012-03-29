@@ -6,6 +6,7 @@
 
 #include <cmath>
 
+#include "ash/screen_ash.h"
 #include "ash/wm/window_resizer.h"
 #include "ui/aura/window.h"
 #include "ui/gfx/screen.h"
@@ -27,7 +28,7 @@ const float kPercents[] = { .5f, 2.0f / 3.0f, .8f };
 //   |kMovesBeforeAdjust| times.
 const int kDelayBeforeIncreaseMS = 500;
 const int kMovesBeforeAdjust = 50;
-const int kPixelsBeforeAdjust = 200;
+const int kPixelsBeforeAdjust = 100;
 
 }  // namespace
 
@@ -93,7 +94,7 @@ void SnapSizer::ChangeBounds(int x, int delta) {
 }
 
 gfx::Rect SnapSizer::GetTargetBounds() const {
-  gfx::Rect work_area(gfx::Screen::GetMonitorWorkAreaNearestWindow(window_));
+  gfx::Rect work_area(ScreenAsh::GetUnmaximizedWorkAreaBounds(window_));
   int y = WindowResizer::AlignToGridRoundUp(work_area.y(), grid_size_);
   int max_y =
       WindowResizer::AlignToGridRoundDown(work_area.bottom(), grid_size_);

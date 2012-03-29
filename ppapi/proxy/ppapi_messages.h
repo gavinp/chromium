@@ -41,6 +41,7 @@
 #include "ppapi/shared_impl/ppapi_preferences.h"
 #include "ppapi/shared_impl/ppb_device_ref_shared.h"
 #include "ppapi/shared_impl/ppb_input_event_shared.h"
+#include "ppapi/shared_impl/ppb_network_list_private_shared.h"
 #include "ppapi/shared_impl/ppb_url_request_info_shared.h"
 #include "ppapi/shared_impl/ppb_view_shared.h"
 #include "ppapi/shared_impl/private/ppb_host_resolver_shared.h"
@@ -54,6 +55,8 @@ IPC_ENUM_TRAITS(PP_DeviceType_Dev)
 IPC_ENUM_TRAITS(PP_InputEvent_MouseButton)
 IPC_ENUM_TRAITS(PP_InputEvent_Type)
 IPC_ENUM_TRAITS(PP_NetAddressFamily_Private)
+IPC_ENUM_TRAITS(PP_NetworkListType_Private)
+IPC_ENUM_TRAITS(PP_NetworkListState_Private)
 IPC_ENUM_TRAITS(PP_TextInput_Type)
 IPC_ENUM_TRAITS(PP_VideoDecodeError_Dev)
 IPC_ENUM_TRAITS(PP_VideoDecoder_Profile)
@@ -188,6 +191,15 @@ IPC_STRUCT_TRAITS_BEGIN(ppapi::PPB_URLRequestInfo_Data::BodyItem)
   IPC_STRUCT_TRAITS_MEMBER(expected_last_modified_time)
 IPC_STRUCT_TRAITS_END()
 
+IPC_STRUCT_TRAITS_BEGIN(ppapi::NetworkInfo)
+  IPC_STRUCT_TRAITS_MEMBER(name)
+  IPC_STRUCT_TRAITS_MEMBER(type)
+  IPC_STRUCT_TRAITS_MEMBER(state)
+  IPC_STRUCT_TRAITS_MEMBER(addresses)
+  IPC_STRUCT_TRAITS_MEMBER(display_name)
+  IPC_STRUCT_TRAITS_MEMBER(mtu)
+IPC_STRUCT_TRAITS_END()
+
 // These are from the browser to the plugin.
 // Loads the given plugin.
 IPC_MESSAGE_CONTROL1(PpapiMsg_LoadPlugin, FilePath /* path */)
@@ -308,6 +320,11 @@ IPC_MESSAGE_ROUTED2(
     PpapiMsg_PPBFileSystem_OpenComplete,
     ppapi::HostResource /* filesystem */,
     int32_t /* result */)
+
+// PPB_NetworkMonitor_Private.
+IPC_MESSAGE_ROUTED2(PpapiMsg_PPBNetworkMonitor_NetworkList,
+                    uint32 /* plugin_dispatcher_id */,
+                    ppapi::NetworkList /* network_list */)
 
 // PPB_Talk
 IPC_MESSAGE_ROUTED3(
@@ -685,8 +702,8 @@ IPC_SYNC_MESSAGE_ROUTED3_1(PpapiHostMsg_PPBFileChooser_Create,
                            ppapi::HostResource /* result */)
 IPC_MESSAGE_ROUTED4(PpapiHostMsg_PPBFileChooser_Show,
                     ppapi::HostResource /* file_chooser */,
-                    bool /* save_as */,
-                    std::string /* suggested_file_name */,
+                    PP_Bool /* save_as */,
+                    ppapi::proxy::SerializedVar /* suggested_file_name */,
                     bool /* require_user_gesture */)
 
 // PPB_FileIO.
@@ -762,6 +779,12 @@ IPC_SYNC_MESSAGE_ROUTED2_1(PpapiHostMsg_PPBFileSystem_Create,
 IPC_MESSAGE_ROUTED2(PpapiHostMsg_PPBFileSystem_Open,
                     ppapi::HostResource /* result */,
                     int64_t /* expected_size */)
+
+// PPB_NetworkMonitor_Private.
+IPC_MESSAGE_CONTROL1(PpapiHostMsg_PPBNetworkMonitor_Start,
+                     uint32 /* plugin_dispatcher_id */)
+IPC_MESSAGE_CONTROL1(PpapiHostMsg_PPBNetworkMonitor_Stop,
+                     uint32 /* plugin_dispatcher_id */)
 
 // PPB_Graphics2D.
 IPC_SYNC_MESSAGE_ROUTED3_1(PpapiHostMsg_PPBGraphics2D_Create,
@@ -1116,14 +1139,6 @@ IPC_SYNC_MESSAGE_ROUTED1_0(PpapiHostMsg_PPBVideoDecoder_Destroy,
                            ppapi::HostResource /* video_decoder */)
 
 #if !defined(OS_NACL)
-// PPB_Flash_NetConnector.
-IPC_MESSAGE_ROUTED5(PpapiMsg_PPBFlashNetConnector_ConnectACK,
-                    ppapi::HostResource /* net_connector */,
-                    int32_t /* result */,
-                    IPC::PlatformFileForTransit /* handle */,
-                    std::string /* local_addr_as_string */,
-                    std::string /* remote_addr_as_string */)
-
 // PPB_Flash.
 IPC_MESSAGE_ROUTED2(PpapiHostMsg_PPBFlash_SetInstanceAlwaysOnTop,
                     PP_Instance /* instance */,
@@ -1241,18 +1256,6 @@ IPC_SYNC_MESSAGE_ROUTED1_1(PpapiHostMsg_PPBFlashMessageLoop_Run,
                            int32_t /* result */)
 IPC_SYNC_MESSAGE_ROUTED1_0(PpapiHostMsg_PPBFlashMessageLoop_Quit,
                            ppapi::HostResource /* flash_message_loop */)
-
-// PPB_Flash_NetConnector.
-IPC_SYNC_MESSAGE_ROUTED1_1(PpapiHostMsg_PPBFlashNetConnector_Create,
-                           PP_Instance /* instance_id */,
-                           ppapi::HostResource /* result */)
-IPC_MESSAGE_ROUTED3(PpapiHostMsg_PPBFlashNetConnector_ConnectTcp,
-                    ppapi::HostResource /* connector */,
-                    std::string /* host */,
-                    uint16_t /* port */)
-IPC_MESSAGE_ROUTED2(PpapiHostMsg_PPBFlashNetConnector_ConnectTcpAddress,
-                    ppapi::HostResource /* connector */,
-                    std::string /* net_address_as_string */)
 
 // PPB_TCPSocket_Private.
 IPC_SYNC_MESSAGE_CONTROL2_1(PpapiHostMsg_PPBTCPSocket_Create,

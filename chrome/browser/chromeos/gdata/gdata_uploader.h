@@ -16,9 +16,12 @@
 #include "chrome/browser/chromeos/gdata/gdata_params.h"
 #include "googleurl/src/gurl.h"
 
+namespace content {
+class DownloadItem;
+}
+
 namespace gdata {
 
-class DocumentsService;
 class GDataFileSystem;
 struct UploadFileInfo;
 
@@ -28,20 +31,22 @@ class GDataUploader {
   virtual ~GDataUploader();
 
   // Uploads a file specified by |upload_file_info|. Transfers ownership.
-  void UploadFile(UploadFileInfo* upload_file_info);
+  // Returns the upload_id.
+  int UploadFile(scoped_ptr<UploadFileInfo> upload_file_info);
 
-  // Updates file path, size and download_completed status of streaming upload.
-  void UpdateUpload(int upload_id,
-                    const FilePath& file_path,
-                    int64 file_size,
-                    bool download_complete);
+  // Updates attributes of streaming upload.
+  void UpdateUpload(int upload_id, content::DownloadItem* download);
+
+  // Returns the count of bytes confirmed as uploaded so far.
+  int64 GetUploadedBytes(int upload_id) const;
+
+  // TODO(achuith): Make this private.
+  // Destroys |upload_file_info|.
+  void DeleteUpload(UploadFileInfo* upload_file_info);
 
  private:
   // Lookup UploadFileInfo* in pending_uploads_.
-  UploadFileInfo* GetUploadFileInfo(int upload_id);
-
-  // Destroys |upload_file_info|.
-  void RemovePendingUpload(UploadFileInfo* upload_file_info);
+  UploadFileInfo* GetUploadFileInfo(int upload_id) const;
 
   // Open the file.
   void OpenFile(UploadFileInfo* upload_file_info);
@@ -65,13 +70,20 @@ class GDataUploader {
 
   // DocumentsService callback for ResumeUpload.
   void OnResumeUploadResponseReceived(int upload_id,
-                                      const ResumeUploadResponse& response);
+                                      const ResumeUploadResponse& response,
+                                      scoped_ptr<DocumentEntry> entry);
+
+  // When upload completes, move the file into the gdata cache.
+  void MoveFileToCache(UploadFileInfo* upload_file_info);
+
+  // Handle failed uploads.
+  void UploadFailed(UploadFileInfo* upload_file_info);
 
   // Private data.
-
   GDataFileSystem* file_system_;
 
   int next_upload_id_;  // id counter.
+
   typedef std::map<int, UploadFileInfo*> UploadFileInfoMap;
   UploadFileInfoMap pending_uploads_;
 

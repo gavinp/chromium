@@ -16,7 +16,7 @@
 #include "base/time.h"
 #include "base/timer.h"
 #include "chrome/browser/chromeos/dbus/power_supply_properties.pb.h"
-#include "chrome/browser/chromeos/login/screen_locker.h"
+#include "chrome/browser/chromeos/dbus/power_state_control.pb.h"
 #include "dbus/bus.h"
 #include "dbus/message.h"
 #include "dbus/object_path.h"
@@ -154,6 +154,7 @@ class PowerManagerClientImpl : public PowerManagerClient {
   // PowerManagerClient overrides:
 
   virtual void AddObserver(Observer* observer) OVERRIDE {
+    CHECK(observer);  // http://crbug.com/119976
     observers_.AddObserver(observer);
   }
 
@@ -179,6 +180,33 @@ class PowerManagerClientImpl : public PowerManagerClient {
 
   virtual void IncreaseScreenBrightness() OVERRIDE {
     SimpleMethodCallToPowerManager(power_manager::kIncreaseScreenBrightness);
+  }
+
+  virtual void SetScreenBrightnessPercent(double percent, bool gradual) {
+    dbus::MethodCall method_call(
+        power_manager::kPowerManagerInterface,
+        power_manager::kSetScreenBrightnessPercent);
+    dbus::MessageWriter writer(&method_call);
+    writer.AppendDouble(percent);
+    writer.AppendInt32(
+        gradual ?
+        power_manager::kBrightnessTransitionGradual :
+        power_manager::kBrightnessTransitionInstant);
+    power_manager_proxy_->CallMethod(
+        &method_call,
+        dbus::ObjectProxy::TIMEOUT_USE_DEFAULT,
+        dbus::ObjectProxy::EmptyResponseCallback());
+  }
+
+  virtual void GetScreenBrightnessPercent(
+      const GetScreenBrightnessPercentCallback& callback) OVERRIDE {
+    dbus::MethodCall method_call(power_manager::kPowerManagerInterface,
+                                 power_manager::kGetScreenBrightnessPercent);
+    power_manager_proxy_->CallMethod(
+        &method_call,
+        dbus::ObjectProxy::TIMEOUT_USE_DEFAULT,
+        base::Bind(&PowerManagerClientImpl::OnGetScreenBrightnessPercent,
+                   weak_ptr_factory_.GetWeakPtr(), callback));
   }
 
   virtual void RequestStatusUpdate(UpdateRequestType update_type) OVERRIDE {
@@ -227,6 +255,30 @@ class PowerManagerClientImpl : public PowerManagerClient {
     RequestIdleNotification(0);
   }
 
+  virtual void RequestPowerStateOverrides(
+      uint32 request_id,
+      uint32 duration,
+      int overrides,
+      PowerStateRequestIdCallback callback) OVERRIDE {
+    dbus::MethodCall method_call(power_manager::kPowerManagerInterface,
+                                 power_manager::kStateOverrideRequest);
+    dbus::MessageWriter writer(&method_call);
+
+    PowerStateControl protobuf;
+    protobuf.set_request_id(request_id);
+    protobuf.set_duration(duration);
+    protobuf.set_disable_idle_dim(overrides & DISABLE_IDLE_DIM);
+    protobuf.set_disable_idle_blank(overrides & DISABLE_IDLE_BLANK);
+    protobuf.set_disable_idle_suspend(overrides & DISABLE_IDLE_SUSPEND);
+    protobuf.set_disable_lid_suspend(overrides & DISABLE_IDLE_LID_SUSPEND);
+
+    writer.AppendProtoAsArrayOfBytes(protobuf);
+    power_manager_proxy_->CallMethod(
+        &method_call,
+        dbus::ObjectProxy::TIMEOUT_USE_DEFAULT,
+        base::Bind(&PowerManagerClientImpl::OnPowerStateOverride,
+                   weak_ptr_factory_.GetWeakPtr(), callback));
+  }
 
   virtual void NotifyScreenLockRequested() OVERRIDE {
     SimpleMethodCallToPowerManager(power_manager::kRequestLockScreenMethod);
@@ -366,6 +418,41 @@ class PowerManagerClientImpl : public PowerManagerClient {
     callback.Run(idle_time_ms/1000);
   }
 
+  void OnPowerStateOverride(const PowerStateRequestIdCallback& callback,
+                            dbus::Response* response) {
+    if (!response) {
+      LOG(ERROR) << "Error calling " << power_manager::kStateOverrideRequest;
+      return;
+    }
+
+    dbus::MessageReader reader(response);
+    uint32 request_id = 0;
+    if (!reader.PopUint32(&request_id)) {
+      LOG(ERROR) << "Error reading response from powerd: "
+                 << response->ToString();
+      callback.Run(0);
+      return;
+    }
+
+    callback.Run(request_id);
+  }
+
+  void OnGetScreenBrightnessPercent(
+      const GetScreenBrightnessPercentCallback& callback,
+      dbus::Response* response) {
+    if (!response) {
+      LOG(ERROR) << "Error calling "
+                 << power_manager::kGetScreenBrightnessPercent;
+      return;
+    }
+    dbus::MessageReader reader(response);
+    double percent = 0.0;
+    if (!reader.PopDouble(&percent))
+      LOG(ERROR) << "Error reading response from powerd: "
+                 << response->ToString();
+    callback.Run(percent);
+  }
+
   void ScreenLockSignalReceived(dbus::Signal* signal) {
     FOR_EACH_OBSERVER(Observer, observers_, LockScreen());
   }
@@ -450,6 +537,17 @@ class PowerManagerClientStubImpl : public PowerManagerClient {
     VLOG(1) << "Requested to increase screen brightness";
   }
 
+  virtual void SetScreenBrightnessPercent(double percent,
+                                          bool gradual) OVERRIDE {
+    VLOG(1) << "Requested to set screen brightness to " << percent << "% "
+            << (gradual ? "gradually" : "instantaneously");
+  }
+
+  virtual void GetScreenBrightnessPercent(
+      const GetScreenBrightnessPercentCallback& callback) OVERRIDE {
+    callback.Run(100.0);
+  }
+
   virtual void RequestStatusUpdate(UpdateRequestType update_type) OVERRIDE {
     if (update_type == UPDATE_INITIAL) {
       Update();
@@ -476,13 +574,18 @@ class PowerManagerClientStubImpl : public PowerManagerClient {
 
   virtual void RequestIdleNotification(int64 threshold) OVERRIDE {}
   virtual void RequestActiveNotification() OVERRIDE {}
+  virtual void RequestPowerStateOverrides(
+      uint32 request_id,
+      uint32 duration,
+      int overrides,
+      PowerStateRequestIdCallback callback) OVERRIDE {}
 
   virtual void NotifyScreenLockRequested() OVERRIDE {
-    ScreenLocker::Show();
+    FOR_EACH_OBSERVER(Observer, observers_, LockScreen());
   }
   virtual void NotifyScreenLockCompleted() OVERRIDE {}
   virtual void NotifyScreenUnlockRequested() OVERRIDE {
-    ScreenLocker::Hide();
+    FOR_EACH_OBSERVER(Observer, observers_, UnlockScreen());
   }
 
   virtual void NotifyScreenUnlockCompleted() OVERRIDE {}

@@ -7,11 +7,12 @@
 #include "content/browser/intents/intent_injector.h"
 #include "content/browser/intents/internal_web_intents_dispatcher.h"
 #include "content/browser/renderer_host/test_render_view_host.h"
-#include "content/browser/tab_contents/test_tab_contents.h"
+#include "content/browser/tab_contents/test_web_contents.h"
 #include "webkit/glue/web_intent_data.h"
 #include "webkit/glue/web_intent_reply_data.h"
 
-class InternalWebIntentsDispatcherTest : public RenderViewHostTestHarness {
+class InternalWebIntentsDispatcherTest
+    : public content::RenderViewHostTestHarness {
  public:
   InternalWebIntentsDispatcherTest() {
     replied_ = 0;
@@ -48,7 +49,7 @@ TEST_F(InternalWebIntentsDispatcherTest, NotifiesOnReply) {
       base::Bind(&InternalWebIntentsDispatcherTest::ReplySent,
                  base::Unretained(this)));
 
-  dispatcher->DispatchIntent(contents());
+  dispatcher->DispatchIntent(web_contents());
 
   dispatcher->SendReplyMessage(webkit_glue::WEB_INTENT_REPLY_SUCCESS,
                               ASCIIToUTF16("success"));

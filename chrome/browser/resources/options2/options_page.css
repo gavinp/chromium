@@ -38,13 +38,12 @@ body {
 }
 
 div.disabled {
-  color: #888;
+  color: #999;
 }
 
 .settings-row {
   display: block;
-  margin-bottom: 0.45em;
-  margin-top: 0.45em;
+  margin: 0.65em 0;
 }
 
 .hbox {
@@ -69,8 +68,7 @@ div.disabled {
   position: fixed;
 }
 
-/*
- * For touch-optimized UI, make the radio/checkbox input boxes in
+/* For touch-optimized UI, make the radio/checkbox input boxes in
  * options/preference pages easier to touch.
  * TODO(rbyers): We need to solve this more generally for all web pages
  * (crbug.com/99981), and perhaps temporarily for all WebUI (crbug.com/102482).
@@ -85,13 +83,11 @@ html[touch-optimized] label > input[type=radio] {
   -webkit-transform: scale(1.4);
 }
 
-/*
- * Override the font-size rule in shared_options.css file.
+/* Override the font-size rule in shared_options.css file.
  * 16 px font-size proved to be more touch friendly. It increases the touchable
- * area for buttons and input boxes.
- */
+ * area for buttons and input boxes. */
 html[touch-optimized] body {
-  font-size: 16px;
+  font-size: 100%;
 }
 
 #overlay-container-1 {
@@ -156,12 +152,12 @@ html[touch-optimized] body {
 }
 
 .managed-prefs-text {
-  background-image: url('chrome://theme/IDR_WARNING');
-  background-position: 3px center;
+  background-image: url('chrome://theme/IDR_MANAGED');
+  background-position: 5px center;
   background-repeat: no-repeat;
   display: block;
-  line-height: 25px;
-  padding-left: 31px;
+  line-height: 24px;
+  padding-left: 26px;
 }
 
 .managed-prefs-banner.clickable:active .managed-prefs-text {
@@ -439,10 +435,6 @@ list[hasElementFocus] {
 
 .suboption {
   -webkit-margin-start: 23px;
-}
-
-.informational-text {
-  color: grey;
 }
 
 list.autocomplete-suggestions {

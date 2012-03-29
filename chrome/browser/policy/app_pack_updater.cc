@@ -5,7 +5,6 @@
 #include "chrome/browser/policy/app_pack_updater.h"
 
 #include "base/bind.h"
-#include "base/file_path.h"
 #include "base/file_util.h"
 #include "base/location.h"
 #include "base/stl_util.h"
@@ -34,7 +33,7 @@ namespace policy {
 namespace {
 
 // Directory where the AppPack extensions are cached.
-const char kAppPackCacheDir[] = "/home/chronos/AppPack";
+const char kAppPackCacheDir[] = "/var/cache/app_pack";
 
 // File name extension for CRX files (not case sensitive).
 const char kCRXFileExtension[] = ".crx";
@@ -116,6 +115,16 @@ ExternalExtensionLoader* AppPackUpdater::CreateExternalExtensionLoader() {
   return loader;
 }
 
+void AppPackUpdater::SetScreenSaverUpdateCallback(
+    const AppPackUpdater::ScreenSaverUpdateCallback& callback) {
+  screen_saver_update_callback_ = callback;
+  if (!screen_saver_update_callback_.is_null() && !screen_saver_path_.empty()) {
+    BrowserThread::PostTask(
+        BrowserThread::UI, FROM_HERE,
+        base::Bind(screen_saver_update_callback_, screen_saver_path_));
+  }
+}
+
 void AppPackUpdater::Init() {
   worker_pool_token_ = BrowserThread::GetBlockingPool()->GetSequenceToken();
   chromeos::CrosSettings::Get()->AddSettingsObserver(chromeos::kAppPack, this);
@@ -142,11 +151,12 @@ void AppPackUpdater::Observe(int type,
 
 void AppPackUpdater::LoadPolicy() {
   chromeos::CrosSettings* settings = chromeos::CrosSettings::Get();
-  if (!settings->GetTrusted(chromeos::kAppPack,
-                            base::Bind(&AppPackUpdater::LoadPolicy,
-                                       weak_ptr_factory_.GetWeakPtr()))) {
+  if (!settings->PrepareTrustedValues(
+          base::Bind(&AppPackUpdater::LoadPolicy,
+                     weak_ptr_factory_.GetWeakPtr()))) {
     return;
   }
+
   app_pack_extensions_.clear();
   const base::Value* value = settings->GetPref(chromeos::kAppPack);
   const base::ListValue* list = NULL;
@@ -172,6 +182,12 @@ void AppPackUpdater::LoadPolicy() {
 
   VLOG(1) << "Refreshed AppPack policy, got " << app_pack_extensions_.size()
           << " entries.";
+
+  value = settings->GetPref(chromeos::kScreenSaverExtensionId);
+  if (!value || !value->GetAsString(&screen_saver_id_)) {
+    screen_saver_id_.clear();
+    SetScreenSaverPath(FilePath());
+  }
 
   CheckCacheNow();
 }
@@ -299,8 +315,18 @@ void AppPackUpdater::BlockingCheckCacheInternal(
 void AppPackUpdater::OnCacheUpdated(CacheEntryMap* cache_entries) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   cached_extensions_.swap(*cache_entries);
+
+  CacheEntryMap::iterator it = cached_extensions_.find(screen_saver_id_);
+  if (it != cached_extensions_.end()) {
+    SetScreenSaverPath(FilePath(it->second.path));
+    cached_extensions_.erase(it);
+  } else {
+    SetScreenSaverPath(FilePath());
+  }
+
   VLOG(1) << "Updated AppPack cache, there are " << cached_extensions_.size()
-          << " extensions cached.";
+          << " extensions cached and "
+          << (screen_saver_path_.empty() ? "no" : "the") << " screensaver";
   UpdateExtensionLoader();
   DownloadMissingExtensions();
 }
@@ -450,12 +476,17 @@ void AppPackUpdater::OnCacheEntryInstalled(const std::string& id,
                                            const std::string& path,
                                            const std::string& version) {
   VLOG(1) << "AppPack installed a new extension in the cache: " << path;
-  // AppPack +1
-  CacheEntry& entry = cached_extensions_[id];
-  entry.path = path;
-  entry.cached_version = version;
 
-  UpdateExtensionLoader();
+  if (id == screen_saver_id_) {
+    VLOG(1) << "AppPack got the screen saver extension at " << path;
+    SetScreenSaverPath(FilePath(path));
+  } else {
+    // Add to the list of cached extensions.
+    CacheEntry& entry = cached_extensions_[id];
+    entry.path = path;
+    entry.cached_version = version;
+    UpdateExtensionLoader();
+  }
 }
 
 void AppPackUpdater::PostBlockingTask(const tracked_objects::Location& location,
@@ -463,6 +494,15 @@ void AppPackUpdater::PostBlockingTask(const tracked_objects::Location& location,
   BrowserThread::GetBlockingPool()->PostSequencedWorkerTaskWithShutdownBehavior(
       worker_pool_token_, location, task,
       base::SequencedWorkerPool::SKIP_ON_SHUTDOWN);
+}
+
+void AppPackUpdater::SetScreenSaverPath(const FilePath& path) {
+  // Don't invoke the callback if the path isn't changing.
+  if (path != screen_saver_path_) {
+    screen_saver_path_ = path;
+    if (!screen_saver_update_callback_.is_null())
+      screen_saver_update_callback_.Run(screen_saver_path_);
+  }
 }
 
 }  // namespace policy

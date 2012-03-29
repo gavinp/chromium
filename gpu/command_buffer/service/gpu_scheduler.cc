@@ -19,7 +19,7 @@ using ::base::SharedMemory;
 namespace gpu {
 
 namespace {
-const int64 kRescheduleTimeOutDelay = 100;
+const int64 kRescheduleTimeOutDelay = 1000;
 }
 
 GpuScheduler::GpuScheduler(
@@ -74,6 +74,8 @@ void GpuScheduler::PutChanged() {
     command_buffer_->SetGetOffset(static_cast<int32>(parser_->get()));
 
     if (error::IsError(error)) {
+      LOG(ERROR) << "[" << decoder_ << "] "
+                 << "GPU PARSE ERROR: " << error;
       command_buffer_->SetContextLostReason(decoder_->GetContextLostReason());
       command_buffer_->SetParseError(error);
       return;

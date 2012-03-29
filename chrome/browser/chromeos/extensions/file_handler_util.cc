@@ -11,6 +11,7 @@
 #include "base/string_util.h"
 #include "base/stringprintf.h"
 #include "base/utf_string_conversions.h"
+#include "chrome/browser/chromeos/gdata/gdata_util.h"
 #include "chrome/browser/chromeos/extensions/file_manager_util.h"
 #include "chrome/browser/extensions/extension_event_router.h"
 #include "chrome/browser/extensions/extension_service.h"
@@ -51,6 +52,10 @@ const int kReadWriteFilePermissions = base::PLATFORM_FILE_OPEN |
                                       base::PLATFORM_FILE_ASYNC |
                                       base::PLATFORM_FILE_WRITE_ATTRIBUTES;
 
+const int kReadOnlyFilePermissions = base::PLATFORM_FILE_OPEN |
+                                     base::PLATFORM_FILE_READ |
+                                     base::PLATFORM_FILE_EXCLUSIVE_READ |
+                                     base::PLATFORM_FILE_ASYNC;
 
 // Returns process id of the process the extension is running in.
 int ExtractProcessFromExtensionId(const std::string& extension_id,
@@ -98,6 +103,34 @@ URLPatternSet GetAllMatchingPatterns(const FileBrowserHandler* handler,
 }
 
 typedef std::set<const FileBrowserHandler*> ActionSet;
+
+const FileBrowserHandler* FindFileBrowserHandler(const Extension* extension,
+                                                 const std::string& action_id) {
+  for (Extension::FileBrowserHandlerList::const_iterator action_iter =
+           extension->file_browser_handlers()->begin();
+       action_iter != extension->file_browser_handlers()->end();
+       ++action_iter) {
+    if (action_iter->get()->id() == action_id)
+      return action_iter->get();
+  }
+  return NULL;
+}
+
+unsigned int GetAccessPermissionsForHandler(const Extension* extension,
+                                            const std::string& action_id) {
+  const FileBrowserHandler* action =
+      FindFileBrowserHandler(extension, action_id);
+  if (!action)
+    return 0;
+  unsigned int result = 0;
+  if (action->CanRead())
+    result |= kReadOnlyFilePermissions;
+  if (action->CanWrite())
+    result |= kReadWriteFilePermissions;
+  // TODO(tbarzic): We don't handle Create yet.
+  return result;
+}
+
 
 std::string EscapedUtf8ToLower(const std::string& str) {
   string16 utf16 = UTF8ToUTF16(
@@ -166,6 +199,10 @@ void SortLastUsedHandlerList(LastUsedHandlerList *list) {
 
 int GetReadWritePermissions() {
   return kReadWriteFilePermissions;
+}
+
+int GetReadOnlyPermissions() {
+  return kReadOnlyFilePermissions;
 }
 
 std::string MakeTaskID(const std::string& extension_id,
@@ -262,6 +299,12 @@ bool GetDefaultTask(
   return true;
 }
 
+FileTaskExecutor::FileDefinition::FileDefinition() {
+}
+
+FileTaskExecutor::FileDefinition::~FileDefinition() {
+}
+
 class FileTaskExecutor::ExecuteTasksFileSystemCallbackDispatcher {
  public:
   static fileapi::FileSystemContext::OpenFileSystemCallback CreateCallback(
@@ -270,12 +313,13 @@ class FileTaskExecutor::ExecuteTasksFileSystemCallbackDispatcher {
       const GURL& source_url,
       scoped_refptr<const Extension> handler_extension,
       int handler_pid,
+      const std::string& action_id,
       const std::vector<GURL>& file_urls) {
     return base::Bind(
         &ExecuteTasksFileSystemCallbackDispatcher::DidOpenFileSystem,
         base::Owned(new ExecuteTasksFileSystemCallbackDispatcher(
             executor, profile, source_url, handler_extension,
-            handler_pid, file_urls)));
+            handler_pid, action_id, file_urls)));
   }
 
   void DidOpenFileSystem(base::PlatformFileError result,
@@ -292,8 +336,7 @@ class FileTaskExecutor::ExecuteTasksFileSystemCallbackDispatcher {
          ++iter) {
       // Set up file permission access.
       FileTaskExecutor::FileDefinition file;
-      if (!SetupFileAccessPermissions(*iter, &file.target_file_url,
-                                      &file.virtual_path, &file.is_directory)) {
+      if (!SetupFileAccessPermissions(*iter, &file)) {
         continue;
       }
       file_list.push_back(file);
@@ -314,7 +357,8 @@ class FileTaskExecutor::ExecuteTasksFileSystemCallbackDispatcher {
             executor_,
             file_system_name,
             file_system_root,
-            file_list));
+            file_list,
+            handler_pid_));
   }
 
   void DidFail(base::PlatformFileError error_code) {
@@ -332,12 +376,14 @@ class FileTaskExecutor::ExecuteTasksFileSystemCallbackDispatcher {
       const GURL& source_url,
       const scoped_refptr<const Extension>& handler_extension,
       int handler_pid,
+      const std::string& action_id,
       const std::vector<GURL>& file_urls)
       : executor_(executor),
         profile_(profile),
         source_url_(source_url),
         handler_extension_(handler_extension),
         handler_pid_(handler_pid),
+        action_id_(action_id),
         origin_file_urls_(file_urls) {
     DCHECK(executor_);
   }
@@ -345,7 +391,7 @@ class FileTaskExecutor::ExecuteTasksFileSystemCallbackDispatcher {
   // Checks legitimacy of file url and grants file RO access permissions from
   // handler (target) extension and its renderer process.
   bool SetupFileAccessPermissions(const GURL& origin_file_url,
-      GURL* target_file_url, FilePath* file_path, bool* is_directory) {
+                                  FileDefinition* file) {
     if (!handler_extension_.get())
       return false;
 
@@ -391,27 +437,22 @@ class FileTaskExecutor::ExecuteTasksFileSystemCallbackDispatcher {
     // Check if this file system entry exists first.
     base::PlatformFileInfo file_info;
 
-    if (!file_util::PathExists(final_file_path) ||
-        file_util::IsLink(final_file_path) ||
-        !file_util::GetFileInfo(final_file_path, &file_info))
-      return false;
+    bool is_gdata_file = gdata::util::IsUnderGDataMountPoint(final_file_path);
 
-    // TODO(zelidrag): Let's just prevent all symlinks for now. We don't want a
-    // USB drive content to point to something in the rest of the file system.
-    // Ideally, we should permit symlinks within the boundary of the same
-    // virtual mount point.
-    if (file_info.is_symbolic_link)
-      return false;
+    // If the file is under gdata mount point, there is no actual file to be
+    // found on the final_file_path.
+    if (!is_gdata_file) {
+      if (!file_util::PathExists(final_file_path) ||
+          file_util::IsLink(final_file_path) ||
+          !file_util::GetFileInfo(final_file_path, &file_info)) {
+        return false;
+      }
+    }
 
-    // TODO(tbarzic): Add explicit R/W + R/O permissions for non-component
-    // extensions.
-
-    // Grant R/O access permission to non-component extension and R/W to
-    // component extensions.
     ChildProcessSecurityPolicy::GetInstance()->GrantPermissionsForFile(
         handler_pid_,
         final_file_path,
-        GetReadWritePermissions());
+        GetAccessPermissionsForHandler(handler_extension_.get(), action_id_));
 
     // Grant access to this particular file to target extension. This will
     // ensure that the target extension can access only this FS entry and
@@ -424,10 +465,11 @@ class FileTaskExecutor::ExecuteTasksFileSystemCallbackDispatcher {
         handler_extension_->id()));
     GURL base_url = fileapi::GetFileSystemRootURI(target_origin_url,
         fileapi::kFileSystemTypeExternal);
-    *target_file_url = GURL(base_url.spec() + virtual_path.value());
+    file->target_file_url = GURL(base_url.spec() + virtual_path.value());
     FilePath root(FILE_PATH_LITERAL("/"));
-    *file_path = root.Append(virtual_path);
-    *is_directory = file_info.is_directory;
+    file->virtual_path = root.Append(virtual_path);
+    file->is_directory = file_info.is_directory;
+    file->absolute_path = final_file_path;
     return true;
   }
 
@@ -437,6 +479,7 @@ class FileTaskExecutor::ExecuteTasksFileSystemCallbackDispatcher {
   GURL source_url_;
   scoped_refptr<const Extension> handler_extension_;
   int handler_pid_;
+  std::string action_id_;
   std::vector<GURL> origin_file_urls_;
   DISALLOW_COPY_AND_ASSIGN(ExecuteTasksFileSystemCallbackDispatcher);
 };
@@ -496,6 +539,7 @@ void FileTaskExecutor::RequestFileEntryOnFileThread(
           source_url_,
           handler,
           handler_pid,
+          action_id_,
           file_urls));
 }
 
@@ -503,11 +547,26 @@ void FileTaskExecutor::ExecuteFailedOnUIThread() {
   Done(false);
 }
 
+void FileTaskExecutor::SetupFileAccessPermissionsForGDataCache(
+    const FileDefinitionList& file_list,
+    int handler_pid) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+
+  for (FileDefinitionList::const_iterator iter = file_list.begin();
+       iter != file_list.end();
+       ++iter) {
+    if (!gdata::util::IsUnderGDataMountPoint(iter->absolute_path))
+      continue;
+    gdata::util::SetPermissionsForGDataCacheFiles(profile_, handler_pid,
+        iter->absolute_path);
+  }
+}
 
 void FileTaskExecutor::ExecuteFileActionsOnUIThread(
     const std::string& file_system_name,
     const GURL& file_system_root,
-    const FileDefinitionList& file_list) {
+    const FileDefinitionList& file_list,
+    int handler_pid) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
 
   ExtensionService* service = profile_->GetExtensionService();
@@ -527,6 +586,8 @@ void FileTaskExecutor::ExecuteFileActionsOnUIThread(
     Done(false);
     return;
   }
+
+  SetupFileAccessPermissionsForGDataCache(file_list, handler_pid);
 
   scoped_ptr<ListValue> event_args(new ListValue());
   event_args->Append(Value::CreateStringValue(action_id_));

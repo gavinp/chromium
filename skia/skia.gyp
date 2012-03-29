@@ -207,7 +207,6 @@
         '../third_party/skia/src/core/SkBuffer.cpp',
         '../third_party/skia/src/core/SkCanvas.cpp',
         '../third_party/skia/src/core/SkChunkAlloc.cpp',
-        '../third_party/skia/src/core/SkClampRange.cpp',
         '../third_party/skia/src/core/SkClipStack.cpp',
         '../third_party/skia/src/core/SkColor.cpp',
         '../third_party/skia/src/core/SkColorFilter.cpp',
@@ -324,6 +323,7 @@
         '../third_party/skia/src/effects/SkBlurMask.cpp',
         '../third_party/skia/src/effects/SkBlurMask.h',
         '../third_party/skia/src/effects/SkBlurMaskFilter.cpp',
+        '../third_party/skia/src/effects/SkClampRange.cpp',
         '../third_party/skia/src/effects/SkColorFilters.cpp',
         '../third_party/skia/src/effects/SkColorMatrixFilter.cpp',
         '../third_party/skia/src/effects/SkCornerPathEffect.cpp',
@@ -383,7 +383,6 @@
         '../third_party/skia/src/gpu/GrPathRendererChain.h',
         '../third_party/skia/src/gpu/GrPathUtils.cpp',
         '../third_party/skia/src/gpu/GrPlotMgr.h',
-        '../third_party/skia/src/gpu/GrPrintf_skia.cpp',
         '../third_party/skia/src/gpu/GrRandom.h',
         '../third_party/skia/src/gpu/GrRectanizer.h',
         '../third_party/skia/src/gpu/GrRectanizer_fifo.cpp',
@@ -468,19 +467,28 @@
 
         '../third_party/skia/src/opts/opts_check_SSE2.cpp',
 
-        '../third_party/skia/src/pdf/SkBitSet.cpp',
         '../third_party/skia/src/pdf/SkPDFCatalog.cpp',
+        '../third_party/skia/src/pdf/SkPDFCatalog.h',
         '../third_party/skia/src/pdf/SkPDFDevice.cpp',
         '../third_party/skia/src/pdf/SkPDFDocument.cpp',
         '../third_party/skia/src/pdf/SkPDFFont.cpp',
+        '../third_party/skia/src/pdf/SkPDFFont.h',
         '../third_party/skia/src/pdf/SkPDFFormXObject.cpp',
+        '../third_party/skia/src/pdf/SkPDFFormXObject.h',
         '../third_party/skia/src/pdf/SkPDFGraphicState.cpp',
+        '../third_party/skia/src/pdf/SkPDFGraphicState.h',
         '../third_party/skia/src/pdf/SkPDFImage.cpp',
+        '../third_party/skia/src/pdf/SkPDFImage.h',
         '../third_party/skia/src/pdf/SkPDFPage.cpp',
+        '../third_party/skia/src/pdf/SkPDFPage.h',
         '../third_party/skia/src/pdf/SkPDFShader.cpp',
+        '../third_party/skia/src/pdf/SkPDFShader.h',
         '../third_party/skia/src/pdf/SkPDFStream.cpp',
+        '../third_party/skia/src/pdf/SkPDFStream.h',
         '../third_party/skia/src/pdf/SkPDFTypes.cpp',
+        '../third_party/skia/src/pdf/SkPDFTypes.h',
         '../third_party/skia/src/pdf/SkPDFUtils.cpp',
+        '../third_party/skia/src/pdf/SkPDFUtils.h',
 
         '../third_party/skia/src/ports/FontHostConfiguration_android.cpp',
         #'../third_party/skia/src/ports/SkFontHost_FONTPATH.cpp',
@@ -517,6 +525,8 @@
         '../third_party/skia/include/utils/SkDeferredCanvas.h',
         '../third_party/skia/include/utils/SkMatrix44.h',
         '../third_party/skia/src/utils/mac/SkCreateCGImageRef.cpp',
+        '../third_party/skia/src/utils/SkBitSet.cpp',
+        '../third_party/skia/src/utils/SkBitSet.h',
         '../third_party/skia/src/utils/SkDeferredCanvas.cpp',
         '../third_party/skia/src/utils/SkMatrix44.cpp',
 
@@ -660,19 +670,8 @@
         '../third_party/skia/include/gpu/SkGr.h',
         '../third_party/skia/include/gpu/SkGrTexturePixelRef.h',
 
-        '../third_party/skia/include/pdf/SkBitSet.h',
-        '../third_party/skia/include/pdf/SkPDFCatalog.h',
         '../third_party/skia/include/pdf/SkPDFDevice.h',
         '../third_party/skia/include/pdf/SkPDFDocument.h',
-        '../third_party/skia/include/pdf/SkPDFFont.h',
-        '../third_party/skia/include/pdf/SkPDFFormXObject.h',
-        '../third_party/skia/include/pdf/SkPDFGraphicState.h',
-        '../third_party/skia/include/pdf/SkPDFImage.h',
-        '../third_party/skia/include/pdf/SkPDFPage.h',
-        '../third_party/skia/include/pdf/SkPDFShader.h',
-        '../third_party/skia/include/pdf/SkPDFStream.h',
-        '../third_party/skia/include/pdf/SkPDFTypes.h',
-        '../third_party/skia/include/pdf/SkPDFUtils.h',
 
         '../third_party/skia/include/ports/SkStream_Win.h',
         '../third_party/skia/include/ports/SkTypeface_win.h',
@@ -712,6 +711,7 @@
         'ext/platform_canvas.h',
         'ext/platform_canvas_linux.cc',
         'ext/platform_canvas_mac.cc',
+        'ext/platform_canvas_skia.cc',
         'ext/platform_canvas_win.cc',
         'ext/platform_device.cc',
         'ext/platform_device.h',
@@ -745,6 +745,7 @@
         '../third_party/skia/include/ports',
         '../third_party/skia/include/utils',
         '../third_party/skia/src/core',
+        '../third_party/skia/src/utils',
       ],
       'msvs_disabled_warnings': [4244, 4267,4345, 4390, 4554, 4800],
       'mac_framework_dirs': [
@@ -855,6 +856,15 @@
             ['include', 'ext/platform_canvas_linux\\.cc$'],
           ],
         }],
+        [ 'use_aura == 1 and use_canvas_skia == 1', {
+          'sources/': [
+            ['exclude', 'ext/platform_canvas_mac\\.cc$'],
+            ['exclude', 'ext/platform_canvas_linux\\.cc$'],
+            ['exclude', 'ext/platform_canvas_win\\.cc$'],
+          ],
+        }, { # use_aura == 0 and use_canvas_skia == 1
+          'sources/': [ ['exclude', 'ext/platform_canvas_skia\\.cc$'] ],
+        }],
         [ 'toolkit_uses_gtk == 1', {
           'dependencies': [
             '../build/linux/system.gyp:gdk',
@@ -893,7 +903,6 @@
               ],
               'sources!': [
                 'ext/vector_platform_device_skia.cc',
-                '../third_party/skia/src/core/SkTypefaceCache.cpp',
                 '../third_party/skia/src/ports/SkFontHost_gamma_none.cpp',
               ],
               'export_dependent_settings': [
@@ -1076,6 +1085,7 @@
         [ 'target_arch != "arm"', {
           'sources': [
             '../third_party/skia/src/opts/SkBitmapProcState_opts_SSE2.cpp',
+            '../third_party/skia/src/opts/SkBlitRect_opts_SSE2.cpp',
             '../third_party/skia/src/opts/SkBlitRow_opts_SSE2.cpp',
             '../third_party/skia/src/opts/SkUtils_opts_SSE2.cpp',
           ],

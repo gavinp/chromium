@@ -19,8 +19,8 @@ input[type='radio'] {
   -webkit-appearance: none;
   -webkit-user-select: none;
   background-image: -webkit-linear-gradient(#ededed, #ededed 38%, #dedede);
-  border-radius: 2px;
   border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 2px;
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08),
       inset 0 1px 2px rgba(255, 255, 255, 0.75);
   color: #444;
@@ -33,7 +33,7 @@ button:not(.custom-appearance):not(.link-button),
 input[type='button']:not(.custom-appearance):not(.link-button),
 input[type='submit']:not(.custom-appearance):not(.link-button),
 select {
-  height: 2em;
+  min-height: 2em;
   min-width: 4em;
 <if expr="pp_ifdef('chromeos')">
   /* Without this rule, chromeos button text is too high on the button. */
@@ -85,6 +85,37 @@ input[type='radio'] {
   position: relative;
   vertical-align: middle;
   width: 15px;
+}
+
+/* TODO(estade): add more types here? */
+input[type='password'],
+input[type='search'],
+input[type='text'],
+input[type='url'],
+input:not([type]) {
+  border: 1px solid #bfbfbf;
+  border-radius: 2px;
+  box-sizing: border-box;
+  color: #444;
+  font: inherit;
+  height: 2em;
+  margin: 0;
+  padding: 3px;
+<if expr="is_win">
+  /* For better alignment between adjacent buttons and inputs. */
+  padding-bottom: 4px;
+</if>
+<if expr="pp_ifdef('chromeos')">
+  /* For better alignment between adjacent buttons and inputs. */
+  padding-bottom: 2px;
+</if>
+}
+
+input[type='search'] {
+  -webkit-appearance: textfield;
+  /* NOTE: Keep a relatively high min-width for this so we don't obscure the end
+   * of the default text in relatively spacious languages (i.e. German). */
+  min-width: 160px;
 }
 
 /* Checked ********************************************************************/
@@ -161,13 +192,16 @@ button:not(.custom-appearance):not(.link-button):disabled,
 input[type='button']:not(.custom-appearance):not(.link-button):disabled,
 input[type='submit']:not(.custom-appearance):not(.link-button):disabled,
 select:disabled {
-  border-color: rgba(0, 0, 0, 0.2);
-  color: #999;
+  background-image: -webkit-linear-gradient(#f1f1f1, #f1f1f1 38%, #e6e6e6);
+  border-color: rgba(80, 80, 80, 0.2);
+  box-shadow: 0 1px 0 rgba(80, 80, 80, 0.08),
+      inset 0 1px 2px rgba(255, 255, 255, 0.75);
+  color: #aaa;
 }
 
 select:disabled {
   background-image: url('../images/disabled_select.png'),
-      -webkit-linear-gradient(#ededed, #ededed 38%, #dedede);
+      -webkit-linear-gradient(#f1f1f1, #f1f1f1 38%, #e6e6e6);
 }
 
 input[type='checkbox']:disabled,
@@ -175,18 +209,28 @@ input[type='radio']:disabled {
   opacity: .75;
 }
 
+input[type='password']:disabled,
+input[type='search']:disabled,
+input[type='text']:disabled,
+input[type='url']:disabled,
+input:not([type]):disabled {
+  color: #999;
+}
+
 /* Focus **********************************************************************/
 
-button:not(.custom-appearance):not(.link-button):focus,
-input[type='button']:not(.custom-appearance):focus,
-input[type='checkbox']:focus,
-input[type='password']:focus,
-input[type='radio']:focus,
-input[type='search']:focus,
-input[type='submit']:not(.custom-appearance):focus,
-input[type='text']:focus,
-input[type='url']:focus,
-select:focus {
+button:not(.custom-appearance):not(.link-button):enabled:focus,
+input[type='button']:not(.custom-appearance):enabled:focus,
+input[type='checkbox']:enabled:focus,
+input[type='password']:enabled:focus,
+input[type='radio']:enabled:focus,
+input[type='search']:enabled:focus,
+input[type='submit']:not(.custom-appearance):enabled:focus,
+input[type='text']:enabled:focus,
+input[type='url']:enabled:focus,
+input:not([type]):enabled:focus,
+select:enabled:focus {
+  /* OVERRIDE */
   -webkit-transition: border-color 200ms;
   /* We use border color because it follows the border radius (unlike outline).
    * This is particularly noticeable on mac. */
@@ -219,7 +263,7 @@ select:focus {
 }
 
 .link-button[disabled] {
-  color: #888;
+  color: #999;
   cursor: default;
   text-decoration: none;
 }
@@ -239,12 +283,11 @@ select:focus {
 
 .checkbox,
 .radio {
-  margin: 0.45em 0;
+  margin: 0.65em 0;
 }
 
 .checkbox label,
 .radio label {
-  color: #444;
   /* Don't expand horizontally: <http://crbug.com/112091>. */
   display: -webkit-inline-box;
 }
@@ -264,35 +307,4 @@ select:focus {
 label > input[type=checkbox]:disabled ~ span,
 label > input[type=radio]:disabled ~ span {
   color: #999;
-}
-
-/* Text inputs ****************************************************************/
-/* TODO(estade): add more types here? */
-input[type='password'],
-input[type='search'],
-input[type='text'],
-input[type='url'],
-input:not([type]) {
-  border: 1px solid #bfbfbf;
-  border-radius: 2px;
-  box-sizing: border-box;
-  font: inherit;
-  height: 2em;
-  margin: 0;
-  padding: 3px;
-<if expr="pp_ifdef('chromeos')">
-  /* For better alignment between adjacent buttons and inputs. */
-  padding-bottom: 2px;
-</if>
-}
-
-input[type='search'] {
-  -webkit-appearance: textfield;
-  /* NOTE: Keep a relatively high min-width for this so we don't obscure the end
-   * of the default text in relatively spacious languages (i.e. German). */
-  min-width: 160px;
-}
-
-input[type='text']:disabled {
-  color: #888;
 }

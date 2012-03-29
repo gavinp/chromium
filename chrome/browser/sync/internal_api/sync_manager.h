@@ -66,10 +66,6 @@ enum PassphraseRequiredReason {
   REASON_DECRYPTION = 2,               // The cryptographer requires a
                                        // passphrase for its first attempt at
                                        // decryption.
-  REASON_SET_PASSPHRASE_FAILED = 3,    // The cryptographer requires a new
-                                       // passphrase because its attempt at
-                                       // decryption with the cached passphrase
-                                       // was unsuccessful.
 };
 
 
@@ -95,35 +91,9 @@ class SyncManager {
 
   // Status encapsulates detailed state about the internals of the SyncManager.
   struct Status {
-    // Summary is a distilled set of important information that the end-user may
-    // wish to be informed about (through UI, for example). Note that if a
-    // summary state requires user interaction (such as auth failures), more
-    // detailed information may be contained in additional status fields.
-    enum Summary {
-      // The internal instance is in an unrecognizable state. This should not
-      // happen.
-      INVALID = 0,
-      // Can't connect to server, but there are no pending changes in
-      // our local cache.
-      OFFLINE,
-      // Can't connect to server, and there are pending changes in our
-      // local cache.
-      OFFLINE_UNSYNCED,
-      // Connected and syncing.
-      SYNCING,
-      // Connected, no pending changes.
-      READY,
-      // Can't connect to server, and we haven't completed the initial
-      // sync yet.  So there's nothing we can do but wait for the server.
-      OFFLINE_UNUSABLE,
-
-      SUMMARY_STATUS_COUNT,
-    };
-
     Status();
     ~Status();
 
-    Summary summary;
     bool notifications_enabled;  // True only if subscribed for notifications.
 
     // Notifications counters updated by the actions in synapi.
@@ -158,6 +128,8 @@ class SyncManager {
     int64 updates_available;
     // Total updates received by the syncer since browser start.
     int updates_received;
+    // Total updates received that are echoes of our own changes.
+    int reflected_updates_received;
 
     // Of updates_received, how many were tombstones.
     int tombstone_updates_received;
@@ -559,10 +531,7 @@ class SyncManager {
   // potentially dereference garbage.
   void RemoveObserver(Observer* observer);
 
-  // Status-related getters. Typically GetStatusSummary will suffice, but
-  // GetDetailedSyncStatus can be useful for gathering debug-level details of
-  // the internals of the sync engine.  May be called on any thread.
-  Status::Summary GetStatusSummary() const;
+  // Status-related getter.  May be called on any thread.
   Status GetDetailedStatus() const;
 
   // Whether or not the Nigori node is encrypted using an explicit passphrase.

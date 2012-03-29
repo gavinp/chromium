@@ -9,6 +9,7 @@
 #include "ash/shell.h"
 #include "base/command_line.h"
 #include "chrome/common/chrome_switches.h"
+#include "chrome/browser/ui/browser_list.h"
 #include "chrome/browser/ui/views/ash/caps_lock_handler.h"
 #include "chrome/browser/ui/views/ash/chrome_shell_delegate.h"
 #include "chrome/browser/ui/views/ash/screen_orientation_listener.h"
@@ -16,6 +17,7 @@
 #include "chrome/browser/ui/views/ash/status_area_host_aura.h"
 #include "ui/aura/env.h"
 #include "ui/aura/aura_switches.h"
+#include "ui/aura/monitor_manager.h"
 #include "ui/aura/root_window.h"
 #include "ui/gfx/compositor/compositor_setup.h"
 
@@ -37,7 +39,7 @@ void ChromeBrowserMainExtraPartsAsh::PreProfileInit() {
   if (base::chromeos::IsRunningOnChromeOS() ||
       CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kAuraHostWindowUseFullscreen)) {
-    aura::RootWindow::set_use_fullscreen_host_window(true);
+    aura::MonitorManager::set_use_fullscreen_host_window(true);
     aura::RootWindow::set_hide_host_cursor(true);
     // Hide the mouse cursor completely at boot.
     if (!chromeos::UserManager::Get()->IsUserLoggedIn())
@@ -61,6 +63,10 @@ void ChromeBrowserMainExtraPartsAsh::PreProfileInit() {
       scoped_ptr<ash::ImeControlDelegate>(new ImeController).Pass());
   shell->accelerator_controller()->SetVolumeControlDelegate(
       scoped_ptr<ash::VolumeControlDelegate>(new VolumeController).Pass());
+
+  if (!CommandLine::ForCurrentProcess()->HasSwitch(
+      switches::kDisableZeroBrowsersOpenForTests))
+    BrowserList::StartKeepAlive();
 #endif
 
   // Make sure the singleton ScreenOrientationListener object is created.

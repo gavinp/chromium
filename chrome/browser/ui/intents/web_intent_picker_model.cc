@@ -39,6 +39,8 @@ void WebIntentPickerModel::RemoveInstalledServiceAt(size_t index) {
 
 void WebIntentPickerModel::Clear() {
   DestroyAll();
+  action_.clear();
+  mimetype_.clear();
   inline_disposition_url_ = GURL::EmptyGURL();
   if (observer_)
     observer_->OnModelChanged(this);
@@ -48,6 +50,16 @@ const WebIntentPickerModel::InstalledService&
     WebIntentPickerModel::GetInstalledServiceAt(size_t index) const {
   DCHECK(index < installed_services_.size());
   return *installed_services_[index];
+}
+
+const WebIntentPickerModel::InstalledService*
+    WebIntentPickerModel::GetInstalledServiceWithURL(const GURL& url) const {
+  for (size_t i = 0; i < installed_services_.size(); ++i) {
+    InstalledService* service = installed_services_[i];
+    if (service->url == url)
+      return service;
+  }
+  return NULL;
 }
 
 size_t WebIntentPickerModel::GetInstalledServiceCount() const {

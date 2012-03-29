@@ -28,15 +28,13 @@ class MockUserManager : public UserManager {
   MOCK_METHOD1(RemoveUserFromList, void(const std::string&));
   MOCK_CONST_METHOD1(IsKnownUser, bool(const std::string&));
   MOCK_CONST_METHOD1(FindUser, const User*(const std::string&));
-  MOCK_CONST_METHOD0(GetLoggedInUser, const User&(void));
-  MOCK_METHOD0(GetLoggedInUser, User&(void));
   MOCK_CONST_METHOD1(IsDisplayNameUnique, bool(const std::string&));
   MOCK_METHOD2(SaveUserOAuthStatus, void(const std::string&,
                                          User::OAuthTokenStatus));
   MOCK_METHOD2(SaveUserDisplayEmail, void(const std::string&,
                                           const std::string&));
-  MOCK_METHOD1(GetUserWallpaper, int(const std::string&));
-  MOCK_METHOD2(SaveWallpaperDefaultIndex, void(const std::string&, int));
+  MOCK_METHOD0(GetUserWallpaperIndex, int(void));
+  MOCK_METHOD1(SaveUserWallpaperIndex, void(int));
   MOCK_CONST_METHOD1(GetUserDisplayEmail, std::string(const std::string&));
   MOCK_METHOD2(SaveUserDefaultImageIndex, void(const std::string&, int));
   MOCK_METHOD2(SaveUserImage, void(const std::string&, const SkBitmap&));
@@ -44,16 +42,45 @@ class MockUserManager : public UserManager {
                                            const FilePath&));
   MOCK_METHOD1(SaveUserImageFromProfileImage, void(const std::string&));
   MOCK_METHOD1(DownloadProfileImage, void(const std::string&));
+  MOCK_METHOD0(LoadKeyStore, void(void));
   MOCK_CONST_METHOD0(IsCurrentUserOwner, bool(void));
   MOCK_CONST_METHOD0(IsCurrentUserNew, bool(void));
   MOCK_CONST_METHOD0(IsCurrentUserEphemeral, bool(void));
   MOCK_CONST_METHOD0(IsUserLoggedIn, bool(void));
   MOCK_CONST_METHOD0(IsLoggedInAsDemoUser, bool(void));
   MOCK_CONST_METHOD0(IsLoggedInAsGuest, bool(void));
+  MOCK_CONST_METHOD0(IsLoggedInAsStub, bool(void));
   MOCK_METHOD1(AddObserver, void(UserManager::Observer*));
   MOCK_METHOD1(RemoveObserver, void(UserManager::Observer*));
   MOCK_METHOD0(NotifyLocalStateChanged, void(void));
   MOCK_CONST_METHOD0(DownloadedProfileImage, const SkBitmap& (void));
+
+  // You can't mock this function easily because nobody can create User objects
+  // but the UserManagerImpl and us.
+  virtual const User& GetLoggedInUser() const OVERRIDE;
+
+  // You can't mock this function easily because nobody can create User objects
+  // but the UserManagerImpl and us.
+  virtual User& GetLoggedInUser() OVERRIDE;
+
+  // Sets a new User instance.
+  void SetLoggedInUser(const std::string& email, bool guest);
+
+  User* user_;
+};
+
+// Class that provides easy life-cycle management for mocking the UserManager
+// for tests.
+class ScopedMockUserManagerEnabler {
+ public:
+  ScopedMockUserManagerEnabler();
+  ~ScopedMockUserManagerEnabler();
+
+  MockUserManager* user_manager();
+
+ private:
+  UserManager* old_user_manager_;
+  scoped_ptr<MockUserManager> user_manager_;
 };
 
 }  // namespace chromeos

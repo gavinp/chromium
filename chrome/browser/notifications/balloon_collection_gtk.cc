@@ -1,17 +1,12 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/notifications/balloon_collection_impl.h"
 
 #include "chrome/browser/notifications/balloon.h"
-#include "ui/gfx/size.h"
-
-#if defined(TOOLKIT_VIEWS)
-#include "chrome/browser/ui/views/notifications/balloon_view.h"
-#else
 #include "chrome/browser/ui/gtk/notifications/balloon_view_gtk.h"
-#endif
+#include "ui/gfx/size.h"
 
 Balloon* BalloonCollectionImpl::MakeBalloon(const Notification& notification,
                                             Profile* profile) {
@@ -66,9 +61,8 @@ bool BalloonCollectionImpl::IsCursorInBalloonCollection() const {
   GdkDisplay* display = gdk_screen_get_display(screen);
   gint x, y;
   gdk_display_get_pointer(display, NULL, &x, &y, NULL);
-  gfx::Point cursor(x, y);
 
-  return GetBalloonsBoundingBox().Contains(cursor);
+  return GetBalloonsBoundingBox().Contains(gfx::Point(x, y));
 }
 
 void BalloonCollectionImpl::SetPositionPreference(

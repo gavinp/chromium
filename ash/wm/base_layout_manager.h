@@ -51,7 +51,8 @@ class ASH_EXPORT BaseLayoutManager : public aura::LayoutManager,
                               const gfx::Rect& requested_bounds) OVERRIDE;
 
   // RootWindowObserver overrides:
-  virtual void OnRootWindowResized(const gfx::Size& new_size) OVERRIDE;
+  virtual void OnRootWindowResized(const aura::RootWindow* root,
+                                   const gfx::Size& old_size) OVERRIDE;
 
   // ash::ShellObserver overrides:
   virtual void OnMonitorWorkAreaInsetsChanged() OVERRIDE;
@@ -60,6 +61,7 @@ class ASH_EXPORT BaseLayoutManager : public aura::LayoutManager,
   virtual void OnWindowPropertyChanged(aura::Window* window,
                                        const void* key,
                                        intptr_t old) OVERRIDE;
+  virtual void OnWindowDestroying(aura::Window* window) OVERRIDE;
 
  private:
   // Update window bounds based on a change in show state.

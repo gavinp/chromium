@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,6 +15,7 @@
 #include "base/template_util.h"
 #include "base/threading/non_thread_safe.h"
 #include "net/base/cert_database.h"
+#include "net/http/http_network_session.h"
 #include "net/socket/client_socket_pool_histograms.h"
 #include "net/socket/client_socket_pool_manager.h"
 
@@ -26,7 +27,7 @@ class ClientSocketPoolHistograms;
 class HttpProxyClientSocketPool;
 class HostResolver;
 class NetLog;
-class OriginBoundCertService;
+class ServerBoundCertService;
 class ProxyService;
 class SOCKSClientSocketPool;
 class SSLClientSocketPool;
@@ -61,12 +62,13 @@ class ClientSocketPoolManagerImpl : public base::NonThreadSafe,
                               ClientSocketFactory* socket_factory,
                               HostResolver* host_resolver,
                               CertVerifier* cert_verifier,
-                              OriginBoundCertService* origin_bound_cert_service,
+                              ServerBoundCertService* server_bound_cert_service,
                               TransportSecurityState* transport_security_state,
                               SSLHostInfoFactory* ssl_host_info_factory,
                               const std::string& ssl_session_cache_shard,
                               ProxyService* proxy_service,
-                              SSLConfigService* ssl_config_service);
+                              SSLConfigService* ssl_config_service,
+                              HttpNetworkSession::SocketPoolType pool_type);
   virtual ~ClientSocketPoolManagerImpl();
 
   virtual void FlushSocketPools() OVERRIDE;
@@ -107,12 +109,13 @@ class ClientSocketPoolManagerImpl : public base::NonThreadSafe,
   ClientSocketFactory* const socket_factory_;
   HostResolver* const host_resolver_;
   CertVerifier* const cert_verifier_;
-  OriginBoundCertService* const origin_bound_cert_service_;
+  ServerBoundCertService* const server_bound_cert_service_;
   TransportSecurityState* const transport_security_state_;
   SSLHostInfoFactory* const ssl_host_info_factory_;
   const std::string ssl_session_cache_shard_;
   ProxyService* const proxy_service_;
   const scoped_refptr<SSLConfigService> ssl_config_service_;
+  const HttpNetworkSession::SocketPoolType pool_type_;
 
   // Note: this ordering is important.
 

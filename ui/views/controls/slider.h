@@ -30,6 +30,11 @@ class VIEWS_EXPORT SliderListener {
                                   float old_value,
                                   SliderChangeReason reason) = 0;
 
+  // Invoked when a drag starts or ends (more specifically, when the mouse
+  // button is pressed or released).
+  virtual void SliderDragStarted(Slider* sender) {}
+  virtual void SliderDragEnded(Slider* sender) {}
+
  protected:
   virtual ~SliderListener() {}
 };
@@ -48,6 +53,9 @@ class VIEWS_EXPORT Slider : public View,
   float value() const { return value_; }
   void SetValue(float value);
 
+  // Set the delta used for changing the value via keyboard.
+  void SetKeyboardIncrement(float increment);
+
   void SetAccessibleName(const string16& name);
 
  private:
@@ -58,6 +66,8 @@ class VIEWS_EXPORT Slider : public View,
   virtual void OnPaint(gfx::Canvas* canvas) OVERRIDE;
   virtual bool OnMousePressed(const views::MouseEvent& event) OVERRIDE;
   virtual bool OnMouseDragged(const views::MouseEvent& event) OVERRIDE;
+  virtual void OnMouseReleased(const views::MouseEvent& event) OVERRIDE;
+  virtual bool OnKeyPressed(const views::KeyEvent& event) OVERRIDE;
   virtual void GetAccessibleState(ui::AccessibleViewState* state) OVERRIDE;
 
   // ui::AnimationDelegate overrides:
@@ -69,6 +79,7 @@ class VIEWS_EXPORT Slider : public View,
   scoped_ptr<ui::SlideAnimation> move_animation_;
 
   float value_;
+  float keyboard_increment_;
   float animating_value_;
   bool value_is_valid_;
   string16 accessible_name_;

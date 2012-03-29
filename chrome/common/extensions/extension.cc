@@ -23,13 +23,12 @@
 #include "base/utf_string_conversions.h"
 #include "base/values.h"
 #include "base/version.h"
-#include "crypto/sha2.h"
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/chrome_version_info.h"
 #include "chrome/common/extensions/csp_validator.h"
 #include "chrome/common/extensions/extension_action.h"
-#include "chrome/common/extensions/extension_constants.h"
+#include "chrome/common/extensions/extension_manifest_constants.h"
 #include "chrome/common/extensions/extension_error_utils.h"
 #include "chrome/common/extensions/extension_resource.h"
 #include "chrome/common/extensions/feature.h"
@@ -38,6 +37,7 @@
 #include "chrome/common/extensions/simple_feature_provider.h"
 #include "chrome/common/extensions/user_script.h"
 #include "chrome/common/url_constants.h"
+#include "crypto/sha2.h"
 #include "googleurl/src/url_util.h"
 #include "grit/chromium_strings.h"
 #include "grit/generated_resources.h"
@@ -53,6 +53,7 @@
 namespace keys = extension_manifest_keys;
 namespace values = extension_manifest_values;
 namespace errors = extension_manifest_errors;
+namespace info_keys = extension_info_keys;
 
 using extensions::csp_validator::ContentSecurityPolicyIsLegal;
 using extensions::csp_validator::ContentSecurityPolicyIsSecure;
@@ -238,6 +239,9 @@ Extension::InputComponentInfo::~InputComponentInfo() {}
 Extension::TtsVoice::TtsVoice() {}
 Extension::TtsVoice::~TtsVoice() {}
 
+Extension::OAuth2Info::OAuth2Info() {}
+Extension::OAuth2Info::~OAuth2Info() {}
+
 Extension::ExtensionKeybinding::ExtensionKeybinding() {}
 Extension::ExtensionKeybinding::~ExtensionKeybinding() {}
 
@@ -377,6 +381,13 @@ scoped_refptr<Extension> Extension::Create(const FilePath& path,
     return NULL;
   }
 
+  if (extension->is_platform_app() &&
+      !CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kEnablePlatformApps)) {
+    *utf8_error = errors::kPlatformAppFlagRequired;
+    return NULL;
+  }
+
   return extension;
 }
 
@@ -479,6 +490,21 @@ std::string Extension::GenerateIdForPath(const FilePath& path) {
   if (!GenerateId(path_bytes, &id))
     return "";
   return id;
+}
+
+void Extension::GetBasicInfo(bool enabled,
+                             DictionaryValue* info) const {
+  info->SetString(info_keys::kIdKey, id());
+  info->SetString(info_keys::kNameKey, name());
+  info->SetBoolean(info_keys::kEnabledKey, enabled);
+  info->SetBoolean(info_keys::kMayDisableKey, UserMayDisable(location()));
+  info->SetBoolean(info_keys::kOfflineEnabledKey, offline_enabled());
+  info->SetString(info_keys::kVersionKey, VersionString());
+  info->SetString(info_keys::kDescriptionKey, description());
+  info->SetString(info_keys::kOptionsUrlKey,
+                  options_url().possibly_invalid_spec());
+  info->SetString(info_keys::kHomepageUrlKey,
+                  GetHomepageURL().possibly_invalid_spec());
 }
 
 Extension::Type Extension::GetType() const {
@@ -1029,8 +1055,37 @@ bool Extension::LoadAppFeatures(string16* error) {
   if (!LoadExtent(keys::kWebURLs, &extent_,
                   errors::kInvalidWebURLs, errors::kInvalidWebURL, error) ||
       !LoadLaunchURL(error) ||
-      !LoadLaunchContainer(error))
+      !LoadLaunchContainer(error) ||
+      !LoadOAuth2Info(error))
     return false;
+
+  return true;
+}
+
+bool Extension::LoadOAuth2Info(string16* error) {
+  if (!manifest_->HasKey(keys::kOAuth2))
+    return true;
+
+  if (!manifest_->GetString(keys::kOAuth2ClientId, &oauth2_info_.client_id) ||
+      oauth2_info_.client_id.empty()) {
+    *error = ASCIIToUTF16(errors::kInvalidOAuth2ClientId);
+    return false;
+  }
+
+  ListValue* list = NULL;
+  if (!manifest_->GetList(keys::kOAuth2Scopes, &list)) {
+    *error = ASCIIToUTF16(errors::kInvalidOAuth2Scopes);
+    return false;
+  }
+
+  for (size_t i = 0; i < list->GetSize(); ++i) {
+    std::string scope;
+    if (!list->GetString(i, &scope)) {
+      *error = ASCIIToUTF16(errors::kInvalidOAuth2Scopes);
+      return false;
+    }
+    oauth2_info_.scopes.push_back(scope);
+  }
 
   return true;
 }
@@ -1333,7 +1388,6 @@ bool Extension::LoadSharedFeatures(
     const ExtensionAPIPermissionSet& api_permissions,
     string16* error) {
   if (!LoadDescription(error) ||
-      !LoadManifestVersion(error) ||
       !LoadHomepageURL(error) ||
       !LoadUpdateURL(error) ||
       !LoadIcons(error) ||
@@ -1348,7 +1402,7 @@ bool Extension::LoadSharedFeatures(
       // LoadBackgroundScripts() must be called before LoadBackgroundPage().
       !LoadBackgroundScripts(error) ||
       !LoadBackgroundPage(api_permissions, error) ||
-      !LoadBackgroundPersistent(api_permissions, error) ||
+      !LoadBackgroundTransient(api_permissions, error) ||
       !LoadBackgroundAllowJSAccess(api_permissions, error) ||
       !LoadWebIntentServices(error))
     return false;
@@ -1761,22 +1815,22 @@ bool Extension::LoadBackgroundPage(
   return true;
 }
 
-bool Extension::LoadBackgroundPersistent(
+bool Extension::LoadBackgroundTransient(
     const ExtensionAPIPermissionSet& api_permissions,
     string16* error) {
-  Value* background_persistent = NULL;
+  Value* background_transient = NULL;
   if (!api_permissions.count(ExtensionAPIPermission::kExperimental) ||
-      !manifest_->Get(keys::kBackgroundPersistent, &background_persistent))
+      !manifest_->Get(keys::kBackgroundTransient, &background_transient))
     return true;
 
-  if (!background_persistent->IsType(Value::TYPE_BOOLEAN) ||
-      !background_persistent->GetAsBoolean(&background_page_persists_)) {
-    *error = ASCIIToUTF16(errors::kInvalidBackgroundPersistent);
+  if (!background_transient->IsType(Value::TYPE_BOOLEAN) ||
+      !background_transient->GetAsBoolean(&background_page_is_transient_)) {
+    *error = ASCIIToUTF16(errors::kInvalidBackgroundTransient);
     return false;
   }
 
   if (!has_background_page()) {
-    *error = ASCIIToUTF16(errors::kInvalidBackgroundPersistentNoPage);
+    *error = ASCIIToUTF16(errors::kInvalidBackgroundTransientNoPage);
     return false;
   }
 
@@ -1793,11 +1847,6 @@ bool Extension::LoadBackgroundAllowJSAccess(
   if (!allow_js_access->IsType(Value::TYPE_BOOLEAN) ||
       !allow_js_access->GetAsBoolean(&allow_background_js_access_)) {
     *error = ASCIIToUTF16(errors::kInvalidBackgroundAllowJsAccess);
-    return false;
-  }
-
-  if (!has_background_page()) {
-    *error = ASCIIToUTF16(errors::kInvalidBackgroundAllowJsAccessNoPage);
     return false;
   }
 
@@ -2279,38 +2328,65 @@ FileBrowserHandler* Extension::LoadFileBrowserHandler(
   }
   result->set_title(title);
 
-  // Initialize file filters (mandatory).
-  ListValue* list_value = NULL;
-  if (!file_browser_handler->HasKey(keys::kFileFilters) ||
-      !file_browser_handler->GetList(keys::kFileFilters, &list_value) ||
-      list_value->empty()) {
-    *error = ASCIIToUTF16(errors::kInvalidFileFiltersList);
+  // Initialize access permissions (optional).
+  ListValue* access_list_value = NULL;
+  if (file_browser_handler->HasKey(keys::kFileAccessList)) {
+    if (!file_browser_handler->GetList(keys::kFileAccessList,
+                                       &access_list_value) ||
+        access_list_value->empty()) {
+      *error = ASCIIToUTF16(errors::kInvalidFileAccessList);
+      return NULL;
+    }
+    for (size_t i = 0; i < access_list_value->GetSize(); ++i) {
+      std::string access;
+      if (!access_list_value->GetString(i, &access) ||
+          result->AddFileAccessPermission(access)) {
+        *error = ExtensionErrorUtils::FormatErrorMessageUTF16(
+            errors::kInvalidFileAccessValue, base::IntToString(i));
+        return NULL;
+      }
+    }
+  }
+  if (!result->ValidateFileAccessPermissions()) {
+    *error = ASCIIToUTF16(errors::kInvalidFileAccessList);
     return NULL;
   }
-  for (size_t i = 0; i < list_value->GetSize(); ++i) {
-    std::string filter;
-    if (!list_value->GetString(i, &filter)) {
-      *error = ExtensionErrorUtils::FormatErrorMessageUTF16(
-          errors::kInvalidFileFilterValue, base::IntToString(i));
+
+  // Initialize file filters (mandatory, unless "create" access is specified,
+  // in which case is ignored).
+  if (!result->HasCreateAccessPermission()) {
+    ListValue* list_value = NULL;
+    if (!file_browser_handler->HasKey(keys::kFileFilters) ||
+        !file_browser_handler->GetList(keys::kFileFilters, &list_value) ||
+        list_value->empty()) {
+      *error = ASCIIToUTF16(errors::kInvalidFileFiltersList);
       return NULL;
     }
-    StringToLowerASCII(&filter);
-    URLPattern pattern(URLPattern::SCHEME_FILESYSTEM);
-    if (pattern.Parse(filter) != URLPattern::PARSE_SUCCESS) {
-      *error = ExtensionErrorUtils::FormatErrorMessageUTF16(
-          errors::kInvalidURLPatternError, filter);
-      return NULL;
+    for (size_t i = 0; i < list_value->GetSize(); ++i) {
+      std::string filter;
+      if (!list_value->GetString(i, &filter)) {
+        *error = ExtensionErrorUtils::FormatErrorMessageUTF16(
+            errors::kInvalidFileFilterValue, base::IntToString(i));
+        return NULL;
+      }
+      StringToLowerASCII(&filter);
+      URLPattern pattern(URLPattern::SCHEME_FILESYSTEM);
+      if (pattern.Parse(filter) != URLPattern::PARSE_SUCCESS) {
+        *error = ExtensionErrorUtils::FormatErrorMessageUTF16(
+            errors::kInvalidURLPatternError, filter);
+        return NULL;
+      }
+      std::string path = pattern.path();
+      bool allowed = path == "*" || path == "*.*" ||
+          (path.compare(0, 2, "*.") == 0 &&
+           path.find_first_of('*', 2) == std::string::npos);
+      if (!allowed) {
+        *error = ExtensionErrorUtils::FormatErrorMessageUTF16(
+            errors::kInvalidURLPatternError, filter);
+        return NULL;
+      }
+      result->AddPattern(pattern);
     }
-    std::string path = pattern.path();
-    bool allowed = path == "*" || path == "*.*" ||
-        (path.compare(0, 2, "*.") == 0 &&
-         path.find_first_of('*', 2) == std::string::npos);
-    if (!allowed) {
-      *error = ExtensionErrorUtils::FormatErrorMessageUTF16(
-          errors::kInvalidURLPatternError, filter);
-      return NULL;
-    }
-    result->AddPattern(pattern);
   }
 
   std::string default_icon;
@@ -2667,7 +2743,7 @@ Extension::Extension(const FilePath& path,
       incognito_split_mode_(false),
       offline_enabled_(false),
       converted_from_user_script_(false),
-      background_page_persists_(true),
+      background_page_is_transient_(false),
       allow_background_js_access_(true),
       manifest_(manifest.release()),
       is_storage_isolated_(false),
@@ -2856,6 +2932,11 @@ bool Extension::InitFromValue(int flags, string16* error) {
 
   creation_flags_ = flags;
 
+  // Important to load manifest version first because many other features
+  // depend on its value.
+  if (!LoadManifestVersion(error))
+    return false;
+
   // Validate minimum Chrome version. We don't need to store this, since the
   // extension is not valid if it is incorrect
   if (!CheckMinimumChromeVersion(error))
@@ -2900,7 +2981,6 @@ bool Extension::InitFromValue(int flags, string16* error) {
 
   if (!LoadSharedFeatures(api_permissions, error))
     return false;
-
 
   if (!LoadExtensionFeatures(api_permissions, error))
     return false;

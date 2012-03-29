@@ -14,25 +14,26 @@
 
 namespace {
 
-const char kCWSQueryInvalid[] =
-    "https://www-googleapis-staging.sandbox.google.com"
-    "/chromewebstore/v1.1b/items/intent"
-      "?intent=foo&mime_types=foo";
 const char kCWSResponseInvalid[] =
-    "{\"error\":{\"errors\":[{\"domain\":\"global\",\"reason\":\"invalid\","
-    "\"message\":\"Invalid mimetype:foo\"}],\"code\":400,"
-    "\"message\":\"Invalid mimetype:foo\"}}\"";
+    "{\"error\":{"
+      "\"errors\":[{"
+        "\"domain\":\"global\","
+        "\"reason\":\"invalid\","
+        "\"message\":\"Invalid mimetype:foo\"}],"
+      "\"code\":400,"
+      "\"message\":\"Invalid mimetype:foo\"}}\"";
 
-const char kCWSQueryValid[] =
-    "https://www-googleapis-staging.sandbox.google.com"
-    "/chromewebstore/v1.1b/items/intent"
-      "?intent=http%3A%2F%2Fwebintents.org%2Fedit&mime_types=*%2Fpng";
 const char kCWSResponseValid[] =
-  "{\"kind\":\"chromewebstore#itemList\",\"total_items\":1,"
-  "\"start_index\":0,\"items\":[{\"kind\":\"chromewebstore#item\","
-  "\"id\":\"nhkckhebbbncbkefhcpcgepcgfaclehe\",\"type\":\"APPLICATION\","
-  "\"num_ratings\":0,\"average_rating\":0.0,\"manifest\":"
-  "\"{\\n\\\"update_url\\\":\\"
+  "{\"kind\":\"chromewebstore#itemList\","
+  " \"total_items\":1,"
+  " \"start_index\":0,"
+  " \"items\":[  "
+  "  {\"kind\":\"chromewebstore#item\","
+  "   \"id\":\"nhkckhebbbncbkefhcpcgepcgfaclehe\","
+  "   \"type\":\"APPLICATION\","
+  "   \"num_ratings\":0,"
+  "   \"average_rating\":0.0,"
+  "   \"manifest\":\"{\\n\\\"update_url\\\":\\"
   "\"http://0.tbhome_staging.dserver.download-qa.td.borg.google.com/"
   "service/update2/crx\\\",\\n  \\\"name\\\": \\\"Sidd's Intent App\\\""
   ",\\n  \\\"description\\\": \\\"Do stuff\\\",\\n  \\\"version\\\": "
@@ -49,8 +50,9 @@ const char kCWSResponseValid[] =
   "{\\n      \\\"type\\\" : [\\\"text/plain\\\", \\\"image/jpg\\\"],"
   "\\n      \\\"path\\\" : \\\"//services/share\\\",\\n      \\\"title\\\" : "
   "\\\"Sample sharing Intent\\\",\\n      \\\"disposition\\\" : "
-  "\\\"inline\\\"\\n    }\\n  }\\n}\\n\",\"family_safe\":true,\"icon_url\":"
-  "\"http://qa-lighthouse.sandbox.google.com/image/"
+  "\\\"inline\\\"\\n    }\\n  }\\n}\\n\","
+  "   \"family_safe\":true,"
+  "   \"icon_url\":\"http://qa-lighthouse.sandbox.google.com/image/"
   "QzPnRCYCBbBGI99ZkGxkp-NNJ488IkkiTyCgynFEeDTJHcw4tHl3csmjTQ\"}]}";
 const char kValidIconURL[]=
     "http://qa-lighthouse.sandbox.google.com/image/"
@@ -73,7 +75,9 @@ const char kValidManifest[]=
 
 class CWSIntentsRegistryTest : public testing::Test {
  public:
-  CWSIntentsRegistryTest() : test_factory_(NULL) {}
+  CWSIntentsRegistryTest() : test_factory_(NULL) {
+  }
+
   virtual void TearDown() {
     // Pump messages posted by the main thread.
     ui_loop_.RunAllPending();
@@ -88,6 +92,14 @@ class CWSIntentsRegistryTest : public testing::Test {
     extensions_ = extensions;
   }
 
+  void SetFakeResponse(const std::string& action, const std::string& mime,
+      const std::string& response) {
+    test_factory_.SetFakeResponse(
+        CWSIntentsRegistry::BuildQueryURL(
+            ASCIIToUTF16(action),ASCIIToUTF16(mime)).spec(),
+        response, true);
+  }
+
   CWSIntentsRegistry::IntentExtensionList extensions_;
   FakeURLFetcherFactory test_factory_;
 
@@ -100,7 +112,7 @@ class CWSIntentsRegistryTest : public testing::Test {
 TEST_F(CWSIntentsRegistryTest, ValidQuery) {
   const scoped_refptr<TestURLRequestContextGetter> context_getter(
       new TestURLRequestContextGetter(ui_loop_.message_loop_proxy()));
-  test_factory_.SetFakeResponse(kCWSQueryValid, kCWSResponseValid, true);
+  SetFakeResponse("http://webintents.org/edit", "*/png", kCWSResponseValid);
 
   CWSIntentsRegistry registry(context_getter);
   registry.GetIntentServices(ASCIIToUTF16("http://webintents.org/edit"),
@@ -114,13 +126,17 @@ TEST_F(CWSIntentsRegistryTest, ValidQuery) {
   EXPECT_EQ(0, extensions_[0].num_ratings);
   EXPECT_EQ(0.0, extensions_[0].average_rating);
   EXPECT_EQ(std::string(kValidManifest), UTF16ToUTF8(extensions_[0].manifest));
+  EXPECT_EQ(std::string("nhkckhebbbncbkefhcpcgepcgfaclehe"),
+            UTF16ToUTF8(extensions_[0].id) );
+  EXPECT_EQ(std::string("Sidd's Intent App"),
+            UTF16ToUTF8(extensions_[0].name));
   EXPECT_EQ(std::string(kValidIconURL), extensions_[0].icon_url.spec());
 }
 
 TEST_F(CWSIntentsRegistryTest, InvalidQuery) {
   const scoped_refptr<TestURLRequestContextGetter> context_getter(
       new TestURLRequestContextGetter(ui_loop_.message_loop_proxy()));
-  test_factory_.SetFakeResponse(kCWSQueryInvalid, kCWSResponseInvalid, true);
+  SetFakeResponse("foo", "foo", kCWSResponseInvalid);
 
   CWSIntentsRegistry registry(context_getter);
   registry.GetIntentServices(ASCIIToUTF16("foo"),
@@ -130,4 +146,14 @@ TEST_F(CWSIntentsRegistryTest, InvalidQuery) {
 
   WaitForResults();
   EXPECT_EQ(0UL, extensions_.size());
+}
+
+TEST_F(CWSIntentsRegistryTest, BuildQueryURL) {
+  const std::string kExpectedURL = "https://www.googleapis.com"
+      "/chromewebstore/v1.1b/items/intent"
+      "?intent=action&mime_types=mime%2Ftype";
+  GURL url = CWSIntentsRegistry::BuildQueryURL(ASCIIToUTF16("action"),
+                                               ASCIIToUTF16("mime/type"));
+
+  EXPECT_EQ(kExpectedURL, url.spec().substr(0, kExpectedURL.size()));
 }

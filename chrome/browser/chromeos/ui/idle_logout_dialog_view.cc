@@ -8,7 +8,7 @@
 #include "base/bind_helpers.h"
 #include "base/time.h"
 #include "base/string_number_conversions.h"
-#include "chrome/browser/chromeos/kiosk_mode/kiosk_mode_helper.h"
+#include "chrome/browser/chromeos/kiosk_mode/kiosk_mode_settings.h"
 #include "chrome/browser/ui/browser_list.h"
 #include "grit/browser_resources.h"
 #include "grit/generated_resources.h"
@@ -31,14 +31,21 @@ const int kCountdownUpdateInterval = 1; // second.
 
 ////////////////////////////////////////////////////////////////////////////////
 // IdleLogoutDialogView public static methods
+// static
 void IdleLogoutDialogView::ShowDialog() {
+  // We only show the dialog if it is not already showing. We don't want two
+  // countdowns on the screen for any reason. If the dialog is closed by using
+  // CloseDialog, we reset g_instance so the next Show will work correctly; in
+  // case the dialog is closed by the system, DeleteDelegate is guaranteed to be
+  // called, in which case we reset g_instance there if not already reset.
   if (!g_instance) {
     g_instance = new IdleLogoutDialogView();
     g_instance->Init();
+    g_instance->Show();
   }
-  g_instance->Show();
 }
 
+// static
 void IdleLogoutDialogView::CloseDialog() {
   if (g_instance) {
     g_instance->set_closed();
@@ -80,7 +87,7 @@ void IdleLogoutDialogView::DeleteDelegate() {
 
   // CallInit succeeded (or was never called) hence it didn't free
   // this pointer, free it here.
-  if (chromeos::KioskModeHelper::Get()->is_initialized())
+  if (chromeos::KioskModeSettings::Get()->is_initialized())
     delete instance_holder_;
 
   delete this;
@@ -106,8 +113,8 @@ void IdleLogoutDialogView::CallInit(IdleLogoutDialogView** instance_holder) {
 }
 
 void IdleLogoutDialogView::Init() {
-  if (!chromeos::KioskModeHelper::Get()->is_initialized()) {
-    chromeos::KioskModeHelper::Get()->Initialize(
+  if (!chromeos::KioskModeSettings::Get()->is_initialized()) {
+    chromeos::KioskModeSettings::Get()->Initialize(
         base::Bind(&IdleLogoutDialogView::CallInit, instance_holder_));
     return;
   }
@@ -140,8 +147,8 @@ void IdleLogoutDialogView::Init() {
 
 void IdleLogoutDialogView::Show() {
   // Setup the countdown label before showing.
-  countdown_end_time_ = base::Time::Now() + base::TimeDelta::FromSeconds(
-      chromeos::KioskModeHelper::Get()->GetIdleLogoutWarningTimeout());
+  countdown_end_time_ = base::Time::Now() +
+      chromeos::KioskModeSettings::Get()->GetIdleLogoutWarningDuration();
   UpdateCountdownTimer();
 
   views::Widget::CreateWindow(this);

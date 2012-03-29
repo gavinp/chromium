@@ -140,7 +140,7 @@ SimpleMessageBoxViews::SimpleMessageBoxViews(gfx::NativeWindow parent_window,
       views::MessageBoxView::NO_OPTIONS,
       message,
       string16());
-  browser::CreateViewsWindow(parent_window, this, STYLE_GENERIC)->Show();
+  views::Widget::CreateWindowWithParent(this, parent_window)->Show();
 
   // Add reference to be released in DeleteDelegate().
   AddRef();
@@ -164,10 +164,5 @@ base::MessagePumpDispatcher::DispatchStatus
   if (disposition_ == DISPOSITION_UNKNOWN)
     return base::MessagePumpDispatcher::EVENT_PROCESSED;
   return base::MessagePumpDispatcher::EVENT_QUIT;
-}
-#else
-bool SimpleMessageBoxViews::Dispatch(GdkEvent* event) {
-  gtk_main_do_event(event);
-  return disposition_ == DISPOSITION_UNKNOWN;
 }
 #endif

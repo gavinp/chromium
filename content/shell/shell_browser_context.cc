@@ -10,11 +10,11 @@
 #include "base/logging.h"
 #include "base/path_service.h"
 #include "base/threading/thread.h"
-#include "content/browser/download/download_manager_impl.h"
+#include "content/public/browser/download_manager.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/geolocation_permission_context.h"
 #include "content/public/browser/speech_recognition_preferences.h"
-#include "content/shell/shell_browser_main.h"
+#include "content/shell/shell_browser_main_parts.h"
 #include "content/shell/shell_download_manager_delegate.h"
 #include "content/shell/shell_resource_context.h"
 #include "content/shell/shell_url_request_context_getter.h"
@@ -23,6 +23,8 @@
 #include "base/base_paths_win.h"
 #elif defined(OS_LINUX)
 #include "base/nix/xdg_util.h"
+#elif defined(OS_MACOSX)
+#include "base/base_paths_mac.h"
 #endif
 
 using content::BrowserThread;
@@ -107,6 +109,9 @@ FilePath ShellBrowserContext::GetPath() {
                                                  kXdgConfigHomeEnvVar,
                                                  kDotConfigDir));
   path_ = config_dir.Append("content_shell");
+#elif defined(OS_MACOSX)
+  CHECK(PathService::Get(base::DIR_APP_DATA, &path_));
+  path_ = path_.Append("Chromium Content Shell");
 #else
   NOTIMPLEMENTED();
 #endif
@@ -124,7 +129,7 @@ bool ShellBrowserContext::IsOffTheRecord() const {
 DownloadManager* ShellBrowserContext::GetDownloadManager()  {
   if (!download_manager_.get()) {
     download_manager_delegate_ = new ShellDownloadManagerDelegate();
-    download_manager_ = new DownloadManagerImpl(download_manager_delegate_,
+    download_manager_ = DownloadManager::Create(download_manager_delegate_,
                                                 NULL);
     download_manager_delegate_->SetDownloadManager(download_manager_.get());
     download_manager_->Init(this);

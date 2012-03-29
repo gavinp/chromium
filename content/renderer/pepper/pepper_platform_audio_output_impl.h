@@ -10,7 +10,7 @@
 #include "content/renderer/media/audio_message_filter.h"
 #include "webkit/plugins/ppapi/plugin_delegate.h"
 
-struct AudioParameters;
+class AudioParameters;
 
 namespace base {
 class MessageLoopProxy;
@@ -26,9 +26,9 @@ class PepperPlatformAudioOutputImpl
   // Factory function, returns NULL on failure. StreamCreated() will be called
   // when the stream is created.
   static PepperPlatformAudioOutputImpl* Create(
-      uint32_t sample_rate,
-      uint32_t sample_count,
-      webkit::ppapi::PluginDelegate::PlatformAudioCommonClient* client);
+      int sample_rate,
+      int frames_per_buffer,
+      webkit::ppapi::PluginDelegate::PlatformAudioOutputClient* client);
 
   // PlatformAudioOutput implementation (called on main thread).
   virtual bool StartPlayback() OVERRIDE;
@@ -39,9 +39,9 @@ class PepperPlatformAudioOutputImpl
   PepperPlatformAudioOutputImpl();
 
   bool Initialize(
-      uint32_t sample_rate,
-      uint32_t sample_count,
-      webkit::ppapi::PluginDelegate::PlatformAudioCommonClient* client);
+      int sample_rate,
+      int frames_per_buffer,
+      webkit::ppapi::PluginDelegate::PlatformAudioOutputClient* client);
 
   // I/O thread backends to above functions.
   void InitializeOnIOThread(const AudioParameters& params);
@@ -57,7 +57,7 @@ class PepperPlatformAudioOutputImpl
 
   // The client to notify when the stream is created. THIS MUST ONLY BE
   // ACCESSED ON THE MAIN THREAD.
-  webkit::ppapi::PluginDelegate::PlatformAudioCommonClient* client_;
+  webkit::ppapi::PluginDelegate::PlatformAudioOutputClient* client_;
 
   // MessageFilter used to send/receive IPC. THIS MUST ONLY BE ACCESSED ON THE
   // I/O thread except to send messages and get the message loop.

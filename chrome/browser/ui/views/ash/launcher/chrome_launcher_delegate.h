@@ -12,6 +12,7 @@
 #include "ash/launcher/launcher_delegate.h"
 #include "ash/launcher/launcher_model_observer.h"
 #include "ash/launcher/launcher_types.h"
+#include "ash/wm/shelf_auto_hide_behavior.h"
 #include "base/basictypes.h"
 #include "base/compiler_specific.h"
 #include "base/memory/scoped_ptr.h"
@@ -39,7 +40,8 @@ class ChromeLauncherDelegate : public ash::LauncherDelegate,
   // Indicates what should happen when the app is launched.
   enum AppType {
     APP_TYPE_WINDOW,
-    APP_TYPE_PANEL,
+    APP_TYPE_APP_PANEL,  // Panel opened from the app list.
+    APP_TYPE_EXTENSION_PANEL,  // Panel opened by an extension.
     APP_TYPE_TAB
   };
 
@@ -82,7 +84,8 @@ class ChromeLauncherDelegate : public ash::LauncherDelegate,
 
   // Creates a new tabbed item on the launcher for |updater|.
   ash::LauncherID CreateTabbedLauncherItem(LauncherUpdater* updater,
-                                           IncognitoState is_incognito);
+                                           IncognitoState is_incognito,
+                                           ash::LauncherItemStatus status);
 
   // Creates a new app item on the launcher for |updater|. If there is an
   // existing pinned app that isn't running on the launcher, its id is returned.
@@ -94,28 +97,8 @@ class ChromeLauncherDelegate : public ash::LauncherDelegate,
   // Updates the running status of an item.
   void SetItemStatus(ash::LauncherID id, ash::LauncherItemStatus status);
 
-  // Converts an app item to a tabbed item.
-  void ConvertAppToTabbed(ash::LauncherID id);
-
-  // Converts a tabbed item to an app item.
-  void ConvertTabbedToApp(ash::LauncherID id,
-                          const std::string& app_id,
-                          AppType app_type);
-
-  // Invoked when the underlying browser/app is closed. If the item isn't pinned
-  // it's removed, otherwise the item says around so that the next time the user
-  // launches the app it uses the existing item.
+  // Invoked when the underlying browser/app is closed.
   void LauncherItemClosed(ash::LauncherID id);
-
-  // Invoked when the id of an app changes.
-  void AppIDChanged(ash::LauncherID id, const std::string& app_id);
-
-  // Returns true if there is a closed item identified by the specified
-  // arguments..
-  bool HasClosedAppItem(const std::string& app_id, AppType app_type);
-
-  // Pins the specified id.
-  void Pin(ash::LauncherID id);
 
   // Unpins the specified id, closing if not running.
   void Unpin(ash::LauncherID id);
@@ -128,7 +111,7 @@ class ChromeLauncherDelegate : public ash::LauncherDelegate,
 
   // Returns true if the specified item can be pinned or unpinned. Only apps can
   // be pinned.
-  bool IsPinnable(ash::LauncherID id);
+  bool IsPinnable(ash::LauncherID id) const;
 
   // Opens the specified item.
   void Open(ash::LauncherID id);
@@ -149,15 +132,35 @@ class ChromeLauncherDelegate : public ash::LauncherDelegate,
   // AppIconLoader.
   void SetAppImage(const std::string& app_id, const SkBitmap* image);
 
+  // Returns true if a pinned launcher item with given |app_id| could be found.
+  bool IsAppPinned(const std::string& app_id);
+
+  // Pins an app with |app_id| to launcher. If there is a running instance in
+  // launcher, the running instance is pinned. If there is no running instance,
+  // a new launcher item is created with |app_type| and pinned.
+  void PinAppWithID(const std::string& app_id, AppType app_type);
+
+  // Modifies an app shortcut to open with the new |app_type|.
+  void SetAppType(ash::LauncherID id, AppType app_type);
+
+  // Unpins any app items whose id is |app_id|.
+  void UnpinAppsWithID(const std::string& app_id);
+
   ash::LauncherModel* model() { return model_; }
 
+  Profile* profile() { return profile_; }
+
+  void SetAutoHideBehavior(ash::ShelfAutoHideBehavior behavior);
+
   // ash::LauncherDelegate overrides:
+  virtual void CreateNewTab() OVERRIDE;
   virtual void CreateNewWindow() OVERRIDE;
   virtual void ItemClicked(const ash::LauncherItem& item) OVERRIDE;
   virtual int GetBrowserShortcutResourceId() OVERRIDE;
   virtual string16 GetTitle(const ash::LauncherItem& item) OVERRIDE;
   virtual ui::MenuModel* CreateContextMenu(
       const ash::LauncherItem& item) OVERRIDE;
+  virtual ui::MenuModel* CreateContextMenuForLauncher() OVERRIDE;
   virtual ash::LauncherID GetIDByWindow(aura::Window* window) OVERRIDE;
 
   // ash::LauncherModelObserver overrides:
@@ -185,6 +188,8 @@ class ChromeLauncherDelegate : public ash::LauncherDelegate,
     Item();
     ~Item();
 
+    bool is_pinned() const { return updater == NULL; }
+
     // Type of item.
     ItemType item_type;
 
@@ -194,11 +199,8 @@ class ChromeLauncherDelegate : public ash::LauncherDelegate,
     // ID of the app.
     std::string app_id;
 
-    // The LauncherUpdater this item came from. NULL if pinned and not open.
+    // The LauncherUpdater this item came from. NULL if a shortcut.
     LauncherUpdater* updater;
-
-    // Whether the item is pinned.
-    bool pinned;
   };
 
   typedef std::map<ash::LauncherID, Item> IDToItemMap;
@@ -208,9 +210,6 @@ class ChromeLauncherDelegate : public ash::LauncherDelegate,
   // id of the app. |kAppTypePath| is one of |kAppTypeTab| or |kAppTypeWindow|
   // and indicates how the app is opened.
   void PersistPinnedState();
-
-  // Unpins any app items whose id is |app_id|.
-  void UnpinAppsWithID(const std::string& app_id);
 
   // Sets the AppIconLoader, taking ownership of |loader|. This is intended for
   // testing.

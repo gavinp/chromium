@@ -41,7 +41,6 @@ cr.define('options.network', function() {
                              'cellular',
                              'vpn',
                              'airplaneMode',
-                             'useSharedProxies',
                              'addConnection'];
 
   /**
@@ -76,11 +75,11 @@ cr.define('options.network', function() {
   var cellularEnabled_ = false;
 
   /**
-   * Indicates if shared proxies are enabled.
+   * Indicates if mobile data roaming is enabled.
    * @type {boolean}
    * @private
    */
-  var useSharedProxies_ = false;
+  var enableDataRoaming_ = false;
 
   /**
    * Create an element in the network list for controlling network
@@ -192,10 +191,25 @@ cr.define('options.network', function() {
     },
 
     /**
+     * Set the direction of the text.
+     * @param {string} direction The direction of the text, e.g. 'ltr'.
+     */
+    setSubtitleDirection: function(direction) {
+      this.subtitle_.dir = direction;
+    },
+
+    /**
      * Indicate that the selector arrow should be shown.
      */
     showSelector: function() {
       this.subtitle_.classList.add('network-selector');
+    },
+
+    /**
+     * Adds an indicator to show that the network is policy managed.
+     */
+    showManagedNetworkIndicator: function() {
+      this.appendChild(new ManagedNetworkIndicator());
     },
 
     /* @inheritDoc */
@@ -338,6 +352,7 @@ cr.define('options.network', function() {
     /* @inheritDoc */
     decorate: function() {
       // TODO(kevers): Generalize method of setting default label.
+      var policyManaged = false;
       var defaultMessage = this.data_.key == 'wifi' ?
           'networkOffline' : 'networkNotConnected';
       this.subtitle = templateData[defaultMessage];
@@ -347,6 +362,8 @@ cr.define('options.network', function() {
         var networkDetails = list[i];
         if (networkDetails.connecting || networkDetails.connected) {
           this.subtitle = networkDetails.networkName;
+          this.setSubtitleDirection('ltr');
+          policyManaged = networkDetails.policyManaged;
           candidateURL = networkDetails.iconURL;
           // Only break when we see a connecting network as it is possible to
           // have a connected network and a connecting network at the same
@@ -364,6 +381,9 @@ cr.define('options.network', function() {
         this.iconType = this.data.key;
 
       this.showSelector();
+
+      if (policyManaged)
+        this.showManagedNetworkIndicator();
 
       // TODO(kevers): Add default icon for VPN when disconnected or in the
       // process of connecting.
@@ -395,6 +415,27 @@ cr.define('options.network', function() {
                        command: 'connect',
                        data: {networkType: Constants.TYPE_WIFI,
                               servicePath: '?'}});
+      } else if (this.data_.key == 'cellular') {
+        var label = enableDataRoaming_ ? 'disableDataRoaming' :
+            'enableDataRoaming';
+        var disabled = !AccountsOptions.currentUserIsOwner();
+        var entry = {label: localStrings.getString(label),
+                     data: {}};
+        if (disabled) {
+          entry.command = null;
+          entry.tooltip =
+              localStrings.getString('dataRoamingDisableToggleTooltip');
+        } else {
+          entry.command = function() {
+            options.Preferences.setBooleanPref(
+                'cros.signed.data_roaming_enabled',
+                !enableDataRoaming_);
+            // Force revalidation of the menu the next time it is
+            // displayed.
+            this.menu_ = null;
+          };
+        }
+        addendum.push(entry);
       }
       var list = this.data.rememberedNetworks;
       if (list && list.length > 0) {
@@ -480,10 +521,12 @@ cr.define('options.network', function() {
         for (var i = 0; i < addendum.length; i++) {
           var value = addendum[i];
           if (value.data) {
-            this.createCallback_(menu,
-                                 value.data,
-                                 value.label,
-                                 value.command);
+            var item = this.createCallback_(menu,
+                                            value.data,
+                                            value.label,
+                                            value.command);
+            if (value.tooltip)
+              item.title = value.tooltip;
             separator = false;
           } else if (!separator) {
             menu.appendChild(MenuItem.createSeparator());
@@ -520,12 +563,15 @@ cr.define('options.network', function() {
                       [type, path, command]);
           closeMenu_();
         };
-      } else {
+      } else if (command != null) {
         callback = function() {
           command(data);
         };
       }
-      button.addEventListener('click', callback);
+      if (callback != null)
+        button.addEventListener('click', callback);
+      else
+        buttonLabel.classList.add('network-disabled-control');
       MenuItem.decorate(button);
       menu.appendChild(button);
       return button;
@@ -540,9 +586,14 @@ cr.define('options.network', function() {
      */
     createConnectCallback_: function(menu, data, opt_connect) {
       var cmd = opt_connect ? opt_connect : 'connect';
+      var label = data.networkName;
+      if (cmd == 'activate') {
+        label = localStrings.getString('activateNetwork');
+        label = label.replace('$1', data.networkName);
+      }
       var menuItem = this.createCallback_(menu,
                                           data,
-                                          data.networkName,
+                                          label,
                                           cmd);
       menuItem.style.backgroundImage = url(data.iconURL);
 
@@ -620,14 +671,6 @@ cr.define('options.network', function() {
                        chrome.send('toggleAirplaneMode');
                      }});
       }
-      // TODO(kevers): Move to details dialog once settable on a per network
-      // basis.
-      this.update({key: 'useSharedProxies',
-                   command: function() {
-                     options.Preferences.setBooleanPref(
-                         'settings.use_shared_proxies',
-                         !useSharedProxies_);
-                   }});
 
       // Add connection control.
       var addConnection = function(type) {
@@ -646,12 +689,11 @@ cr.define('options.network', function() {
                   });
 
       var prefs = options.Preferences.getInstance();
-      prefs.addEventListener('settings.use_shared_proxies', function(event) {
-        useSharedProxies_ = event.value && event.value['value'] !=
-            undefined ? event.value['value'] : event.value;
-        $('network-list').updateToggleControl('useSharedProxies',
-                                              useSharedProxies_);
-      });
+      prefs.addEventListener('cros.signed.data_roaming_enabled',
+          function(event) {
+            enableDataRoaming_ = event.value && event.value['value'] !=
+                undefined ? event.value['value'] : event.value;
+          });
     },
 
     /**
@@ -768,9 +810,11 @@ cr.define('options.network', function() {
     if (data.accessLocked) {
       $('network-locked-message').hidden = false;
       networkList.disabled = true;
+      $('use-shared-proxies').disabled = true;
     } else {
       $('network-locked-message').hidden = true;
       networkList.disabled = false;
+      $('use-shared-proxies').disabled = false;
     }
 
     // Only show Ethernet control if connected.
@@ -827,7 +871,6 @@ cr.define('options.network', function() {
       loadData_('vpn', data.vpnList, data.rememberedList);
     else
       networkList.deleteItem('vpn');
-
     networkList.updateToggleControl('airplaneMode', data.airplaneMode);
 
     networkList.invalidate();

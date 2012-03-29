@@ -106,9 +106,6 @@ const char kDisableGeolocation[]            = "disable-geolocation";
 // Disable GL multisampling.
 const char kDisableGLMultisampling[]        = "disable-gl-multisampling";
 
-// Disable the GLSL translator.
-const char kDisableGLSLTranslator[]         = "disable-glsl-translator";
-
 // Disable workarounds for various GPU driver bugs.
 const char kDisableGpuDriverBugWorkarounds[] =
     "disable-gpu-driver-bug-workarounds";
@@ -186,6 +183,12 @@ const char kDisableSiteSpecificQuirks[]     = "disable-site-specific-quirks";
 // Disables speech input.
 const char kDisableSpeechInput[]            = "disable-speech-input";
 
+// Enables scripted speech api.
+const char kEnableScriptedSpeech[]          = "enable-scripted-speech";
+
+// Disables animation on the compositor thread.
+const char kDisableThreadedAnimation[]      = "disable-threaded-animation";
+
 // Disable web audio API.
 const char kDisableWebAudio[]               = "disable-webaudio";
 
@@ -239,6 +242,9 @@ const char kEnableCompositeToTexture[]      = "enable-composite-to-texture";
 // Enables CSS3 regions
 const char kEnableCssRegions[]              = "enable-css-regions";
 
+// Enables CSS3 custom filters
+const char kEnableCssShaders[]              = "enable-css-shaders";
+
 // Enables device motion events.
 const char kEnableDeviceMotion[]            = "enable-device-motion";
 
@@ -246,7 +252,8 @@ const char kEnableDeviceMotion[]            = "enable-device-motion";
 const char kEnableFastback[]                = "enable-fastback";
 
 // By default, a page is laid out to fill the entire width of the window.
-// This flag fixes the layout of the page to a default of 980 CSS pixels.
+// This flag fixes the layout of the page to a default of 980 CSS pixels,
+// or to a specified width and height using --enable-fixed-layout=w,h
 const char kEnableFixedLayout[]             = "enable-fixed-layout";
 
 // Enable the JavaScript Full Screen API.
@@ -274,7 +281,7 @@ const char kEnableMediaStream[]             = "enable-media-stream";
 // assumed to be sRGB.
 const char kEnableMonitorProfile[]          = "enable-monitor-profile";
 
-// Enables TLS origin bound certificate extension.
+// Enables TLS domain bound certificate extension.
 const char kEnableOriginBoundCerts[]  = "enable-origin-bound-certs";
 
 // Enables partial swaps in the WK compositor on platforms that support it.
@@ -324,11 +331,11 @@ const char kEnableStatsTable[]              = "enable-stats-table";
 // This is expected to break compatibility with many pages for now.
 const char kEnableStrictSiteIsolation[]     = "enable-strict-site-isolation";
 
-// Enable animation on the compositor thread.
-const char kEnableThreadedAnimation[]       = "enable-threaded-animation";
-
 // Enable multithreaded GPU compositing of web content.
 const char kEnableThreadedCompositing[]     = "enable-threaded-compositing";
+
+// Disable multithreaded GPU compositing of web content.
+const char kDisableThreadedCompositing[]     = "disable-threaded-compositing";
 
 // Enable use of experimental TCP sockets API for sending data in the
 // SYN packet.
@@ -340,6 +347,10 @@ const char kEnableTouchEvents[]             = "enable-touch-events";
 // Enables support for video tracks. Current implementation is
 // incomplete and this flag is used for development and testing.
 const char kEnableVideoTrack[]              = "enable-video-track";
+
+// Enables the use of the viewport meta tag, which allows
+// pages to control aspects of their own layout.
+const char kEnableViewport[]                = "enable-viewport";
 
 // Disable Web Intents.
 const char kDisableWebIntents[]             = "disable-web-intents";
@@ -646,6 +657,12 @@ const char kEnablePerTilePainting[]         = "enable-per-tile-painting";
 const char kDisableSoftwareRasterizer[]     = "disable-software-rasterizer";
 
 #if defined(USE_AURA)
+// Configures the time after a GestureFlingCancel in which taps are cancelled.
+extern const char kFlingTapSuppressMaxDown[] = "fling-tap-suppress-max-down";
+
+// Maximum time between mousedown and mouseup to be considered a tap.
+extern const char kFlingTapSuppressMaxGap[] = "fling-tap-suppress-max-gap";
+
 // Forces usage of the test compositor. Needed to run ui tests on bots.
 extern const char kTestCompositor[]         = "test-compositor";
 #endif

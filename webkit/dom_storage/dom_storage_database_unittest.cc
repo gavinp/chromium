@@ -14,10 +14,6 @@
 
 namespace dom_storage {
 
-DomStorageDatabase::DomStorageDatabase() {
-  Init();
-}
-
 void CreateV1Table(sql::Connection* db) {
   ASSERT_TRUE(db->is_open());
   ASSERT_TRUE(db->Execute("DROP TABLE IF EXISTS ItemTable"));
@@ -119,9 +115,10 @@ TEST(DomStorageDatabaseTest, CloseEmptyDatabaseDeletesFile) {
   CreateMapWithValues(&storage);
 
   // First test the case that explicitly clearing the database will
-  // trigger it's deletion from disk.
+  // trigger its deletion from disk.
   {
     DomStorageDatabase db(file_name);
+    EXPECT_EQ(file_name, db.file_path());
     ASSERT_TRUE(db.CommitChanges(false, storage));
   }
   EXPECT_TRUE(file_util::PathExists(file_name));

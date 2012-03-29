@@ -31,6 +31,9 @@ class RequestLocalFileSystemFunction : public AsyncExtensionFunction {
  private:
   class LocalFileSystemCallbackDispatcher;
 
+  // Adds gdata mount point.
+  void AddGDataMountPoint();
+
   void RespondSuccessOnUIThread(const std::string& name,
                                 const GURL& root_path);
   void RespondFailedOnUIThread(base::PlatformFileError error_code);
@@ -233,8 +236,6 @@ class AddMountFunction
  private:
   // Sends gdata mount event to renderers.
   void RaiseGDataMountEvent(gdata::GDataErrorCode error);
-  // Adds gdata mount point.
-  void AddGDataMountPoint();
   // A callback method to handle the result of GData authentication request.
   void OnGDataAuthentication(gdata::GDataErrorCode error,
                              const std::string& token);
@@ -384,20 +385,40 @@ class GetGDataFilePropertiesFunction : public FileBrowserFunction {
   GetGDataFilePropertiesFunction();
 
  protected:
+  void GetNextFileProperties();
+  void CompleteGetFileProperties();
+
   virtual ~GetGDataFilePropertiesFunction();
 
   // Virtual function that can be overridden to do operations on each virtual
-  // file path before fetching the properties.  Return false to stop iterating
-  // over the files.
-  virtual bool DoOperation(const FilePath& file);
+  // file path and update its the properties.
+  virtual void DoOperation(const FilePath& file,
+                           base::DictionaryValue* properties);
+
+  void OnOperationComplete(const FilePath& file,
+                           base::DictionaryValue* properties,
+                           base::PlatformFileError error);
 
   // AsyncExtensionFunction overrides.
   virtual bool RunImpl() OVERRIDE;
 
-  // Returns the number of expected args for this function.
-  virtual size_t NumExpectedArgs() const;
+  // Builds list of file properies. Calls DoOperation for each file.
+  void PrepareResults();
 
  private:
+  void OnFileProperties(base::DictionaryValue* property_dict,
+                        base::PlatformFileError error,
+                        const FilePath& directory_path,
+                        gdata::GDataFileBase* file);
+
+  void CacheStateReceived(base::DictionaryValue* property_dict,
+                          base::PlatformFileError error,
+                          int cache_state);
+
+  size_t current_index_;
+  base::ListValue* path_list_;
+  scoped_ptr<base::ListValue> file_properties_;
+
   DECLARE_EXTENSION_FUNCTION_NAME("fileBrowserPrivate.getGDataFileProperties");
 };
 
@@ -417,12 +438,18 @@ class PinGDataFileFunction : public GetGDataFilePropertiesFunction {
   // AsyncExtensionFunction overrides.
   virtual bool RunImpl() OVERRIDE;
 
-  // SetGDataFilePinnedFunction overrides
-  virtual size_t NumExpectedArgs() const OVERRIDE;
-
  private:
   // Actually do the pinning/unpinning of each file.
-  virtual bool DoOperation(const FilePath& path) OVERRIDE;
+  virtual void DoOperation(const FilePath& path,
+                           base::DictionaryValue* properties) OVERRIDE;
+
+  // Callback for SetPinState. Updates properties with error.
+  void OnPinStateSet(const FilePath& path,
+                     base::DictionaryValue* properties,
+                     base::PlatformFileError error);
+
+  // True for pin, false for unpin.
+  bool set_pin_;
 
   DECLARE_EXTENSION_FUNCTION_NAME("fileBrowserPrivate.pinGDataFile");
 };
@@ -479,6 +506,7 @@ class GetGDataFilesFunction : public FileBrowserFunction {
   // |remaining_gdata_paths_|, and calls GetFileOrSendResponse().
   void OnFileReady(base::PlatformFileError error,
                    const FilePath& local_path,
+                   const std::string& unused_mime_type,
                    gdata::GDataFileType file_type);
 
   std::queue<FilePath> remaining_gdata_paths_;
@@ -503,7 +531,7 @@ class GetFileTransfersFunction : public AsyncExtensionFunction {
   DECLARE_EXTENSION_FUNCTION_NAME("fileBrowserPrivate.getFileTransfers");
 };
 
-// Implements the chrome.fileBrowserPrivate.cancelTransfer method.
+// Implements the chrome.fileBrowserPrivate.cancelFileTransfers method.
 class CancelFileTransfersFunction : public FileBrowserFunction {
  public:
   CancelFileTransfersFunction();
@@ -515,7 +543,28 @@ class CancelFileTransfersFunction : public FileBrowserFunction {
 
   void GetLocalPathsResponseOnUIThread(const SelectedFileInfoList& files);
  private:
-  DECLARE_EXTENSION_FUNCTION_NAME("fileBrowserPrivate.cancelTransfers");
+  DECLARE_EXTENSION_FUNCTION_NAME("fileBrowserPrivate.cancelFileTransfers");
+};
+
+// Implements the chrome.fileBrowserPrivate.transferFile method.
+class TransferFileFunction : public FileBrowserFunction {
+ public:
+  TransferFileFunction();
+  virtual ~TransferFileFunction();
+
+ protected:
+  // AsyncExtensionFunction overrides.
+  virtual bool RunImpl() OVERRIDE;
+
+ private:
+  // Helper callback for handling response from
+  // GetLocalPathsOnFileThreadAndRunCallbackOnUIThread()
+  void GetLocalPathsResponseOnUIThread(const SelectedFileInfoList& files);
+
+  // Helper callback for handling response from GDataFileSystem::TransferFile().
+  void OnTransferCompleted(base::PlatformFileError error);
+
+  DECLARE_EXTENSION_FUNCTION_NAME("fileBrowserPrivate.transferFile");
 };
 
 #endif  // CHROME_BROWSER_CHROMEOS_EXTENSIONS_FILE_BROWSER_PRIVATE_API_H_

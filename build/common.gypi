@@ -282,6 +282,9 @@
       # GYP_DEFINES.
       'tests_run%': 'check',
 
+       # Force rlz to use chrome's networking stack.
+      'force_rlz_use_chrome_net%': 1,
+
       'conditions': [
         # TODO(epoger): Figure out how to set use_skia=1 for Mac outside of
         # the 'conditions' clause.  Initial attempts resulted in chromium and
@@ -325,7 +328,7 @@
         }],
 
         # Set toolkit_uses_gtk for the Chromium browser on Linux.
-        ['OS=="linux" and chromeos==0', {
+        ['(OS=="linux" or OS=="freebsd" or OS=="openbsd" or OS=="solaris") and use_aura==0', {
           'toolkit_uses_gtk%': 1,
         }, {
           'toolkit_uses_gtk%': 0,
@@ -353,13 +356,6 @@
           'use_titlecase_in_grd_files%': 1,
         }],
 
-        # Enable some hacks to support Flapper only on Chrome OS.
-        ['chromeos==1', {
-          'enable_flapper_hacks%': 1,
-        }, {
-          'enable_flapper_hacks%': 0,
-        }],
-
         # Enable file manager extension on Chrome OS.
         ['chromeos==1', {
           'file_manager_extension%': 1,
@@ -367,14 +363,14 @@
           'file_manager_extension%': 0,
         }],
 
-        # Enable WebUI TaskManager on Chrome OS or Aura.  
-        ['chromeos==1 or use_aura==1', {   
-          'webui_task_manager%': 1,   
+        # Enable WebUI TaskManager on Chrome OS or Aura.
+        ['chromeos==1 or use_aura==1', {
+          'webui_task_manager%': 1,
         }],
 
-        # For now one-click signin is enabled only for windows since the UI
-        # is not yet complete for other platforms.
-        ['OS=="win"', {
+        # For now one-click signin is enabled only for windows and mac
+        # since the UI is not yet complete for other platforms.
+        ['OS=="win" or OS=="mac"', {
           'enable_one_click_signin%': 1,
         }],
 
@@ -396,7 +392,7 @@
           'chromium_win_pch%': 1
         }],
 
-        ['use_aura==1 or chromeos==1', {
+        ['use_aura==1 or chromeos==1 or OS=="android"', {
           'enable_plugin_installation%': 0,
         }, {
           'enable_plugin_installation%': 1,
@@ -425,6 +421,15 @@
         }, {
           'enable_automation%': 1,
         }],
+
+        # Enable Skia UI text drawing incrementally on different platforms.
+        # http://crbug.com/105550
+        #
+        # On Aura, this allows per-tile painting to be used in the browser
+        # compositor.
+        ['use_aura==1', {
+          'use_canvas_skia%': 1,
+        }],
       ],
     },
 
@@ -448,7 +453,6 @@
     'use_x11%': '<(use_x11)',
     'use_gnome_keyring%': '<(use_gnome_keyring)',
     'linux_fpic%': '<(linux_fpic)',
-    'enable_flapper_hacks%': '<(enable_flapper_hacks)',
     'enable_pepper_threading%': '<(enable_pepper_threading)',
     'chromeos%': '<(chromeos)',
     'use_virtual_keyboard%': '<(use_virtual_keyboard)',
@@ -491,6 +495,7 @@
     'use_canvas_skia%': '<(use_canvas_skia)',
     'tests_run%': '<(tests_run)',
     'enable_automation%': '<(enable_automation)',
+    'force_rlz_use_chrome_net%': '<(force_rlz_use_chrome_net)',
 
     # Whether to build for Wayland display server
     'use_wayland%': 0,
@@ -533,6 +538,10 @@
     # these defaults.
     'mac_sdk%': '10.5',
     'mac_deployment_target%': '10.5',
+
+    # The default value for mac_strip in target_defaults. This cannot be
+    # set there, per the comment about variable% in a target_defaults.
+    'mac_strip_release%': 1,
 
     # Set to 1 to enable code coverage.  In addition to build changes
     # (e.g. extra CFLAGS), also creates a new target in the src/chrome
@@ -745,14 +754,14 @@
         'variables': {
           'variables': {
             'android_ndk_root%': '<!(/bin/echo -n $ANDROID_NDK_ROOT)',
-            'android_target_arch%': 'arm',  # target_arch in android terms.
+            'target_arch%': 'arm',  # target_arch in android terms.
 
             # Switch between different build types, currently only '0' is
             # supported.
             'android_build_type%': 0,
           },
           'android_ndk_root%': '<(android_ndk_root)',
-          'android_ndk_sysroot': '<(android_ndk_root)/platforms/android-9/arch-<(android_target_arch)',
+          'android_ndk_sysroot': '<(android_ndk_root)/platforms/android-9/arch-<(target_arch)',
           'android_build_type%': '<(android_build_type)',
         },
         'android_ndk_root%': '<(android_ndk_root)',
@@ -1130,6 +1139,9 @@
       }, {  # else: branding!="Chrome"
         'defines': ['CHROMIUM_BUILD'],
       }],
+      ['branding=="Chrome" and (OS=="win" or OS=="mac")', {
+        'defines': ['ENABLE_RLZ'],
+      }],
       ['component=="shared_library"', {
         'defines': ['COMPONENT_BUILD'],
       }],
@@ -1204,9 +1216,6 @@
       }],
       ['proprietary_codecs==1', {
         'defines': ['USE_PROPRIETARY_CODECS'],
-      }],
-      ['enable_flapper_hacks==1', {
-        'defines': ['ENABLE_FLAPPER_HACKS=1'],
       }],
       ['enable_pepper_threading==1', {
         'defines': ['ENABLE_PEPPER_THREADING'],
@@ -2163,11 +2172,11 @@
     # Android-specific options; note that most are set above with Linux.
     ['OS=="android"', {
       'variables': {
-        'android_target_arch%': 'arm',  # target_arch in android terms.
+        'target_arch%': 'arm',  # target_arch in android terms.
         'conditions': [
           # Android uses x86 instead of ia32 for their target_arch designation.
           ['target_arch=="ia32"', {
-            'android_target_arch%': 'x86',
+            'target_arch%': 'x86',
           }],
           # Use shared stlport library when system one used.
           # Figure this out early since it needs symbols from libgcc.a, so it
@@ -2385,7 +2394,8 @@
           # different targets, like these.
           'mac_pie': 1,        # Most executables can be position-independent.
           'mac_real_dsym': 0,  # Fake .dSYMs are fine in most cases.
-          'mac_strip': 1,      # Strip debugging symbols from the target.
+          # Strip debugging symbols from the target.
+          'mac_strip': '<(mac_strip_release)',
         },
         'mac_bundle': 0,
         'xcode_settings': {
@@ -2652,7 +2662,6 @@
           'CERT_CHAIN_PARA_HAS_EXTRA_FIELDS',
           'WIN32_LEAN_AND_MEAN',
           '_ATL_NO_OPENGL',
-          '_HAS_TR1=0',
         ],
         'conditions': [
           ['buildtype=="Official"', {
@@ -2709,6 +2718,11 @@
           ['component=="static_library"', {
             'defines': [
               '_HAS_EXCEPTIONS=0',
+            ],
+          }],
+          ['MSVS_VERSION=="2008"', {
+            'defines': [
+              '_HAS_TR1=0',
             ],
           }],
           ['secure_atl', {
@@ -2773,12 +2787,21 @@
               'winmm.lib',
               'shlwapi.lib',
             ],
+
             'conditions': [
               ['msvs_express', {
                 # Explicitly required when using the ATL with express
                 'AdditionalDependencies': [
                   'atlthunk.lib',
                 ],
+
+                # ATL 8.0 included in WDK 7.1 makes the linker to generate
+                # almost eight hundred LNK4254 and LNK4078 warnings:
+                #   - warning LNK4254: section 'ATL' (50000040) merged into
+                #     '.rdata' (40000040) with different attributes
+                #   - warning LNK4078: multiple 'ATL' sections found with
+                #     different attributes
+                'AdditionalOptions': ['/ignore:4254', '/ignore:4078'],
               }],
               ['MSVS_VERSION=="2005e"', {
                 # Non-express versions link automatically to these

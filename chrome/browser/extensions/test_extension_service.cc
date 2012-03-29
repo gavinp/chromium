@@ -14,6 +14,11 @@ const ExtensionSet* TestExtensionService::extensions() const {
   return NULL;
 }
 
+const ExtensionSet* TestExtensionService::disabled_extensions() const {
+  ADD_FAILURE();
+  return NULL;
+}
+
 PendingExtensionManager* TestExtensionService::pending_extension_manager() {
   ADD_FAILURE();
   return NULL;
@@ -68,7 +73,7 @@ void TestExtensionService::CheckForUpdatesSoon() {
 SyncError TestExtensionService::MergeDataAndStartSyncing(
     syncable::ModelType type,
     const SyncDataList& initial_sync_data,
-    SyncChangeProcessor* sync_processor) {
+    scoped_ptr<SyncChangeProcessor> sync_processor) {
   ADD_FAILURE();
   return SyncError();
 }
@@ -103,5 +108,10 @@ bool TestExtensionService::AddExtension(const Extension* extension) {
 void TestExtensionService::UnloadExtension(
     const std::string& extension_id,
     extension_misc::UnloadedExtensionReason reason) {
+  ADD_FAILURE();
+}
+
+void TestExtensionService::SyncExtensionChangeIfNeeded(
+    const Extension& extension) {
   ADD_FAILURE();
 }

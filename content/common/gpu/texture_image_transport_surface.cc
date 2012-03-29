@@ -157,9 +157,7 @@ void TextureImageTransportSurface::SetBufferAllocation(
       break;
     case BUFFER_ALLOCATION_FRONT_ONLY:
     case BUFFER_ALLOCATION_NONE:
-      // TODO(piman): Re-enable this (or something else) when we fix the
-      // renderer so it doesn't try to draw/swap on deleted back buffers.
-      // ReleaseBackTexture();
+      ReleaseBackTexture();
       break;
   };
 }
@@ -195,6 +193,8 @@ bool TextureImageTransportSurface::SwapBuffers() {
   front_ = back();
   previous_damage_rect_ = gfx::Rect(textures_[front_].size);
 
+  DCHECK(textures_[front_].client_id != 0);
+
   GpuHostMsg_AcceleratedSurfaceBuffersSwapped_Params params;
   params.surface_handle = textures_[front_].client_id;
   helper_->SendAcceleratedSurfaceBuffersSwapped(params);
@@ -221,14 +221,12 @@ bool TextureImageTransportSurface::PostSubBuffer(
   bool surfaces_same_size = textures_[front_].size == expected_size;
 
   const gfx::Rect new_damage_rect(x, y, width, height);
-  if (surfaces_same_size) {
-    // TODO(backer): Remove temporary sanity checking once we verified that this
-    // is not causing the black rects with --enable-partial-swap.
-    CHECK_GE(x, 0);
-    CHECK_GE(y, 0);
-    CHECK_LE(x + width, expected_size.width());
-    CHECK_LE(y + height, expected_size.height());
 
+  // An empty damage rect is a successful no-op.
+  if (new_damage_rect.IsEmpty())
+    return true;
+
+  if (surfaces_same_size) {
     std::vector<gfx::Rect> regions_to_copy;
     GetRegionsToCopy(previous_damage_rect_, new_damage_rect, &regions_to_copy);
 
@@ -249,9 +247,7 @@ bool TextureImageTransportSurface::PostSubBuffer(
       }
     }
   } else {
-    // TODO(backer): Remove temporary sanity checking once we verified that this
-    // is not causing the black rects with --enable-partial-swap.
-    CHECK(new_damage_rect == gfx::Rect(expected_size));
+    DCHECK(new_damage_rect == gfx::Rect(expected_size));
   }
 
   glFlush();

@@ -145,6 +145,19 @@ std::vector<int> GetAllGetAddrinfoOSErrors() {
                                                     arraysize(os_errors));
 }
 
+enum DnsResolveStatus {
+  RESOLVE_STATUS_DNS_SUCCESS = 0,
+  RESOLVE_STATUS_PROC_SUCCESS,
+  RESOLVE_STATUS_FAIL,
+  RESOLVE_STATUS_MAX
+};
+
+void UmaAsyncDnsResolveStatus(DnsResolveStatus result) {
+  UMA_HISTOGRAM_ENUMERATION("AsyncDNS.ResolveStatus",
+                            result,
+                            RESOLVE_STATUS_MAX);
+}
+
 // Wraps call to SystemHostResolverProc as an instance of HostResolverProc.
 // TODO(szym): This should probably be declared in host_resolver_proc.h.
 class CallSystemHostResolverProc : public HostResolverProc {
@@ -303,31 +316,13 @@ class DnsConfigParameters : public NetLog::EventParameters {
   }
 
   virtual Value* ToValue() const OVERRIDE {
-    DictionaryValue* dict = new DictionaryValue();
-
-    ListValue* list = new ListValue();
-    for (size_t i = 0; i < config_.nameservers.size(); ++i) {
-      list->Append(Value::CreateStringValue(
-          config_.nameservers[i].ToString()));
-    }
-    dict->Set("nameservers", list);
-
-    list = new ListValue();
-    for (size_t i = 0; i < config_.search.size(); ++i) {
-      list->Append(Value::CreateStringValue(config_.search[i]));
-    }
-    dict->Set("search", list);
-
-    dict->SetBoolean("append_to_multi_label_name",
-                     config_.append_to_multi_label_name);
-    dict->SetInteger("ndots", config_.ndots);
-    dict->SetDouble("timeout", config_.timeout.InSecondsF());
-    dict->SetInteger("attempts", config_.attempts);
-    dict->SetBoolean("rotate", config_.rotate);
-    dict->SetBoolean("edns0", config_.edns0);
-    dict->SetInteger("num_hosts", num_hosts_);
-
-    return dict;
+    Value* value = config_.ToValue();
+    if (!value)
+      return NULL;
+    DictionaryValue* dict;
+    if (value->GetAsDictionary(&dict))
+      dict->SetInteger("num_hosts", num_hosts_);
+    return value;
   }
 
  private:
@@ -1049,7 +1044,8 @@ class HostResolverImpl::DnsTask {
     transaction_ = factory->CreateTransaction(
         key.hostname,
         qtype,
-        base::Bind(&DnsTask::OnTransactionComplete, base::Unretained(this)),
+        base::Bind(&DnsTask::OnTransactionComplete, base::Unretained(this),
+                   base::TimeTicks::Now()),
         net_log_);
     DCHECK(transaction_.get());
   }
@@ -1059,16 +1055,21 @@ class HostResolverImpl::DnsTask {
     return transaction_->Start();
   }
 
-  void OnTransactionComplete(DnsTransaction* transaction,
+  void OnTransactionComplete(const base::TimeTicks& start_time,
+                             DnsTransaction* transaction,
                              int net_error,
                              const DnsResponse* response) {
-    // TODO(szym): Record performance histograms.
     // Run |callback_| last since the owning Job will then delete this DnsTask.
     DnsResponse::Result result = DnsResponse::DNS_SUCCESS;
     if (net_error == OK) {
+      DNS_HISTOGRAM("AsyncDNS.TransactionSuccess",
+                    base::TimeTicks::Now() - start_time);
       AddressList addr_list;
       base::TimeDelta ttl;
       result = response->ParseToAddressList(&addr_list, &ttl);
+      UMA_HISTOGRAM_ENUMERATION("AsyncDNS.ParseToAddressList",
+                                result,
+                                DnsResponse::DNS_PARSE_RESULT_MAX);
       if (result == DnsResponse::DNS_SUCCESS) {
         net_log_.EndEvent(NetLog::TYPE_HOST_RESOLVER_IMPL_DNS_TASK,
                           new AddressListNetLogParam(addr_list));
@@ -1076,6 +1077,9 @@ class HostResolverImpl::DnsTask {
         return;
       }
       net_error = ERR_DNS_MALFORMED_RESPONSE;
+    } else {
+      DNS_HISTOGRAM("AsyncDNS.TransactionFailure",
+                    base::TimeTicks::Now() - start_time);
     }
     net_log_.EndEvent(NetLog::TYPE_HOST_RESOLVER_IMPL_DNS_TASK,
                       new DnsTaskFailedParams(net_error, result));
@@ -1104,6 +1108,7 @@ class HostResolverImpl::Job : public PrioritizedDispatcher::Job {
       : resolver_(resolver->AsWeakPtr()),
         key_(key),
         had_non_speculative_request_(false),
+        had_dns_config_(false),
         net_log_(BoundNetLog::Make(request_net_log.net_log(),
                                    NetLog::SOURCE_HOST_RESOLVER_IMPL_JOB)) {
     request_net_log.AddEvent(NetLog::TYPE_HOST_RESOLVER_IMPL_CREATE_JOB, NULL);
@@ -1266,8 +1271,9 @@ class HostResolverImpl::Job : public PrioritizedDispatcher::Job {
 
     net_log_.AddEvent(NetLog::TYPE_HOST_RESOLVER_IMPL_JOB_STARTED, NULL);
 
+    had_dns_config_ = resolver_->HaveDnsConfig();
     // Job::Start must not complete synchronously.
-    if (resolver_->HaveDnsConfig()) {
+    if (had_dns_config_) {
       StartDnsTask();
     } else {
       StartProcTask();
@@ -1296,6 +1302,15 @@ class HostResolverImpl::Job : public PrioritizedDispatcher::Job {
   // Called by ProcTask when it completes.
   void OnProcTaskComplete(int net_error, const AddressList& addr_list) {
     DCHECK(is_proc_running());
+
+    if (had_dns_config_) {
+      // TODO(szym): guess if the hostname is a NetBIOS name and discount it.
+      if (net_error == OK) {
+        UmaAsyncDnsResolveStatus(RESOLVE_STATUS_PROC_SUCCESS);
+      } else {
+        UmaAsyncDnsResolveStatus(RESOLVE_STATUS_FAIL);
+      }
+    }
 
     base::TimeDelta ttl = base::TimeDelta::FromSeconds(
         kNegativeCacheEntryTTLSeconds);
@@ -1339,6 +1354,7 @@ class HostResolverImpl::Job : public PrioritizedDispatcher::Job {
       return;
     }
 
+    UmaAsyncDnsResolveStatus(RESOLVE_STATUS_DNS_SUCCESS);
     CompleteRequests(net_error, addr_list, ttl);
   }
 
@@ -1444,6 +1460,9 @@ class HostResolverImpl::Job : public PrioritizedDispatcher::Job {
   PriorityTracker priority_tracker_;
 
   bool had_non_speculative_request_;
+
+  // True if resolver had DnsConfig when the Job was started.
+  bool had_dns_config_;
 
   BoundNetLog net_log_;
 
@@ -1681,6 +1700,20 @@ HostCache* HostResolverImpl::GetHostCache() {
   return cache_.get();
 }
 
+base::Value* HostResolverImpl::GetDnsConfigAsValue() const {
+  // Check if async DNS is disabled.
+  if (!dns_client_.get())
+    return NULL;
+
+  // Check if async DNS is enabled, but we currently have no configuration
+  // for it.
+  const DnsConfig* dns_config = dns_client_->GetConfig();
+  if (dns_config == NULL)
+    return new DictionaryValue();
+
+  return dns_config->ToValue();
+}
+
 bool HostResolverImpl::ResolveAsIP(const Key& key,
                                    const RequestInfo& info,
                                    int* net_error,
@@ -1722,7 +1755,6 @@ bool HostResolverImpl::ServeFromCache(const Key& key,
   if (!cache_entry)
     return false;
 
-
   *net_error = cache_entry->error;
   if (*net_error == OK)
     *addresses = CreateAddressListUsingPort(cache_entry->addrlist, info.port());
@@ -1736,13 +1768,16 @@ bool HostResolverImpl::ServeFromHosts(const Key& key,
   if (!HaveDnsConfig())
     return false;
 
+  // HOSTS lookups are case-insensitive.
+  std::string hostname = StringToLowerASCII(key.hostname);
+
   // If |address_family| is ADDRESS_FAMILY_UNSPECIFIED other implementations
   // (glibc and c-ares) return the first matching line. We have more
   // flexibility, but lose implicit ordering.
   // TODO(szym) http://crbug.com/117850
   const DnsHosts& hosts = dns_client_->GetConfig()->hosts;
   DnsHosts::const_iterator it = hosts.find(
-      DnsHostsKey(key.hostname,
+      DnsHostsKey(hostname,
                   key.address_family == ADDRESS_FAMILY_UNSPECIFIED ?
                       ADDRESS_FAMILY_IPV4 : key.address_family));
 
@@ -1750,7 +1785,7 @@ bool HostResolverImpl::ServeFromHosts(const Key& key,
     if (key.address_family != ADDRESS_FAMILY_UNSPECIFIED)
       return false;
 
-    it = hosts.find(DnsHostsKey(key.hostname, ADDRESS_FAMILY_IPV6));
+    it = hosts.find(DnsHostsKey(hostname, ADDRESS_FAMILY_IPV6));
     if (it == hosts.end())
       return false;
   }
@@ -1893,20 +1928,25 @@ void HostResolverImpl::OnDnsConfigChanged(const DnsConfig& dns_config) {
         make_scoped_refptr(new DnsConfigParameters(dns_config)));
   }
 
-  // We want a new factory in place, before we Abort running Jobs, so that the
-  // newly started jobs use the new factory.
   DCHECK(dns_client_.get());
 
   // Life check to bail once |this| is deleted.
   base::WeakPtr<HostResolverImpl> self = AsWeakPtr();
 
-  bool had_factory = (dns_client_->GetConfig() != NULL);
+  bool config_changed = (dns_client_->GetConfig() != NULL) &&
+      !dns_config.EqualsIgnoreHosts(*dns_client_->GetConfig());
+
+  // We want a new factory in place, before we Abort running Jobs, so that the
+  // newly started jobs use the new factory.
   dns_client_->SetConfig(dns_config);
 
-  // Don't Abort running Jobs unless they were running on DnsTransaction.
-  // TODO(szym): This will change once http://crbug.com/114827 is fixed.
-  if (had_factory)
+  // Don't Abort running Jobs unless they were running on DnsTransaction and
+  // DnsConfig changed beyond DnsHosts. HOSTS-only change will be resolved by
+  // TryServingAllJobsFromHosts below.
+  if (config_changed) {
+    // TODO(szym): This will change once http://crbug.com/114827 is fixed.
     OnDNSChanged(NetworkChangeNotifier::CHANGE_DNS_SETTINGS);
+  }
 
   if (self && dns_config.IsValid())
     TryServingAllJobsFromHosts();

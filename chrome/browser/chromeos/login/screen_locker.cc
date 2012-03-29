@@ -72,6 +72,8 @@ class ScreenLockObserver : public chromeos::PowerManagerClient::Observer,
     switch (type) {
       case chrome::NOTIFICATION_LOGIN_USER_CHANGED: {
         // Register Screen Lock only after a user has logged in.
+        // TODO(flackr): Observe PowerManagerClient on desktop build.
+        // crbug.com/119798
         chromeos::PowerManagerClient* power_manager =
             chromeos::DBusThreadManager::Get()->GetPowerManagerClient();
         if (!power_manager->HasObserver(this))
@@ -159,6 +161,7 @@ class ScreenLockObserver : public chromeos::PowerManagerClient::Observer,
       // We don't want to shut down the IME, even if the hardware layout is the
       // only IME left.
       manager->SetEnableAutoImeShutdown(false);
+      manager->SetEnableExtensionIMEs(false);
       manager->SetInputMethodConfig(
           chromeos::language_prefs::kGeneralSectionName,
           chromeos::language_prefs::kPreloadEnginesConfigName,
@@ -176,6 +179,7 @@ class ScreenLockObserver : public chromeos::PowerManagerClient::Observer,
           chromeos::input_method::InputMethodConfigValue::kValueTypeStringList;
       value.string_list_value = saved_active_input_method_list_;
       manager->SetEnableAutoImeShutdown(true);
+      manager->SetEnableExtensionIMEs(true);
       manager->SetInputMethodConfig(
           chromeos::language_prefs::kGeneralSectionName,
           chromeos::language_prefs::kPreloadEnginesConfigName,
@@ -352,8 +356,8 @@ void ScreenLocker::Show() {
   // For a demo user, we should never show the lock screen (crosbug.com/27647).
   // TODO(flackr): We can allow lock screen for guest accounts when
   // unlock_on_input is supported by the WebUI screen locker.
-  if (UserManager::Get()->GetLoggedInUser().is_guest() ||
-      UserManager::Get()->GetLoggedInUser().is_demo_user()) {
+  if (UserManager::Get()->IsLoggedInAsGuest() ||
+      UserManager::Get()->IsLoggedInAsDemoUser()) {
     DVLOG(1) << "Show: Refusing to lock screen for guest/demo account.";
     return;
   }
@@ -385,8 +389,8 @@ void ScreenLocker::Show() {
 void ScreenLocker::Hide() {
   DCHECK(MessageLoop::current()->type() == MessageLoop::TYPE_UI);
   // For a guest/demo user, screen_locker_ would have never been initialized.
-  if (UserManager::Get()->GetLoggedInUser().is_guest() ||
-      UserManager::Get()->GetLoggedInUser().is_demo_user()) {
+  if (UserManager::Get()->IsLoggedInAsGuest() ||
+      UserManager::Get()->IsLoggedInAsDemoUser()) {
     DVLOG(1) << "Hide: Nothing to do for guest/demo account.";
     return;
   }

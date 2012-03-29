@@ -32,17 +32,26 @@ cr.define('ntp', function() {
       this.menu = new Menu;
       cr.ui.decorate(this.menu, Menu);
       this.menu.classList.add('footer-menu');
-      this.menu.addEventListener('click', this.onClick_.bind(this), true);
       this.menu.addEventListener('contextmenu',
                                  this.onContextMenu_.bind(this), true);
       document.body.appendChild(this.menu);
+
+      this.promoMessage_ = $('other-sessions-promo-template').cloneNode(true);
+      this.promoMessage_.removeAttribute('id');  // Prevent a duplicate id.
 
       this.sessions_ = [];
       this.anchorType = cr.ui.AnchorType.ABOVE;
       this.invertLeftRight = true;
 
-      chrome.send('getForeignSessions');
       this.recordUmaEvent_(HISTOGRAM_EVENT.INITIALIZED);
+    },
+
+    /**
+     * Initialize this element.
+     * @param {boolean} signedIn Is the current user signed in?
+     */
+    initialize: function(signedIn) {
+      this.updateSignInState(signedIn);
     },
 
     /**
@@ -52,15 +61,6 @@ cr.define('ntp', function() {
     recordUmaEvent_: function(eventId) {
       chrome.send('metricsHandler:recordInHistogram',
           ['NewTabPage.OtherSessionsMenu', eventId, HISTOGRAM_EVENT_LIMIT]);
-    },
-
-    /**
-     * Handle a click event for an object in the menu's DOM subtree.
-     */
-    onClick_: function(e) {
-      // Only record the action if it occurred on one of the menu items.
-      if (findAncestorByClass(e.target, 'footer-menu-item'))
-        this.recordUmaEvent_(HISTOGRAM_EVENT.LINK_CLICKED);
     },
 
     /**
@@ -86,6 +86,30 @@ cr.define('ntp', function() {
     },
 
     /**
+     * Reset the menu contents to the default state.
+     * @private
+     */
+    resetMenuContents_: function() {
+      this.menu.innerHTML = '';
+      this.menu.appendChild(this.promoMessage_);
+    },
+
+    /**
+     * Create a custom click handler for a link, so that clicking on a link
+     * restores the session (including back stack) rather than just opening
+     * the URL.
+     */
+    makeClickHandler_: function(sessionTag, windowId, tabId) {
+      var self = this;
+      return function(e) {
+        self.recordUmaEvent_(HISTOGRAM_EVENT.LINK_CLICKED);
+        chrome.send('openForeignSession', [sessionTag, windowId, tabId,
+            e.button, e.altKey, e.ctrlKey, e.metaKey, e.shiftKey]);
+        e.preventDefault();
+      };
+    },
+
+    /**
      * Add the UI for a foreign session to the menu.
      * @param {Object} session Object describing the foreign session.
      */
@@ -108,41 +132,50 @@ cr.define('ntp', function() {
           a.textContent = tab.title;
           a.href = tab.url;
           a.style.backgroundImage = 'url(chrome://favicon/' + tab.url + ')';
+          var clickHandler = this.makeClickHandler_(
+              session.tag, String(window.sessionId), String(tab.sessionId));
+          a.addEventListener('click', clickHandler);
           section.appendChild(a);
         }
       }
     },
 
     /**
-     * Create the UI for the promo and place it inside the menu.
-     * The promo is shown instead of foreign session data when tab sync is
-     * not enabled for a profile.
+     * Sets the menu model data. An empty list means that either there are no
+     * foreign sessions, or tab sync is disabled for this profile.
+     * |isTabSyncEnabled| makes it possible to distinguish between the cases.
+     *
+     * @param {Array} sessionList Array of objects describing the sessions
+     *     from other devices.
+     * @param {boolean} isTabSyncEnabled Is tab sync enabled for this profile?
      */
-    showPromo_: function() {
-      var message = localStrings.getString('otherSessionsEmpty');
-      this.menu.appendChild(this.ownerDocument.createTextNode(message));
+    setForeignSessions: function(sessionList, isTabSyncEnabled) {
+      this.sessions_ = sessionList;
+      this.resetMenuContents_();
+      if (sessionList.length > 0) {
+        // Rebuild the menu with the new data.
+        for (var i = 0; i < sessionList.length; i++) {
+          this.addSession_(sessionList[i]);
+        }
+      }
+
+      // The menu button is shown iff tab sync is enabled.
+      if (isTabSyncEnabled)
+        this.classList.remove('invisible');
+      else
+        this.classList.add('invisible');
     },
 
     /**
-     * Sets the menu model data.
-     * @param {Array} sessionList Array of objects describing the sessions
-     * from other devices.
+     * Called when this element is initialized, and from the new tab page when
+     * the user's signed in state changes,
+     * @param {boolean} signedIn Is the user currently signed in?
      */
-    set sessions(sessionList) {
-      // Clear the current contents of the menu.
-      this.menu.innerHTML = '';
-
-      // Rebuild the menu with the new data.
-      for (var i = 0; i < sessionList.length; i++) {
-        this.addSession_(sessionList[i]);
-      }
-
-      if (sessionList.length == 0)
-        this.classList.add('invisible');
+    updateSignInState: function(signedIn) {
+      if (signedIn)
+        chrome.send('getForeignSessions');
       else
-        this.classList.remove('invisible');
-
-      this.sessions_ = sessionList;
+        this.classList.add('invisible');
     },
   };
 

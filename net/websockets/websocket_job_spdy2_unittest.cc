@@ -319,7 +319,6 @@ namespace net {
 class WebSocketJobSpdy2Test : public PlatformTest {
  public:
   virtual void SetUp() {
-    spdy::SpdyFramer::set_enable_compression_default(false);
     SpdySession::set_default_protocol(SSLClientSocket::kProtoSPDY2);
     stream_type_ = STREAM_INVALID;
     cookie_store_ = new MockCookieStore;
@@ -475,6 +474,9 @@ class WebSocketJobSpdy2Test : public PlatformTest {
   static const size_t kHandshakeResponseWithCookieLength;
   static const size_t kDataHelloLength;
   static const size_t kDataWorldLength;
+
+ private:
+  SpdyTestStateHelper spdy_state_;
 };
 
 const char WebSocketJobSpdy2Test::kHandshakeRequestWithoutCookie[] =
@@ -907,26 +909,26 @@ void WebSocketJobSpdy2Test::TestConnectBySpdy(
     MockRead(SYNCHRONOUS, 0, 5)  // EOF
   };
 
-  const spdy::SpdyStreamId kStreamId = 1;
-  scoped_ptr<spdy::SpdyFrame> request_frame(
+  const SpdyStreamId kStreamId = 1;
+  scoped_ptr<SpdyFrame> request_frame(
       ConstructSpdyWebSocketHandshakeRequestFrame(
           kHandshakeRequestForSpdy,
           arraysize(kHandshakeRequestForSpdy) / 2,
           kStreamId,
           MEDIUM));
-  scoped_ptr<spdy::SpdyFrame> response_frame(
+  scoped_ptr<SpdyFrame> response_frame(
       ConstructSpdyWebSocketHandshakeResponseFrame(
           kHandshakeResponseForSpdy,
           arraysize(kHandshakeResponseForSpdy) / 2,
           kStreamId,
           MEDIUM));
-  scoped_ptr<spdy::SpdyFrame> data_hello_frame(
+  scoped_ptr<SpdyFrame> data_hello_frame(
       ConstructSpdyWebSocketDataFrame(
           kDataHello,
           kDataHelloLength,
           kStreamId,
           false));
-  scoped_ptr<spdy::SpdyFrame> data_world_frame(
+  scoped_ptr<SpdyFrame> data_world_frame(
       ConstructSpdyWebSocketDataFrame(
           kDataWorld,
           kDataWorldLength,

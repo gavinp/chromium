@@ -12,7 +12,6 @@
 #include "content/browser/renderer_host/media/audio_renderer_host.h"
 #include "content/browser/renderer_host/media/mock_media_observer.h"
 #include "content/common/media/audio_messages.h"
-#include "content/test/mock_resource_context.h"
 #include "ipc/ipc_message_utils.h"
 #include "media/audio/audio_manager.h"
 #include "media/audio/fake_audio_output_stream.h"
@@ -44,9 +43,9 @@ static bool IsRunningHeadless() {
 class MockAudioRendererHost : public AudioRendererHost {
  public:
   explicit MockAudioRendererHost(
-      content::ResourceContext* resource_context,
-      AudioManager* audio_manager)
-      : AudioRendererHost(resource_context, audio_manager),
+      AudioManager* audio_manager,
+      content::MediaObserver* media_observer)
+      : AudioRendererHost(audio_manager, media_observer),
         shared_memory_length_(0) {
   }
 
@@ -164,8 +163,7 @@ class AudioRendererHostTest : public testing::Test {
                                            message_loop_.get()));
     audio_manager_.reset(AudioManager::Create());
     observer_.reset(new MockMediaObserver());
-    resource_context_.set_media_observer(observer_.get());
-    host_ = new MockAudioRendererHost(&resource_context_, audio_manager_.get());
+    host_ = new MockAudioRendererHost(audio_manager_.get(), observer_.get());
 
     // Simulate IPC channel connected.
     host_->OnChannelConnected(base::GetCurrentProcId());
@@ -197,15 +195,15 @@ class AudioRendererHostTest : public testing::Test {
     EXPECT_CALL(*host_, OnStreamCreated(kStreamId, _))
         .WillOnce(QuitMessageLoop(message_loop_.get()));
 
-    AudioParameters params;
+    AudioParameters::Format format;
     if (mock_stream_)
-      params.format = AudioParameters::AUDIO_MOCK;
+      format = AudioParameters::AUDIO_MOCK;
     else
-      params.format = AudioParameters::AUDIO_PCM_LINEAR;
-    params.channels = 2;
-    params.sample_rate = AudioParameters::kAudioCDSampleRate;
-    params.bits_per_sample = 16;
-    params.samples_per_packet = AudioParameters::kAudioCDSampleRate / 10;
+      format = AudioParameters::AUDIO_PCM_LINEAR;
+
+    AudioParameters params(format, CHANNEL_LAYOUT_STEREO,
+                           AudioParameters::kAudioCDSampleRate, 16,
+                           AudioParameters::kAudioCDSampleRate / 10);
 
     // Send a create stream message to the audio output stream and wait until
     // we receive the created message.
@@ -313,7 +311,6 @@ class AudioRendererHostTest : public testing::Test {
   scoped_ptr<BrowserThreadImpl> io_thread_;
   scoped_ptr<BrowserThreadImpl> ui_thread_;
   scoped_ptr<AudioManager> audio_manager_;
-  content::MockResourceContext resource_context_;
 
   DISALLOW_COPY_AND_ASSIGN(AudioRendererHostTest);
 };

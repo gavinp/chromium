@@ -163,6 +163,8 @@ PrintMsg_Print_Params GetCssPrintParams(
       page_params.margin_left,
       dpi, printing::kPixelsPerInch);
 
+  WebSize original_page_size_in_pixels = page_size_in_pixels;
+
   if (frame) {
     frame->pageSizeAndMarginsInPixels(page_index,
                                       page_size_in_pixels,
@@ -190,11 +192,18 @@ PrintMsg_Print_Params GetCssPrintParams(
       static_cast<int>(ConvertUnit(new_content_height,
           printing::kPixelsPerInch, dpi)));
 
-  page_css_params.page_size = gfx::Size(
-      static_cast<int>(ConvertUnit(page_size_in_pixels.width,
-          printing::kPixelsPerInch, dpi)),
-      static_cast<int>(ConvertUnit(page_size_in_pixels.height,
-          printing::kPixelsPerInch, dpi)));
+  if (original_page_size_in_pixels != page_size_in_pixels) {
+    page_css_params.page_size = gfx::Size(
+        static_cast<int>(ConvertUnit(page_size_in_pixels.width,
+            printing::kPixelsPerInch, dpi)),
+        static_cast<int>(ConvertUnit(page_size_in_pixels.height,
+            printing::kPixelsPerInch, dpi)));
+  } else {
+    // Printing frame doesn't have any page size css. Pixels to dpi conversion
+    // causes rounding off errors. Therefore use the default page size values
+    // directly.
+    page_css_params.page_size = page_params.page_size;
+  }
 
   page_css_params.margin_top =
       static_cast<int>(ConvertUnit(margin_top_in_pixels,
@@ -224,11 +233,9 @@ double FitPrintParamsToPage(const PrintMsg_Print_Params& page_params,
   if (default_page_size_width < css_page_size_width ||
       default_page_size_height < css_page_size_height) {
     double ratio_width =
-        static_cast<double>(page_params.printable_area.width()) /
-            css_page_size_width;
+        static_cast<double>(default_page_size_width) / css_page_size_width;
     double ratio_height =
-        static_cast<double>(page_params.printable_area.height()) /
-            css_page_size_height;
+        static_cast<double>(default_page_size_height) / css_page_size_height;
     scale_factor = ratio_width < ratio_height ? ratio_width : ratio_height;
     content_width *= scale_factor;
     content_height *= scale_factor;
@@ -657,10 +664,18 @@ PrintWebViewHelper::PrintWebViewHelper(content::RenderView* render_view)
       ignore_css_margins_(false),
       fit_to_page_(true),
       user_cancelled_scripted_print_count_(0),
+      is_scripted_printing_blocked_(false),
       notify_browser_of_print_failure_(true) {
 }
 
 PrintWebViewHelper::~PrintWebViewHelper() {}
+
+bool PrintWebViewHelper::IsScriptInitiatedPrintAllowed(
+    WebKit::WebFrame* frame) {
+  if (is_scripted_printing_blocked_)
+    return false;
+  return !IsScriptInitiatedPrintTooFrequent(frame);
+}
 
 // Prints |frame| which called window.print().
 void PrintWebViewHelper::PrintPage(WebKit::WebFrame* frame) {
@@ -672,7 +687,7 @@ void PrintWebViewHelper::PrintPage(WebKit::WebFrame* frame) {
     return;
   }
 
-  if (IsScriptInitiatedPrintTooFrequent(frame))
+  if (!IsScriptInitiatedPrintAllowed(frame))
     return;
   IncrementScriptedPrintCount();
 
@@ -699,6 +714,8 @@ bool PrintWebViewHelper::OnMessageReceived(const IPC::Message& message) {
                         ResetScriptedPrintCount)
     IPC_MESSAGE_HANDLER(PrintMsg_PreviewPrintingRequestCancelled,
                         DisplayPrintJobError)
+    IPC_MESSAGE_HANDLER(PrintMsg_SetScriptedPrintingBlocked,
+                        SetScriptedPrintBlocked)
     IPC_MESSAGE_UNHANDLED(handled = false)
     IPC_END_MESSAGE_MAP()
   return handled;
@@ -974,6 +991,10 @@ void PrintWebViewHelper::OnPrintingDone(bool success) {
   if (!success)
     LOG(ERROR) << "Failure in OnPrintingDone";
   DidFinishPrinting(success ? OK : FAIL_PRINT);
+}
+
+void PrintWebViewHelper::SetScriptedPrintBlocked(bool blocked) {
+  is_scripted_printing_blocked_ = blocked;
 }
 
 void PrintWebViewHelper::OnPrintNodeUnderContextMenu() {

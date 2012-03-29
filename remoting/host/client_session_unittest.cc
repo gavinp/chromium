@@ -38,9 +38,10 @@ class ClientSessionTest : public testing::Test {
     EXPECT_CALL(*session, jid()).WillRepeatedly(ReturnRef(client_jid_));
     EXPECT_CALL(*session, SetStateChangeCallback(_));
 
+    scoped_ptr<protocol::ConnectionToClient> connection(
+        new protocol::ConnectionToClient(session));
     client_session_.reset(new ClientSession(
-        &session_event_handler_,
-        new protocol::ConnectionToClient(session),
+        &session_event_handler_, connection.Pass(),
         &host_event_stub_, &capturer_));
   }
 
@@ -88,7 +89,8 @@ TEST_F(ClientSessionTest, ClipboardStubFilter) {
   // This event should not get through to the clipboard stub,
   // because the client isn't authenticated yet.
   client_session_->InjectClipboardEvent(clipboard_event1);
-  client_session_->OnConnectionOpened(client_session_->connection());
+  client_session_->OnConnectionAuthenticated(client_session_->connection());
+  client_session_->OnConnectionChannelsConnected(client_session_->connection());
   // This event should get through to the clipboard stub.
   client_session_->InjectClipboardEvent(clipboard_event2);
   client_session_->Disconnect();
@@ -140,6 +142,7 @@ TEST_F(ClientSessionTest, InputStubFilter) {
 
   InSequence s;
   EXPECT_CALL(session_event_handler_, OnSessionAuthenticated(_));
+  EXPECT_CALL(session_event_handler_, OnSessionChannelsConnected(_));
   EXPECT_CALL(host_event_stub_, InjectKeyEvent(EqualsKeyEvent(2, true)));
   EXPECT_CALL(host_event_stub_, InjectKeyEvent(EqualsKeyEvent(2, false)));
   EXPECT_CALL(host_event_stub_, InjectMouseEvent(EqualsMouseEvent(200, 201)));
@@ -148,7 +151,8 @@ TEST_F(ClientSessionTest, InputStubFilter) {
   // because the client isn't authenticated yet.
   client_session_->InjectKeyEvent(key_event1);
   client_session_->InjectMouseEvent(mouse_event1);
-  client_session_->OnConnectionOpened(client_session_->connection());
+  client_session_->OnConnectionAuthenticated(client_session_->connection());
+  client_session_->OnConnectionChannelsConnected(client_session_->connection());
   // These events should get through to the input stub.
   client_session_->InjectKeyEvent(key_event2_down);
   client_session_->InjectKeyEvent(key_event2_up);
@@ -174,10 +178,13 @@ TEST_F(ClientSessionTest, LocalInputTest) {
   InSequence s;
   EXPECT_CALL(session_event_handler_,
               OnSessionAuthenticated(client_session_.get()));
+  EXPECT_CALL(session_event_handler_,
+              OnSessionChannelsConnected(client_session_.get()));
   EXPECT_CALL(host_event_stub_, InjectMouseEvent(EqualsMouseEvent(100, 101)));
   EXPECT_CALL(host_event_stub_, InjectMouseEvent(EqualsMouseEvent(200, 201)));
 
-  client_session_->OnConnectionOpened(client_session_->connection());
+  client_session_->OnConnectionAuthenticated(client_session_->connection());
+  client_session_->OnConnectionChannelsConnected(client_session_->connection());
   // This event should get through to the input stub.
   client_session_->InjectMouseEvent(mouse_event1);
   // This one should too because the local event echoes the remote one.
@@ -225,7 +232,10 @@ TEST_F(ClientSessionTest, ClampMouseEvents) {
 
   EXPECT_CALL(session_event_handler_,
               OnSessionAuthenticated(client_session_.get()));
-  client_session_->OnConnectionOpened(client_session_->connection());
+  EXPECT_CALL(session_event_handler_,
+              OnSessionChannelsConnected(client_session_.get()));
+  client_session_->OnConnectionAuthenticated(client_session_->connection());
+  client_session_->OnConnectionChannelsConnected(client_session_->connection());
 
   int input_x[3] = { -999, 100, 999 };
   int expected_x[3] = { 0, 100, 199 };

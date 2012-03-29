@@ -251,11 +251,6 @@ class NetInternalsMessageHandler
   // be accessed on the UI thread.
   BooleanPrefMember http_throttling_enabled_;
 
-  // The pref member that determines whether experimentation on HTTP throttling
-  // is allowed (this becomes false once the user explicitly sets the
-  // feature to on or off).
-  BooleanPrefMember http_throttling_may_experiment_;
-
   // This is the "real" message handler, which lives on the IO thread.
   scoped_refptr<IOThreadImpl> proxy_;
 
@@ -429,8 +424,6 @@ void NetInternalsMessageHandler::RegisterMessages() {
   PrefService* pref_service = profile->GetPrefs();
   http_throttling_enabled_.Init(
       prefs::kHttpThrottlingEnabled, pref_service, this);
-  http_throttling_may_experiment_.Init(
-      prefs::kHttpThrottlingMayExperiment, pref_service, NULL);
 
   proxy_ = new IOThreadImpl(this->AsWeakPtr(), g_browser_process->io_thread(),
                             profile->GetRequestContext());
@@ -615,14 +608,6 @@ void NetInternalsMessageHandler::OnEnableHttpThrottling(const ListValue* list) {
   }
 
   http_throttling_enabled_.SetValue(enable);
-
-  // We never receive OnEnableHttpThrottling unless the user has modified
-  // the value of the checkbox on the about:net-internals page.  Once the
-  // user does that, we no longer change its value automatically (e.g.
-  // by changing the default or running an experiment).
-  if (http_throttling_may_experiment_.GetValue()) {
-    http_throttling_may_experiment_.SetValue(false);
-  }
 }
 
 void NetInternalsMessageHandler::OnClearBrowserCache(const ListValue* list) {
@@ -881,6 +866,10 @@ void NetInternalsMessageHandler::IOThreadImpl::OnGetHostResolverInfo(
   }
 
   DictionaryValue* dict = new DictionaryValue();
+
+  base::Value* dns_config = context->host_resolver()->GetDnsConfigAsValue();
+  if (dns_config)
+    dict->Set("dns_config", dns_config);
 
   dict->SetInteger(
       "default_address_family",
@@ -1284,9 +1273,12 @@ void NetInternalsMessageHandler::IOThreadImpl::OnGetHttpPipeliningStatus(
 
   net::HttpNetworkSession* http_network_session =
       GetHttpNetworkSession(context_getter_->GetURLRequestContext());
-  Value* pipelined_conneciton_info =
-      http_network_session->http_stream_factory()->PipelineInfoToValue();
-  status_dict->Set("pipelined_connection_info", pipelined_conneciton_info);
+  Value* pipelined_connection_info = NULL;
+  if (http_network_session) {
+    pipelined_connection_info =
+        http_network_session->http_stream_factory()->PipelineInfoToValue();
+  }
+  status_dict->Set("pipelined_connection_info", pipelined_connection_info);
 
   const net::HttpServerProperties& http_server_properties =
       *context_getter_->GetURLRequestContext()->http_server_properties();

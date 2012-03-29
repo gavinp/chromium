@@ -5,6 +5,7 @@
 #include "content/renderer/media/capture_video_decoder.h"
 
 #include "base/bind.h"
+#include "base/callback_helpers.h"
 #include "content/renderer/media/video_capture_impl_manager.h"
 #include "media/base/filter_host.h"
 #include "media/base/limits.h"
@@ -164,7 +165,7 @@ void CaptureVideoDecoder::PauseOnDecoderThread(const base::Closure& callback) {
   DVLOG(1) << "PauseOnDecoderThread";
   DCHECK(message_loop_proxy_->BelongsToCurrentThread());
   state_ = kPaused;
-  media::VideoDecoder::Pause(callback);
+  callback.Run();
 }
 
 void CaptureVideoDecoder::FlushOnDecoderThread(const base::Closure& callback) {
@@ -202,7 +203,7 @@ void CaptureVideoDecoder::OnStoppedOnDecoderThread(
   DVLOG(1) << "OnStoppedOnDecoderThread";
   DCHECK(message_loop_proxy_->BelongsToCurrentThread());
   if (!pending_stop_cb_.is_null())
-    media::ResetAndRunCB(&pending_stop_cb_);
+    base::ResetAndReturn(&pending_stop_cb_).Run();
   vc_manager_->RemoveDevice(video_stream_id_, this);
 }
 
@@ -213,7 +214,6 @@ void CaptureVideoDecoder::OnDeviceInfoReceivedOnDecoderThread(
   if (device_info.width != natural_size_.width() ||
       device_info.height != natural_size_.height()) {
     natural_size_.SetSize(device_info.width, device_info.height);
-    host()->SetNaturalVideoSize(natural_size_);
   }
 }
 
@@ -238,7 +238,6 @@ void CaptureVideoDecoder::OnBufferReadyOnDecoderThread(
   if (buf->width != natural_size_.width() ||
       buf->height != natural_size_.height()) {
     natural_size_.SetSize(buf->width, buf->height);
-    host()->SetNaturalVideoSize(natural_size_);
   }
 
   // Need to rebase timestamp with zero as starting point.

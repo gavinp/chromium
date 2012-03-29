@@ -18,14 +18,13 @@ class EnvObserver;
 class MonitorManager;
 class Window;
 
-#if !defined(OS_MACOSX)
-class Dispatcher : public MessageLoop::Dispatcher {
- public:
-  virtual ~Dispatcher() {}
-};
+namespace internal {
+class MonitorChangeObserverX11;
+}
 
+#if !defined(OS_MACOSX)
 // Creates a platform-specific native event dispatcher.
-Dispatcher* CreateDispatcher();
+MessageLoop::Dispatcher* CreateDispatcher();
 #endif
 
 // A singleton object that tracks general state within Aura.
@@ -67,18 +66,24 @@ class AURA_EXPORT Env {
  private:
   friend class Window;
 
+  void Init();
+
   // Called by the Window when it is initialized. Notifies observers.
   void NotifyWindowInitialized(Window* window);
 
   ObserverList<EnvObserver> observers_;
 #if !defined(OS_MACOSX)
-  scoped_ptr<Dispatcher> dispatcher_;
+  scoped_ptr<MessageLoop::Dispatcher> dispatcher_;
 #endif
 
   static Env* instance_;
   int mouse_button_flags_;
   client::StackingClient* stacking_client_;
   scoped_ptr<MonitorManager> monitor_manager_;
+
+#if defined(USE_X11)
+  scoped_ptr<internal::MonitorChangeObserverX11> monitor_change_observer_;
+#endif
 
   DISALLOW_COPY_AND_ASSIGN(Env);
 };

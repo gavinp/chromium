@@ -8,6 +8,7 @@
 
 #include "ash/launcher/launcher_types.h"
 #include "base/basictypes.h"
+#include "chrome/browser/ui/views/ash/launcher/shelf_auto_hide_menu.h"
 #include "ui/base/models/simple_menu_model.h"
 
 namespace gfx {
@@ -25,11 +26,14 @@ class ChromeLauncherDelegate;
 class LauncherContextMenu : public ui::SimpleMenuModel,
                             public ui::SimpleMenuModel::Delegate {
  public:
-  LauncherContextMenu(ChromeLauncherDelegate* delegate, ash::LauncherID id);
+  // |item| is NULL if the context menu is for the launcher (the user right
+  // |clicked on an area with no icons).
+  LauncherContextMenu(ChromeLauncherDelegate* delegate,
+                      const ash::LauncherItem* item);
   virtual ~LauncherContextMenu();
 
   // ID of the item we're showing the context menu for.
-  ash::LauncherID id() const { return id_; }
+  ash::LauncherID id() const { return item_.id; }
 
   // ui::SimpleMenuModel::Delegate overrides:
   virtual bool IsCommandIdChecked(int command_id) const OVERRIDE;
@@ -42,12 +46,20 @@ class LauncherContextMenu : public ui::SimpleMenuModel,
  private:
   enum MenuItem {
     MENU_OPEN,
+    MENU_CLOSE,
     MENU_PIN,
-    MENU_CLOSE
+    LAUNCH_TYPE_REGULAR_TAB,
+    LAUNCH_TYPE_WINDOW,
+    MENU_AUTO_HIDE,
   };
 
+  // Does |item_| represent a valid item? See description of constructor for
+  // details on why it may not be valid.
+  bool is_valid_item() const { return item_.id != 0; }
+
   ChromeLauncherDelegate* delegate_;
-  const ash::LauncherID id_;
+  ash::LauncherItem item_;
+  ShelfAutoHideMenu shelf_menu_;
 
   DISALLOW_COPY_AND_ASSIGN(LauncherContextMenu);
 };

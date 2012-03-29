@@ -39,9 +39,9 @@ bool IsActiveWindow(aura::Window* window) {
   DCHECK(window);
   if (!window->GetRootWindow())
     return false;
-
-  return aura::client::GetActivationClient(window->GetRootWindow())->
-      GetActiveWindow() == window;
+  aura::client::ActivationClient* client =
+      aura::client::GetActivationClient(window->GetRootWindow());
+  return client && client->GetActiveWindow() == window;
 }
 
 aura::Window* GetActiveWindow() {
@@ -51,6 +51,15 @@ aura::Window* GetActiveWindow() {
 
 aura::Window* GetActivatableWindow(aura::Window* window) {
   return internal::ActivationController::GetActivatableWindow(window, NULL);
+}
+
+bool CanActivateWindow(aura::Window* window) {
+  DCHECK(window);
+  if (!window->GetRootWindow())
+    return false;
+  aura::client::ActivationClient* client =
+      aura::client::GetActivationClient(window->GetRootWindow());
+  return client && client->CanActivateWindow(window);
 }
 
 bool IsWindowNormal(aura::Window* window) {
@@ -79,18 +88,12 @@ void MaximizeWindow(aura::Window* window) {
   window->SetProperty(aura::client::kShowStateKey, ui::SHOW_STATE_MAXIMIZED);
 }
 
-void RestoreWindow(aura::Window* window) {
-  window->SetProperty(aura::client::kShowStateKey, ui::SHOW_STATE_NORMAL);
+void MinimizeWindow(aura::Window* window) {
+  window->SetProperty(aura::client::kShowStateKey, ui::SHOW_STATE_MINIMIZED);
 }
 
-bool HasFullscreenWindow(const WindowSet& windows) {
-  for (WindowSet::const_iterator i = windows.begin(); i != windows.end(); ++i) {
-    if ((*i)->GetProperty(aura::client::kShowStateKey)
-        == ui::SHOW_STATE_FULLSCREEN) {
-      return true;
-    }
-  }
-  return false;
+void RestoreWindow(aura::Window* window) {
+  window->SetProperty(aura::client::kShowStateKey, ui::SHOW_STATE_NORMAL);
 }
 
 void SetOpenWindowSplit(aura::Window* window, bool value) {

@@ -8,27 +8,42 @@
 #include "base/i18n/string_search.h"
 #include "base/string_util.h"
 #include "base/utf_string_conversions.h"
-#include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/browser_list.h"
-#include "chrome/browser/ui/views/ash/app_list/browser_command_item.h"
 #include "chrome/browser/ui/views/ash/app_list/extension_app_item.h"
+#include "chrome/browser/ui/views/ash/launcher/chrome_launcher_delegate.h"
+#include "chrome/common/extensions/extension.h"
 #include "chrome/common/chrome_notification_types.h"
 #include "content/public/browser/notification_service.h"
+#include "grit/chromium_strings.h"
 #include "grit/generated_resources.h"
 #include "grit/theme_resources.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/l10n/l10n_util_collator.h"
+#include "ui/base/resource/resource_bundle.h"
 
 namespace {
 
-// Data struct used to define BrowserCommand.
-struct BrowserCommandData {
-  int command_id;
-  int title_id;
-  int icon_id;
+class ChromeAppItem : public ChromeAppListItem {
+ public:
+  ChromeAppItem() : ChromeAppListItem(TYPE_OTHER) {
+    SetTitle(l10n_util::GetStringUTF8(IDS_SHORT_PRODUCT_NAME));
+    ResourceBundle& rb = ResourceBundle::GetSharedInstance();
+    SetIcon(*rb.GetImageNamed(IDR_PRODUCT_LOGO_128).ToSkBitmap());
+  }
+
+ private:
+  // Overridden from ChromeAppListItem:
+  virtual void Activate(int event_flags) OVERRIDE {
+    ChromeLauncherDelegate* delegate = ChromeLauncherDelegate::instance();
+    if (event_flags & ui::EF_CONTROL_DOWN)
+      delegate->CreateNewWindow();
+    else
+      delegate->CreateNewTab();
+  }
+
+  DISALLOW_COPY_AND_ASSIGN(ChromeAppItem);
 };
 
 // ModelItemSortData provides a string key to sort with
@@ -60,7 +75,8 @@ bool MatchesQuery(const string16& query, const string16& str) {
 
 AppListModelBuilder::AppListModelBuilder(Profile* profile)
     : profile_(profile),
-      model_(NULL) {
+      model_(NULL),
+      special_items_count_(0) {
   registrar_.Add(this, chrome::NOTIFICATION_EXTENSION_LOADED,
       content::Source<Profile>(profile_));
   registrar_.Add(this, chrome::NOTIFICATION_EXTENSION_UNLOADED,
@@ -78,11 +94,12 @@ void AppListModelBuilder::SetModel(ash::AppListModel* model) {
 
 void AppListModelBuilder::Build(const std::string& query) {
   DCHECK(model_ && model_->item_count() == 0);
+  CreateSpecialItems();
+
   query_ = base::i18n::ToLower(UTF8ToUTF16(query));
 
   Items items;
   GetExtensionApps(query_, &items);
-  GetBrowserCommands(query_, &items);
 
   SortAndPopulateModel(items);
   HighlightApp();
@@ -116,7 +133,7 @@ void AppListModelBuilder::InsertItemByTitle(ash::AppListItemModel* item) {
 
   l10n_util::StringComparator<string16> c(collator.get());
   ModelItemSortData data(item);
-  for (int i = 0; i < model_->item_count(); ++i) {
+  for (int i = special_items_count_; i < model_->item_count(); ++i) {
     ModelItemSortData current(model_->GetItem(i));
     if (!c(current.key, data.key)) {
       model_->AddItemAt(i, item);
@@ -144,35 +161,16 @@ void AppListModelBuilder::GetExtensionApps(const string16& query,
   }
 }
 
-void AppListModelBuilder::GetBrowserCommands(const string16& query,
-                                             Items* items) {
-  Browser* browser = BrowserList::GetLastActiveWithProfile(profile_);
-  if (!browser)
-    return;
+void AppListModelBuilder::CreateSpecialItems() {
+  DCHECK(model_ && model_->item_count() == 0);
 
-  const BrowserCommandData kBrowserCommands[] = {
-    {
-      IDC_OPTIONS,
-      IDS_APP_LIST_SETTINGS,
-      IDR_APP_LIST_SETTINGS,
-
-    },
-  };
-
-  for (size_t i = 0; i < arraysize(kBrowserCommands); ++i) {
-    string16 title = l10n_util::GetStringUTF16(kBrowserCommands[i].title_id);
-    if (MatchesQuery(query, title)) {
-      items->push_back(new BrowserCommandItem(browser,
-                                              kBrowserCommands[i].command_id,
-                                              kBrowserCommands[i].title_id,
-                                              kBrowserCommands[i].icon_id));
-    }
-  }
+  model_->AddItem(new ChromeAppItem());
+  special_items_count_ = model_->item_count();
 }
 
 int AppListModelBuilder::FindApp(const std::string& app_id) {
   DCHECK(model_);
-  for (int i = 0; i < model_->item_count(); ++i) {
+  for (int i = special_items_count_; i < model_->item_count(); ++i) {
     ChromeAppListItem* item =
         static_cast<ChromeAppListItem*>(model_->GetItem(i));
     if (item->type() != ChromeAppListItem::TYPE_APP)
@@ -219,7 +217,7 @@ void AppListModelBuilder::Observe(int type,
     }
     case chrome::NOTIFICATION_EXTENSION_UNLOADED: {
       const Extension* extension =
-          content::Details<const Extension>(details).ptr();
+          content::Details<UnloadedExtensionInfo>(details)->extension;
       int index = FindApp(extension->id());
       if (index >= 0)
         model_->DeleteItemAt(index);

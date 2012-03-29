@@ -7,6 +7,8 @@
     'chromium_code': 1,
     # Override to dynamically link the PulseAudio library.
     'use_pulseaudio%': 0,
+    # Override to dynamically link the cras (ChromeOS audio) library.
+    'use_cras%': 0,
   },
   'targets': [
     {
@@ -33,6 +35,8 @@
         'audio/audio_io.h',
         'audio/audio_input_controller.cc',
         'audio/audio_input_controller.h',
+        'audio/audio_input_stream_impl.cc',
+        'audio/audio_input_stream_impl.h',
         'audio/audio_device_name.cc',
         'audio/audio_device_name.h',
         'audio/audio_manager.cc',
@@ -53,6 +57,10 @@
         'audio/android/audio_manager_android.h',
         'audio/android/audio_track_output_android.cc',
         'audio/android/audio_track_output_android.h',
+        'audio/cross_process_notification.cc',
+        'audio/cross_process_notification.h',
+        'audio/cross_process_notification_win.cc',
+        'audio/cross_process_notification_posix.cc',
         'audio/fake_audio_input_stream.cc',
         'audio/fake_audio_input_stream.h',
         'audio/fake_audio_output_stream.cc',
@@ -67,6 +75,8 @@
         'audio/linux/alsa_util.h',
         'audio/linux/alsa_wrapper.cc',
         'audio/linux/alsa_wrapper.h',
+        'audio/linux/cras_output.cc',
+        'audio/linux/cras_output.h',
         'audio/openbsd/audio_manager_openbsd.cc',
         'audio/openbsd/audio_manager_openbsd.h',
         'audio/mac/audio_input_mac.cc',
@@ -337,6 +347,37 @@
             'audio/openbsd/audio_manager_openbsd.h',
           ],
         }],
+        ['OS=="linux"', {
+          'variables': {
+            'conditions': [
+              ['sysroot!=""', {
+                'pkg-config': '../build/linux/pkg-config-wrapper "<(sysroot)" "<(target_arch)"',
+              }, {
+                'pkg-config': 'pkg-config'
+              }],
+            ],
+          },
+          'conditions': [
+            ['use_cras == 1', {
+              'cflags': [
+                '<!@(<(pkg-config) --cflags libcras)',
+              ],
+              'link_settings': {
+                'libraries': [
+                  '<!@(<(pkg-config) --libs libcras)',
+                ],
+              },
+              'defines': [
+                'USE_CRAS',
+              ],
+            }, {  # else: use_cras == 0
+              'sources!': [
+                'audio/linux/cras_output.cc',
+                'audio/linux/cras_output.h',
+              ],
+            }],
+          ],
+        }],
         ['os_posix == 1', {
           'conditions': [
             ['use_pulseaudio == 1', {
@@ -582,6 +623,7 @@
         'audio/audio_output_proxy_unittest.cc',
         'audio/audio_parameters_unittest.cc',
         'audio/audio_util_unittest.cc',
+        'audio/cross_process_notification_unittest.cc',
         'audio/linux/alsa_output_unittest.cc',
         'audio/mac/audio_low_latency_input_mac_unittest.cc',
         'audio/mac/audio_output_mac_unittest.cc',
@@ -589,6 +631,7 @@
         'audio/win/audio_low_latency_input_win_unittest.cc',
         'audio/win/audio_low_latency_output_win_unittest.cc',
         'audio/win/audio_output_win_unittest.cc',
+        'base/buffers_unittest.cc',
         'base/clock_unittest.cc',
         'base/composite_filter_unittest.cc',
         'base/data_buffer_unittest.cc',
@@ -658,6 +701,18 @@
             'filters/ffmpeg_video_decoder_unittest.cc',
             'filters/pipeline_integration_test.cc',
             'filters/pipeline_integration_test_base.cc',
+          ],
+        }],
+        ['OS == "linux"', {
+          'conditions': [
+            ['use_cras == 1', {
+              'sources': [
+                'audio/linux/cras_output_unittest.cc',
+              ],
+              'defines': [
+                'USE_CRAS',
+              ],
+            }],
           ],
         }],
         [ 'target_arch=="ia32" or target_arch=="x64"', {

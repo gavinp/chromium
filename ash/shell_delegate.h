@@ -30,6 +30,7 @@ struct LauncherItem;
 class ScreenshotDelegate;
 class SystemTray;
 class SystemTrayDelegate;
+class UserWallpaperDelegate;
 
 // Delegate of the Shell.
 class ASH_EXPORT ShellDelegate {
@@ -49,13 +50,23 @@ class ASH_EXPORT ShellDelegate {
   // Invoked to create a new status area. Can return NULL.
   virtual views::Widget* CreateStatusArea() = 0;
 
-#if defined(OS_CHROMEOS)
-  // Invoked when a user uses Ctrl-Shift-L to lock the screen.
+  // Returns true if user has logged in.
+  virtual bool IsUserLoggedIn() = 0;
+
+  // Invoked when a user locks the screen.
   virtual void LockScreen() = 0;
-#endif
+
+  // Unlock the screen. Currently used only for tests.
+  virtual void UnlockScreen() = 0;
+
+  // Returns true if the screen is currently locked.
+  virtual bool IsScreenLocked() const = 0;
 
   // Invoked when a user uses Ctrl-Shift-Q to close chrome.
   virtual void Exit() = 0;
+
+  // Invoked when a user uses Ctrl-N or Ctrl-Shift-N to open a new window.
+  virtual void NewWindow(bool incognito) = 0;
 
   // Invoked to create an AppListViewDelegate. Shell takes the ownership of
   // the created delegate.
@@ -80,6 +91,9 @@ class ASH_EXPORT ShellDelegate {
 
   // Creates a system-tray delegate. Shell takes ownership of the delegate.
   virtual SystemTrayDelegate* CreateSystemTrayDelegate(SystemTray* tray) = 0;
+
+  // Creates a user wallpaper delegate. Shell takes ownership of the delegate.
+  virtual UserWallpaperDelegate* CreateUserWallpaperDelegate() = 0;
 };
 
 }  // namespace ash

@@ -169,6 +169,13 @@ void PrerenderHistograms::RecordUsedPrerender(Origin origin) const {
   }
 }
 
+void PrerenderHistograms::RecordTimeSinceLastRecentVisit(
+    base::TimeDelta delta) const {
+  PREFIXED_HISTOGRAM(
+      "TimeSinceLastRecentVisit",
+      UMA_HISTOGRAM_TIMES(name, delta));
+}
+
 base::TimeTicks PrerenderHistograms::GetCurrentTimeTicks() const {
   return base::TimeTicks::Now();
 }
@@ -276,7 +283,7 @@ void PrerenderHistograms::RecordPercentLoadDoneAtSwapin(double fraction)
     return;
   PREFIXED_HISTOGRAM(
       base::FieldTrial::MakeName("PercentLoadDoneAtSwapin", "Prerender"),
-      HISTOGRAM_PERCENTAGE(name, percentage));
+      UMA_HISTOGRAM_PERCENTAGE(name, percentage));
 }
 
 base::TimeDelta PrerenderHistograms::GetTimeSinceLastPrerender() const {

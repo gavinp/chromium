@@ -37,33 +37,19 @@ class AudioInputDevice::AudioThreadCallback
   DISALLOW_COPY_AND_ASSIGN(AudioThreadCallback);
 };
 
-AudioInputDevice::AudioInputDevice(size_t buffer_size,
-                                   int channels,
-                                   double sample_rate,
+AudioInputDevice::AudioInputDevice(const AudioParameters& params,
                                    CaptureCallback* callback,
                                    CaptureEventHandler* event_handler)
     : ScopedLoopObserver(ChildProcess::current()->io_message_loop()),
+      audio_parameters_(params),
       callback_(callback),
       event_handler_(event_handler),
       volume_(1.0),
       stream_id_(0),
       session_id_(0),
-      pending_device_ready_(false) {
+      pending_device_ready_(false),
+      agc_is_enabled_(false) {
   filter_ = RenderThreadImpl::current()->audio_input_message_filter();
-#if defined(OS_MACOSX)
-  DVLOG(1) << "Using AUDIO_PCM_LOW_LATENCY as input mode on Mac OS X.";
-  audio_parameters_.format = AudioParameters::AUDIO_PCM_LOW_LATENCY;
-#elif defined(OS_WIN)
-  DVLOG(1) << "Using AUDIO_PCM_LOW_LATENCY as input mode on Windows.";
-  audio_parameters_.format = AudioParameters::AUDIO_PCM_LOW_LATENCY;
-#else
-  // TODO(henrika): add support for AUDIO_PCM_LOW_LATENCY on Linux as well.
-  audio_parameters_.format = AudioParameters::AUDIO_PCM_LINEAR;
-#endif
-  audio_parameters_.channels = channels;
-  audio_parameters_.sample_rate = static_cast<int>(sample_rate);
-  audio_parameters_.bits_per_sample = 16;
-  audio_parameters_.samples_per_packet = buffer_size;
 }
 
 AudioInputDevice::~AudioInputDevice() {
@@ -97,13 +83,25 @@ void AudioInputDevice::Stop() {
 }
 
 bool AudioInputDevice::SetVolume(double volume) {
-  NOTIMPLEMENTED();
-  return false;
+  if (volume < 0 || volume > 1.0)
+    return false;
+
+  message_loop()->PostTask(FROM_HERE,
+      base::Bind(&AudioInputDevice::SetVolumeOnIOThread, this, volume));
+
+  return true;
 }
 
 bool AudioInputDevice::GetVolume(double* volume) {
-  NOTIMPLEMENTED();
+  NOTREACHED();
   return false;
+}
+
+void AudioInputDevice::SetAutomaticGainControl(bool enabled) {
+  DVLOG(1) << "SetAutomaticGainControl(enabled=" << enabled << ")";
+  message_loop()->PostTask(FROM_HERE,
+      base::Bind(&AudioInputDevice::SetAutomaticGainControlOnIOThread,
+          this, enabled));
 }
 
 void AudioInputDevice::InitializeOnIOThread() {
@@ -119,7 +117,8 @@ void AudioInputDevice::InitializeOnIOThread() {
   // and create the stream when getting a OnDeviceReady() callback.
   if (!session_id_) {
     Send(new AudioInputHostMsg_CreateStream(
-        stream_id_, audio_parameters_, AudioManagerBase::kDefaultDeviceId));
+        stream_id_, audio_parameters_, AudioManagerBase::kDefaultDeviceId,
+        agc_is_enabled_));
   } else {
     Send(new AudioInputHostMsg_StartDevice(stream_id_, session_id_));
     pending_device_ready_ = true;
@@ -148,6 +147,7 @@ void AudioInputDevice::ShutDownOnIOThread() {
     stream_id_ = 0;
     session_id_ = 0;
     pending_device_ready_ = false;
+    agc_is_enabled_ = false;
   }
 
   // We can run into an issue where ShutDownOnIOThread is called right after
@@ -166,6 +166,18 @@ void AudioInputDevice::SetVolumeOnIOThread(double volume) {
   DCHECK(message_loop()->BelongsToCurrentThread());
   if (stream_id_)
     Send(new AudioInputHostMsg_SetVolume(stream_id_, volume));
+}
+
+void AudioInputDevice::SetAutomaticGainControlOnIOThread(bool enabled) {
+  DCHECK(message_loop()->BelongsToCurrentThread());
+  DCHECK_EQ(0, stream_id_) <<
+      "The AGC state can not be modified while capturing is active.";
+  if (stream_id_)
+    return;
+
+  // We simply store the new AGC setting here. This value will be used when
+  // a new stream is initialized and by GetAutomaticGainControl().
+  agc_is_enabled_ = enabled;
 }
 
 void AudioInputDevice::OnStreamCreated(
@@ -265,7 +277,7 @@ void AudioInputDevice::OnDeviceReady(const std::string& device_id) {
     stream_id_ = 0;
   } else {
     Send(new AudioInputHostMsg_CreateStream(stream_id_, audio_parameters_,
-                                            device_id));
+                                            device_id, agc_is_enabled_));
   }
 
   pending_device_ready_ = false;
@@ -301,18 +313,27 @@ void AudioInputDevice::AudioThreadCallback::MapSharedMemory() {
 }
 
 void AudioInputDevice::AudioThreadCallback::Process(int pending_data) {
+  // The shared memory represents parameters, size of the data buffer and the
+  // actual data buffer containing audio data. Map the memory into this
+  // structure and parse out parameters and the data area.
+  AudioInputBuffer* buffer =
+      reinterpret_cast<AudioInputBuffer*>(shared_memory_.memory());
+  uint32 size = buffer->params.size;
+  DCHECK_EQ(size, memory_length_ - sizeof(AudioInputBufferParameters));
+  double volume = buffer->params.volume;
+
   int audio_delay_milliseconds = pending_data / bytes_per_ms_;
-  int16* memory = reinterpret_cast<int16*>(shared_memory_.memory());
-  const size_t number_of_frames = audio_parameters_.samples_per_packet;
+  int16* memory = reinterpret_cast<int16*>(&buffer->audio[0]);
+  const size_t number_of_frames = audio_parameters_.frames_per_buffer();
   const int bytes_per_sample = sizeof(memory[0]);
 
   // Deinterleave each channel and convert to 32-bit floating-point
   // with nominal range -1.0 -> +1.0.
-  for (int channel_index = 0; channel_index < audio_parameters_.channels;
+  for (int channel_index = 0; channel_index < audio_parameters_.channels();
        ++channel_index) {
     media::DeinterleaveAudioChannel(memory,
                                     audio_data_[channel_index],
-                                    audio_parameters_.channels,
+                                    audio_parameters_.channels(),
                                     channel_index,
                                     bytes_per_sample,
                                     number_of_frames);
@@ -321,5 +342,5 @@ void AudioInputDevice::AudioThreadCallback::Process(int pending_data) {
   // Deliver captured data to the client in floating point format
   // and update the audio-delay measurement.
   capture_callback_->Capture(audio_data_, number_of_frames,
-                             audio_delay_milliseconds);
+                             audio_delay_milliseconds, volume);
 }

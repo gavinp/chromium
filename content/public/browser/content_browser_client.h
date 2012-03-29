@@ -63,10 +63,11 @@ class AccessTokenStore;
 class BrowserChildProcessHost;
 class BrowserContext;
 class BrowserMainParts;
-class RenderProcessHost;
+class MediaObserver;
 class QuotaPermissionContext;
-class ResourceContext;
+class RenderProcessHost;
 class RenderViewHost;
+class ResourceContext;
 class SiteInstance;
 class SpeechInputManagerDelegate;
 class WebContents;
@@ -292,6 +293,10 @@ class ContentBrowserClient {
       int render_process_id,
       int render_view_id) = 0;
 
+  // Returns a a class to get notifications about media event. The embedder can
+  // return NULL if they're not interested.
+  virtual MediaObserver* GetMediaObserver() = 0;
+
   // Asks permission to use the camera and/or microphone. If permission is
   // granted, a call should be made to |callback| with the devices. If the
   // request is denied, a call should be made to |callback| with an empty list
@@ -331,14 +336,16 @@ class ContentBrowserClient {
       int notification_id) = 0;
 
   // Returns true if the given page is allowed to open a window of the given
-  // type.
+  // type. If true is returned, |no_javascript_access| will indicate whether
+  // the window that is created should be scriptable/in the same process.
   // This is called on the IO thread.
   virtual bool CanCreateWindow(
       const GURL& opener_url,
       const GURL& source_origin,
       WindowContainerType container_type,
       content::ResourceContext* context,
-      int render_process_id) = 0;
+      int render_process_id,
+      bool* no_javascript_access) = 0;
 
   // Returns a title string to use in the task manager for a process host with
   // the given URL, or the empty string to fall back to the default logic.

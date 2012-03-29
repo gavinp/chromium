@@ -8,13 +8,20 @@
 
 namespace ash {
 
-const int kTrayPaddingBetweenItems = 8;
 const int kTrayPopupAutoCloseDelayInSeconds = 2;
-extern const int kTrayPopupPaddingHorizontal = 18;
-const int kTrayPopupPaddingBetweenItems = 5;
+const int kTrayPopupAutoCloseDelayForTextInSeconds = 5;
+const int kTrayPopupPaddingHorizontal = 18;
+const int kTrayPopupPaddingBetweenItems = 10;
 
-const SkColor kBackgroundColor = SK_ColorWHITE;
-const SkColor kHoverBackgroundColor = SkColorSetRGB(0xfb, 0xfc, 0xfb);
+const int kTrayPopupItemHeight = 48;
+const int kTrayPopupDetailsIconWidth = 27;
+const int kTrayRoundedBorderRadius = 2;
+
+const SkColor kBackgroundColor = SkColorSetRGB(0xfe, 0xfe, 0xfe);
+const SkColor kHoverBackgroundColor = SkColorSetRGB(0xf5, 0xf5, 0xf5);
+
+const SkColor kBorderDarkColor = SkColorSetARGB(51, 0, 0, 0);
+const SkColor kBorderLightColor = SkColorSetRGB(0xeb, 0xeb, 0xeb);
 
 const int kTrayPopupWidth = 300;
 

@@ -27,15 +27,16 @@ using protocol::MouseEvent;
 
 ClientSession::ClientSession(
     EventHandler* event_handler,
-    protocol::ConnectionToClient* connection,
+    scoped_ptr<protocol::ConnectionToClient> connection,
     protocol::HostEventStub* host_event_stub,
     Capturer* capturer)
     : event_handler_(event_handler),
-      connection_(connection),
-      client_jid_(connection->session()->jid()),
+      connection_(connection.Pass()),
+      client_jid_(connection_->session()->jid()),
       host_event_stub_(host_event_stub),
       capturer_(capturer),
       authenticated_(false),
+      connected_(false),
       awaiting_continue_approval_(false),
       remote_mouse_button_state_(0) {
   connection_->SetEventHandler(this);
@@ -55,7 +56,7 @@ void ClientSession::InjectClipboardEvent(
     const protocol::ClipboardEvent& event) {
   DCHECK(CalledOnValidThread());
 
-  if (authenticated_) {
+  if (connected_) {
     host_event_stub_->InjectClipboardEvent(event);
   }
 }
@@ -63,7 +64,7 @@ void ClientSession::InjectClipboardEvent(
 void ClientSession::InjectKeyEvent(const KeyEvent& event) {
   DCHECK(CalledOnValidThread());
 
-  if (authenticated_ && !ShouldIgnoreRemoteKeyboardInput(event)) {
+  if (connected_ && !ShouldIgnoreRemoteKeyboardInput(event)) {
     RecordKeyEvent(event);
     host_event_stub_->InjectKeyEvent(event);
   }
@@ -72,7 +73,7 @@ void ClientSession::InjectKeyEvent(const KeyEvent& event) {
 void ClientSession::InjectMouseEvent(const MouseEvent& event) {
   DCHECK(CalledOnValidThread());
 
-  if (authenticated_ && !ShouldIgnoreRemoteMouseInput(event)) {
+  if (connected_ && !ShouldIgnoreRemoteMouseInput(event)) {
     RecordMouseButtonState(event);
     MouseEvent event_to_inject = event;
     if (event.has_x() && event.has_y()) {
@@ -102,27 +103,26 @@ void ClientSession::InjectMouseEvent(const MouseEvent& event) {
   }
 }
 
-void ClientSession::OnConnectionOpened(
+void ClientSession::OnConnectionAuthenticated(
     protocol::ConnectionToClient* connection) {
-  DCHECK(CalledOnValidThread());
-  DCHECK_EQ(connection_.get(), connection);
   authenticated_ = true;
   event_handler_->OnSessionAuthenticated(this);
 }
 
-void ClientSession::OnConnectionClosed(
+void ClientSession::OnConnectionChannelsConnected(
     protocol::ConnectionToClient* connection) {
   DCHECK(CalledOnValidThread());
   DCHECK_EQ(connection_.get(), connection);
-  event_handler_->OnSessionClosed(this);
+  connected_ = true;
+  event_handler_->OnSessionChannelsConnected(this);
 }
 
-void ClientSession::OnConnectionFailed(
+void ClientSession::OnConnectionClosed(
     protocol::ConnectionToClient* connection,
     protocol::ErrorCode error) {
   DCHECK(CalledOnValidThread());
   DCHECK_EQ(connection_.get(), connection);
-  if (error == protocol::AUTHENTICATION_FAILED)
+  if (!authenticated_)
     event_handler_->OnSessionAuthenticationFailed(this);
   // TODO(sergeyu): Log failure reason?
   event_handler_->OnSessionClosed(this);
@@ -138,18 +138,16 @@ void ClientSession::OnSequenceNumberUpdated(
 void ClientSession::OnRouteChange(
     protocol::ConnectionToClient* connection,
     const std::string& channel_name,
-    const net::IPEndPoint& remote_end_point,
-    const net::IPEndPoint& local_end_point) {
+    const protocol::TransportRoute& route) {
   DCHECK(CalledOnValidThread());
   DCHECK_EQ(connection_.get(), connection);
-  event_handler_->OnSessionRouteChange(this, channel_name, remote_end_point,
-                                       local_end_point);
+  event_handler_->OnSessionRouteChange(this, channel_name, route);
 }
 
 void ClientSession::Disconnect() {
   DCHECK(CalledOnValidThread());
   DCHECK(connection_.get());
-  authenticated_ = false;
+  connected_ = false;
   RestoreEventState();
 
   // This triggers OnSessionClosed() and the session may be destroyed

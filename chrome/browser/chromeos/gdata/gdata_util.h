@@ -8,12 +8,10 @@
 
 #include <string>
 
-class FilePath;
+#include "googleurl/src/gurl.h"
 
-namespace content {
-class DownloadItem;
-class DownloadManager;
-}
+class FilePath;
+class Profile;
 
 namespace gdata {
 namespace util {
@@ -24,6 +22,14 @@ const FilePath& GetGDataMountPointPath();
 // Returns the GData mount path as string.
 const std::string& GetGDataMountPointPathAsString();
 
+// Returns the 'local' root of remote file system as "/special".
+const FilePath& GetSpecialRemoteRootPath();
+
+// Returns the gdata file resource url formatted as
+// chrome://gdata/<resource_id>/<file_name>.
+GURL GetFileResourceUrl(const std::string& resource_id,
+                        const std::string& file_name);
+
 // Returns true if the given path is under the GData mount point.
 bool IsUnderGDataMountPoint(const FilePath& path);
 
@@ -32,16 +38,12 @@ bool IsUnderGDataMountPoint(const FilePath& path);
 // Examples: ExtractGDatPath("/special/gdata/foo.txt") => "gdata/foo.txt"
 FilePath ExtractGDataPath(const FilePath& path);
 
-// Files to be uploaded to GData are downloaded to this temporary folder first,
-// located at ~/Downloads/.gdata
-FilePath GetGDataTempDownloadFolderPath();
-
-// Parses the xml response of HTTP_CREATED response to extract the
-// resourceId and md5Checksum.
-void ParseCreatedResponseContent(const std::string& response_content,
-                                 std::string* resource_id,
-                                 std::string* md5_checksum);
-
+// Grants read-only file access permissions to the process whose id is |pid|
+// with ChildProcessSecurityPolicy for all possible cache paths that may be
+// given to the specified file.
+void SetPermissionsForGDataCacheFiles(Profile* profile,
+                                      int pid,
+                                      const FilePath& path);
 }  // namespace util
 }  // namespace gdata
 

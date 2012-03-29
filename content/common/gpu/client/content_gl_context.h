@@ -164,13 +164,13 @@ class ContentGLContext : public base::SupportsWeakPtr<ContentGLContext>,
   // Sends an IPC message with the new state of surface visibility
   bool SetSurfaceVisible(bool visibility);
 
+  bool DiscardBackbuffer();
+  bool EnsureBackbuffer();
+
   // Register a callback to invoke whenever we recieve a new memory allocation.
   void SetMemoryAllocationChangedCallback(
       const base::Callback<void(const GpuMemoryAllocationForRenderer&)>&
           callback);
-
-  // TODO(gman): Remove this
-  void DisableShaderTranslation();
 
   // Allows direct access to the GLES2 implementation so a ContentGLContext
   // can be used without making it current.

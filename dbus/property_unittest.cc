@@ -112,7 +112,7 @@ class PropertyTest : public testing::Test {
     message_loop_.Quit();
   }
 
-  // Wait for the given number of updates.
+  // Waits for the given number of updates.
   void WaitForUpdates(size_t num_updates) {
     while (updated_properties_.size() < num_updates)
       message_loop_.Run();
@@ -123,12 +123,12 @@ class PropertyTest : public testing::Test {
   // Name, Version, Methods, Objects
   static const int kExpectedSignalUpdates = 4;
 
-  // Wait for initial values to be set.
+  // Waits for initial values to be set.
   void WaitForGetAll() {
     WaitForUpdates(kExpectedSignalUpdates);
   }
 
-  // Wait for the callback. |id| is the string bound to the callback when
+  // Waits for the callback. |id| is the string bound to the callback when
   // the method call is made that identifies it and distinguishes from any
   // other; you can set this to whatever you wish.
   void WaitForCallback(const std::string& id) {
@@ -152,8 +152,8 @@ class PropertyTest : public testing::Test {
 TEST_F(PropertyTest, InitialValues) {
   WaitForGetAll();
 
-  EXPECT_EQ(properties_->name.value(), "TestService");
-  EXPECT_EQ(properties_->version.value(), 10);
+  EXPECT_EQ("TestService", properties_->name.value());
+  EXPECT_EQ(10, properties_->version.value());
 
   std::vector<std::string> methods = properties_->methods.value();
   ASSERT_EQ(4U, methods.size());
@@ -161,6 +161,55 @@ TEST_F(PropertyTest, InitialValues) {
   EXPECT_EQ("SlowEcho", methods[1]);
   EXPECT_EQ("AsyncEcho", methods[2]);
   EXPECT_EQ("BrokenMethod", methods[3]);
+
+  std::vector<dbus::ObjectPath> objects = properties_->objects.value();
+  ASSERT_EQ(1U, objects.size());
+  EXPECT_EQ(dbus::ObjectPath("/TestObjectPath"), objects[0]);
+}
+
+TEST_F(PropertyTest, UpdatedValues) {
+  WaitForGetAll();
+
+  // Update the value of the "Name" property, this value should not change.
+  properties_->name.Get(base::Bind(&PropertyTest::PropertyCallback,
+                                   base::Unretained(this),
+                                   "Name"));
+  WaitForCallback("Name");
+  WaitForUpdates(1);
+
+  EXPECT_EQ("TestService", properties_->name.value());
+
+  // Update the value of the "Version" property, this value should be changed.
+  properties_->version.Get(base::Bind(&PropertyTest::PropertyCallback,
+                                      base::Unretained(this),
+                                      "Version"));
+  WaitForCallback("Version");
+  WaitForUpdates(1);
+
+  EXPECT_EQ(20, properties_->version.value());
+
+  // Update the value of the "Methods" property, this value should not change
+  // and should not grow to contain duplicate entries.
+  properties_->methods.Get(base::Bind(&PropertyTest::PropertyCallback,
+                                      base::Unretained(this),
+                                      "Methods"));
+  WaitForCallback("Methods");
+  WaitForUpdates(1);
+
+  std::vector<std::string> methods = properties_->methods.value();
+  ASSERT_EQ(4U, methods.size());
+  EXPECT_EQ("Echo", methods[0]);
+  EXPECT_EQ("SlowEcho", methods[1]);
+  EXPECT_EQ("AsyncEcho", methods[2]);
+  EXPECT_EQ("BrokenMethod", methods[3]);
+
+  // Update the value of the "Objects" property, this value should not change
+  // and should not grow to contain duplicate entries.
+  properties_->objects.Get(base::Bind(&PropertyTest::PropertyCallback,
+                                      base::Unretained(this),
+                                      "Objects"));
+  WaitForCallback("Objects");
+  WaitForUpdates(1);
 
   std::vector<dbus::ObjectPath> objects = properties_->objects.value();
   ASSERT_EQ(1U, objects.size());
@@ -179,7 +228,7 @@ TEST_F(PropertyTest, Get) {
   // Make sure we got a property update too.
   WaitForUpdates(1);
 
-  EXPECT_EQ(properties_->version.value(), 20);
+  EXPECT_EQ(20, properties_->version.value());
 }
 
 TEST_F(PropertyTest, Set) {
@@ -195,5 +244,5 @@ TEST_F(PropertyTest, Set) {
   // TestService sends a property update.
   WaitForUpdates(1);
 
-  EXPECT_EQ(properties_->name.value(), "NewService");
+  EXPECT_EQ("NewService", properties_->name.value());
 }

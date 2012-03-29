@@ -8,6 +8,7 @@
 
 #include "base/bind.h"
 #include "base/callback.h"
+#include "base/callback_helpers.h"
 #include "base/compiler_specific.h"
 #include "base/metrics/histogram.h"
 #include "base/message_loop.h"
@@ -16,7 +17,6 @@
 #include "base/synchronization/condition_variable.h"
 #include "media/base/audio_decoder.h"
 #include "media/base/clock.h"
-#include "media/base/composite_filter.h"
 #include "media/base/composite_filter.h"
 #include "media/base/filter_collection.h"
 #include "media/base/filters.h"
@@ -103,7 +103,7 @@ void Pipeline::Start(scoped_ptr<FilterCollection> collection,
       url, ended_cb, error_cb, network_cb, start_cb));
 }
 
-void Pipeline::Stop(const PipelineStatusCB& stop_cb) {
+void Pipeline::Stop(const base::Closure& stop_cb) {
   base::AutoLock auto_lock(lock_);
   CHECK(running_) << "Media pipeline isn't running";
 
@@ -377,14 +377,21 @@ bool Pipeline::IsPipelineSeeking() {
   return true;
 }
 
+void Pipeline::ReportStatus(const PipelineStatusCB& cb, PipelineStatus status) {
+  if (cb.is_null())
+    return;
+  cb.Run(status);
+  // Prevent double-reporting of errors to clients.
+  if (status != PIPELINE_OK)
+    error_cb_.Reset();
+}
+
 void Pipeline::FinishInitialization() {
   DCHECK_EQ(MessageLoop::current(), message_loop_);
   // Execute the seek callback, if present.  Note that this might be the
   // initial callback passed into Start().
-  if (!seek_cb_.is_null()) {
-    seek_cb_.Run(status_);
-    seek_cb_.Reset();
-  }
+  ReportStatus(seek_cb_, status_);
+  seek_cb_.Reset();
 }
 
 // static
@@ -648,8 +655,6 @@ void Pipeline::InitializeTask(PipelineStatus last_stage_status) {
     // Currently only VideoDecoders have a recoverable error code.
     if (state_ == kInitVideoDecoder &&
         last_stage_status == DECODER_ERROR_NOT_SUPPORTED) {
-      pipeline_init_state_->composite->RemoveFilter(
-          pipeline_init_state_->video_decoder.get());
       state_ = kInitAudioRenderer;
     } else {
       SetError(last_stage_status);
@@ -746,7 +751,7 @@ void Pipeline::InitializeTask(PipelineStatus last_stage_status) {
 // TODO(scherkus): beware!  this can get posted multiple times since we post
 // Stop() tasks even if we've already stopped.  Perhaps this should no-op for
 // additional calls, however most of this logic will be changing.
-void Pipeline::StopTask(const PipelineStatusCB& stop_cb) {
+void Pipeline::StopTask(const base::Closure& stop_cb) {
   DCHECK_EQ(MessageLoop::current(), message_loop_);
   DCHECK(!IsPipelineStopPending());
   DCHECK_NE(state_, kStopped);
@@ -754,12 +759,6 @@ void Pipeline::StopTask(const PipelineStatusCB& stop_cb) {
   if (video_decoder_) {
     video_decoder_->PrepareForShutdownHack();
     video_decoder_ = NULL;
-  }
-
-  if (state_ == kStopped) {
-    // Already stopped so just run callback.
-    stop_cb.Run(status_);
-    return;
   }
 
   if (IsPipelineTearingDown() && error_caused_teardown_) {
@@ -926,9 +925,7 @@ void Pipeline::NotifyEndedTask() {
     clock_->EndOfStream();
   }
 
-  if (!ended_cb_.is_null()) {
-    ended_cb_.Run(status_);
-  }
+  ReportStatus(ended_cb_, status_);
 }
 
 void Pipeline::NotifyNetworkEventTask(NetworkEvent type) {
@@ -1104,23 +1101,12 @@ void Pipeline::FinishDestroyingFiltersTask() {
   if (stop_pending_) {
     stop_pending_ = false;
     ResetState();
-    PipelineStatusCB stop_cb;
-    std::swap(stop_cb, stop_cb_);
     // Notify the client that stopping has finished.
-    if (!stop_cb.is_null()) {
-      stop_cb.Run(status_);
-    }
+    base::ResetAndReturn(&stop_cb_).Run();
   }
 
   tearing_down_ = false;
   error_caused_teardown_ = false;
-}
-
-bool Pipeline::PrepareFilter(scoped_refptr<Filter> filter) {
-  bool ret = pipeline_init_state_->composite->AddFilter(filter.get());
-  if (!ret)
-    SetError(PIPELINE_ERROR_INITIALIZATION_FAILED);
-  return ret;
 }
 
 void Pipeline::InitializeDemuxer() {
@@ -1161,6 +1147,7 @@ bool Pipeline::InitializeAudioDecoder(
     const scoped_refptr<Demuxer>& demuxer) {
   DCHECK_EQ(MessageLoop::current(), message_loop_);
   DCHECK(IsPipelineOk());
+  DCHECK(demuxer);
 
   scoped_refptr<DemuxerStream> stream =
       demuxer->GetStream(DemuxerStream::AUDIO);
@@ -1186,31 +1173,27 @@ bool Pipeline::InitializeVideoDecoder(
     const scoped_refptr<Demuxer>& demuxer) {
   DCHECK_EQ(MessageLoop::current(), message_loop_);
   DCHECK(IsPipelineOk());
+  DCHECK(demuxer);
 
-  scoped_refptr<DemuxerStream> stream;
+  scoped_refptr<DemuxerStream> stream =
+      demuxer->GetStream(DemuxerStream::VIDEO);
 
-  if (demuxer) {
-    stream = demuxer->GetStream(DemuxerStream::VIDEO);
+  if (!stream)
+    return false;
 
-    if (!stream)
-      return false;
-  }
+  filter_collection_->SelectVideoDecoder(&pipeline_init_state_->video_decoder);
 
-  filter_collection_->SelectVideoDecoder(&video_decoder_);
-
-  if (!video_decoder_) {
+  if (!pipeline_init_state_->video_decoder) {
     SetError(PIPELINE_ERROR_REQUIRED_FILTER_MISSING);
     return false;
   }
 
-  if (!PrepareFilter(video_decoder_))
-    return false;
-
-  pipeline_init_state_->video_decoder = video_decoder_;
-  video_decoder_->Initialize(
+  pipeline_init_state_->video_decoder->Initialize(
       stream,
       base::Bind(&Pipeline::OnFilterInitialize, this),
       base::Bind(&Pipeline::OnUpdateStatistics, this));
+
+  video_decoder_ = pipeline_init_state_->video_decoder;
   return true;
 }
 
@@ -1228,8 +1211,7 @@ bool Pipeline::InitializeAudioRenderer(
     return false;
   }
 
-  if (!PrepareFilter(audio_renderer_))
-    return false;
+  pipeline_init_state_->composite->AddFilter(audio_renderer_);
 
   audio_renderer_->Initialize(
       decoder,
@@ -1254,8 +1236,7 @@ bool Pipeline::InitializeVideoRenderer(
     return false;
   }
 
-  if (!PrepareFilter(video_renderer_))
-    return false;
+  pipeline_init_state_->composite->AddFilter(video_renderer_);
 
   video_renderer_->Initialize(
       decoder,
@@ -1355,7 +1336,6 @@ void Pipeline::OnDemuxerStopDone(const base::Closure& callback) {
   }
 
   callback.Run();
-
 }
 
 void Pipeline::DoSeek(base::TimeDelta seek_timestamp) {
@@ -1387,7 +1367,7 @@ void Pipeline::OnDemuxerSeekDone(base::TimeDelta seek_timestamp,
     return;
   }
 
-  done_cb.Run(status);
+  ReportStatus(done_cb, status);
 }
 
 void Pipeline::OnAudioUnderflow() {

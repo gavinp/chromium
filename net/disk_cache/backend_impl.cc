@@ -352,7 +352,15 @@ BackendImpl::BackendImpl(const FilePath& path,
 }
 
 BackendImpl::~BackendImpl() {
-  background_queue_.WaitForPendingIO();
+  if (user_flags_ & kNoRandom) {
+    // This is a unit test, so we want to be strict about not leaking entries
+    // and completing all the work.
+    background_queue_.WaitForPendingIO();
+  } else {
+    // This is most likely not a test, so we want to do as little work as
+    // possible at this time, at the price of leaving dirty entries behind.
+    background_queue_.DropPendingIO();
+  }
 
   if (background_queue_.BackgroundIsCurrentThread()) {
     // Unit tests may use the same thread for everything.
@@ -378,7 +386,7 @@ int BackendImpl::CreateBackend(const FilePath& full_path, bool force,
                                int max_bytes, net::CacheType type,
                                uint32 flags, base::MessageLoopProxy* thread,
                                net::NetLog* net_log, Backend** backend,
-                               const net::CompletionCallback& callback) {
+                               const CompletionCallback& callback) {
   DCHECK(!callback.is_null());
   CacheCreator* creator =
       new CacheCreator(full_path, force, max_bytes, type, flags, thread,
@@ -387,7 +395,7 @@ int BackendImpl::CreateBackend(const FilePath& full_path, bool force,
   return creator->Run();
 }
 
-int BackendImpl::Init(const net::CompletionCallback& callback) {
+int BackendImpl::Init(const CompletionCallback& callback) {
   background_queue_.Init(callback);
   return net::ERR_IO_PENDING;
 }
@@ -415,8 +423,9 @@ int BackendImpl::SyncInit() {
     trace_object_ = TraceObject::GetTraceObject();
     // Create a recurrent timer of 30 secs.
     int timer_delay = unit_test_ ? 1000 : 30000;
-    timer_.Start(FROM_HERE, TimeDelta::FromMilliseconds(timer_delay), this,
-                 &BackendImpl::OnStatsTimer);
+    timer_.reset(new base::RepeatingTimer<BackendImpl>());
+    timer_->Start(FROM_HERE, TimeDelta::FromMilliseconds(timer_delay), this,
+                  &BackendImpl::OnStatsTimer);
   }
 
   init_ = true;
@@ -428,7 +437,7 @@ int BackendImpl::SyncInit() {
     return net::ERR_FAILED;
   }
 
-  if (!(user_flags_ & disk_cache::kNoRandom)) {
+  if (!(user_flags_ & kNoRandom)) {
     // The unit test controls directly what to test.
     new_eviction_ = (cache_type_ == net::DISK_CACHE);
   }
@@ -438,7 +447,7 @@ int BackendImpl::SyncInit() {
     return net::ERR_FAILED;
   }
 
-  if (!(user_flags_ & disk_cache::kNoRandom) &&
+  if (!(user_flags_ & kNoRandom) &&
       cache_type_ == net::DISK_CACHE && !InitExperiment(&data_->header))
     return net::ERR_FAILED;
 
@@ -489,17 +498,19 @@ int BackendImpl::SyncInit() {
 void BackendImpl::CleanupCache() {
   Trace("Backend Cleanup");
   eviction_.Stop();
-  timer_.Stop();
+  timer_.reset();
 
   if (init_) {
     stats_.Store();
     if (data_)
       data_->header.crash = 0;
 
-    File::WaitForPendingIO(&num_pending_io_);
     if (user_flags_ & kNoRandom) {
       // This is a net_unittest, verify that we are not 'leaking' entries.
+      File::WaitForPendingIO(&num_pending_io_);
       DCHECK(!num_refs_);
+    } else {
+      File::DropPendingIO();
     }
   }
   block_files_.CloseFiles();
@@ -511,7 +522,7 @@ void BackendImpl::CleanupCache() {
 // ------------------------------------------------------------------------
 
 int BackendImpl::OpenPrevEntry(void** iter, Entry** prev_entry,
-                               const net::CompletionCallback& callback) {
+                               const CompletionCallback& callback) {
   DCHECK(!callback.is_null());
   background_queue_.OpenPrevEntry(iter, prev_entry, callback);
   return net::ERR_IO_PENDING;
@@ -826,6 +837,10 @@ MappedFile* BackendImpl::File(Addr address) {
   return block_files_.GetFile(address);
 }
 
+base::WeakPtr<InFlightBackendIO> BackendImpl::GetBackgroundQueue() {
+  return background_queue_.GetWeakPtr();
+}
+
 bool BackendImpl::CreateExternalFile(Addr* address) {
   int file_number = data_->header.last_file + 1;
   Addr file_address(0);
@@ -984,7 +999,7 @@ void BackendImpl::OnEntryDestroyBegin(Addr address) {
 void BackendImpl::OnEntryDestroyEnd() {
   DecreaseNumRefs();
   if (data_->header.num_bytes > max_size_ && !read_only_ &&
-      (up_ticks_ > kTrimDelay || user_flags_ & disk_cache::kNoRandom))
+      (up_ticks_ > kTrimDelay || user_flags_ & kNoRandom))
     eviction_.TrimCache(false);
 }
 
@@ -1244,13 +1259,13 @@ void BackendImpl::ClearRefCountForTest() {
   num_refs_ = 0;
 }
 
-int BackendImpl::FlushQueueForTest(const net::CompletionCallback& callback) {
+int BackendImpl::FlushQueueForTest(const CompletionCallback& callback) {
   background_queue_.FlushQueue(callback);
   return net::ERR_IO_PENDING;
 }
 
 int BackendImpl::RunTaskForTest(const base::Closure& task,
-                                const net::CompletionCallback& callback) {
+                                const CompletionCallback& callback) {
   background_queue_.RunTask(task, callback);
   return net::ERR_IO_PENDING;
 }
@@ -1307,27 +1322,27 @@ int32 BackendImpl::GetEntryCount() const {
 }
 
 int BackendImpl::OpenEntry(const std::string& key, Entry** entry,
-                           const net::CompletionCallback& callback) {
+                           const CompletionCallback& callback) {
   DCHECK(!callback.is_null());
   background_queue_.OpenEntry(key, entry, callback);
   return net::ERR_IO_PENDING;
 }
 
 int BackendImpl::CreateEntry(const std::string& key, Entry** entry,
-                             const net::CompletionCallback& callback) {
+                             const CompletionCallback& callback) {
   DCHECK(!callback.is_null());
   background_queue_.CreateEntry(key, entry, callback);
   return net::ERR_IO_PENDING;
 }
 
 int BackendImpl::DoomEntry(const std::string& key,
-                           const net::CompletionCallback& callback) {
+                           const CompletionCallback& callback) {
   DCHECK(!callback.is_null());
   background_queue_.DoomEntry(key, callback);
   return net::ERR_IO_PENDING;
 }
 
-int BackendImpl::DoomAllEntries(const net::CompletionCallback& callback) {
+int BackendImpl::DoomAllEntries(const CompletionCallback& callback) {
   DCHECK(!callback.is_null());
   background_queue_.DoomAllEntries(callback);
   return net::ERR_IO_PENDING;
@@ -1335,21 +1350,21 @@ int BackendImpl::DoomAllEntries(const net::CompletionCallback& callback) {
 
 int BackendImpl::DoomEntriesBetween(const base::Time initial_time,
                                     const base::Time end_time,
-                                    const net::CompletionCallback& callback) {
+                                    const CompletionCallback& callback) {
   DCHECK(!callback.is_null());
   background_queue_.DoomEntriesBetween(initial_time, end_time, callback);
   return net::ERR_IO_PENDING;
 }
 
 int BackendImpl::DoomEntriesSince(const base::Time initial_time,
-                                  const net::CompletionCallback& callback) {
+                                  const CompletionCallback& callback) {
   DCHECK(!callback.is_null());
   background_queue_.DoomEntriesSince(initial_time, callback);
   return net::ERR_IO_PENDING;
 }
 
 int BackendImpl::OpenNextEntry(void** iter, Entry** next_entry,
-                               const net::CompletionCallback& callback) {
+                               const CompletionCallback& callback) {
   DCHECK(!callback.is_null());
   background_queue_.OpenNextEntry(iter, next_entry, callback);
   return net::ERR_IO_PENDING;
@@ -1412,7 +1427,8 @@ bool BackendImpl::CreateBackingStore(disk_cache::File* file) {
 }
 
 bool BackendImpl::InitBackingStore(bool* file_created) {
-  file_util::CreateDirectory(path_);
+  if (!file_util::CreateDirectory(path_))
+    return false;
 
   FilePath index_name = path_.AppendASCII(kIndexName);
 

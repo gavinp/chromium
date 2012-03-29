@@ -13,6 +13,21 @@
     'host_plugin_mime_type': 'application/vnd.chromium.remoting-host',
     'host_plugin_description': 'Allow another user to access your computer securely over the Internet.',
 
+    # Borrow the scripts for generating version information for remoting
+    # binaries from Chrome.
+    'variables': {
+      'version_py_path': '../chrome/tools/build/version.py',
+      'version_path': '../chrome/VERSION',
+    },
+    'version_py_path': '<(version_py_path)',
+    'version_path': '<(version_path)',
+    'version_full':
+        '<!(python <(version_py_path) -f <(version_path) -t "@MAJOR@.@MINOR@.@BUILD@.@PATCH@")',
+
+    # Windows Installer XML (WiX) path can be set in ~/.gyp/include.gypi to
+    # indicate that WiX is available.
+    'wix_path%': '',
+
     'conditions': [
       ['OS=="mac"', {
         'conditions': [
@@ -130,6 +145,8 @@
       'webapp/main.css',
       'webapp/main.html',
       'webapp/manifest.json',
+      'webapp/menu_button.css',
+      'webapp/menu_button.js',
       'webapp/oauth2.js',
       'webapp/oauth2_callback.html',
       'webapp/plugin_settings.js',
@@ -149,6 +166,7 @@
       'resources/chromoting128.png',
       'resources/disclosure_arrow_down.png',
       'resources/disclosure_arrow_right.png',
+      'resources/tick.png',
     ],
   },
 
@@ -205,6 +223,38 @@
     ['OS=="win"', {
       'targets': [
         {
+          'target_name': 'remoting_host_controller',
+          'type': 'executable',
+          'variables': { 'enable_wexit_time_destructors': 1, },
+          'defines' : [
+            '_ATL_APARTMENT_THREADED',
+            '_ATL_NO_AUTOMATIC_NAMESPACE',
+            '_ATL_CSTRING_EXPLICIT_CONSTRUCTORS',
+            'STRICT',
+          ],
+          'include_dirs': [
+            '<(INTERMEDIATE_DIR)',
+          ],
+          'dependencies': [
+            'remoting_version_resources',
+          ],
+          'sources': [
+            'host/elevated_controller.idl',
+            'host/elevated_controller.rc',
+            'host/elevated_controller_module_win.cc',
+            'host/elevated_controller_win.cc',
+            'host/elevated_controller_win.h',
+            '<(SHARED_INTERMEDIATE_DIR)/remoting_version/elevated_controller_version.rc'
+          ],
+          'msvs_settings': {
+            'VCLinkerTool': {
+              'AdditionalOptions': ["/MANIFESTUAC:level='requireAdministrator'"],
+              # 2 == /SUBSYSTEM:WINDOWS
+              'SubSystem': '2',
+            },
+          },
+        },  # end of target 'remoting_host_controller'
+        {
           'target_name': 'remoting_service',
           'type': 'executable',
           'variables': { 'enable_wexit_time_destructors': 1, },
@@ -212,6 +262,7 @@
             '../base/base.gyp:base',
             '../base/third_party/dynamic_annotations/dynamic_annotations.gyp:dynamic_annotations',
             '../ipc/ipc.gyp:ipc',
+            'remoting_version_resources',
           ],
           'sources': [
             'base/scoped_sc_handle_win.h',
@@ -227,6 +278,7 @@
             'host/wts_console_observer_win.h',
             'host/wts_session_process_launcher_win.cc',
             'host/wts_session_process_launcher_win.h',
+            '<(SHARED_INTERMEDIATE_DIR)/remoting_version/host_service_version.rc'
           ],
           'msvs_settings': {
             'VCLinkerTool': {
@@ -236,8 +288,157 @@
             },
           },
         },  # end of target 'remoting_service'
+
+        # Generates the version information resources for the Windows binaries.
+        # The .RC files are generated from the "version.rc.version" template and
+        # placed in the "<(SHARED_INTERMEDIATE_DIR)/remoting_version" folder.
+        # The substiture strings are taken from:
+        #   - chrome/VERSION - the current version of Chrome.
+        #   - build/util/LASTCHANGE - the last source code revision.
+        #   - xxx_branding - UI/localizable strings.
+        #   - xxx.ver - per-binary non-localizable strings such as the binary
+        #     name.
+        {
+          'target_name': 'remoting_version_resources',
+          'type': 'none',
+          'dependencies': [
+            '../build/util/build_util.gyp:lastchange#target',
+          ],
+          'direct_dependent_settings': {
+            'include_dirs': [
+              '<(SHARED_INTERMEDIATE_DIR)/remoting_version',
+            ],
+          },
+          'sources': [
+            'host/elevated_controller.ver',
+            'host/host_service.ver',
+            'host/plugin/host_plugin.ver',
+            'host/remoting_me2me_host.ver',
+          ],
+          'rules': [
+            {
+              'rule_name': 'version',
+              'extension': 'ver',
+              'variables': {
+                'lastchange_path': '<(DEPTH)/build/util/LASTCHANGE',
+                'template_input_path': 'version.rc.version',
+              },
+              'conditions': [
+                ['branding == "Chrome"', {
+                  'variables': {
+                     'branding_path': 'google_chrome_branding',
+                  },
+                }, { # else branding!="Chrome"
+                  'variables': {
+                     'branding_path': 'chromium_branding',
+                  },
+                }],
+              ],
+              'inputs': [
+                '<(template_input_path)',
+                '<(version_path)',
+                '<(branding_path)',
+                '<(lastchange_path)',
+              ],
+              'outputs': [
+                '<(SHARED_INTERMEDIATE_DIR)/remoting_version/<(RULE_INPUT_ROOT)_version.rc',
+              ],
+              'action': [
+                'python',
+                '<(version_py_path)',
+                '-f', '<(RULE_INPUT_PATH)',
+                '-f', '<(version_path)',
+                '-f', '<(branding_path)',
+                '-f', '<(lastchange_path)',
+                '<(template_input_path)',
+                '<@(_outputs)',
+              ],
+              'message': 'Generating version information in <@(_outputs)'
+            },
+          ],
+        },  # end of target 'remoting_version_resources'
       ],  # end of 'targets'
     }],  # 'OS=="win"'
+
+    # The host installation is generated only if WiX location is known and only
+    # as part of a non-component build. WiX does not provide a easy way to
+    # include all DLLs imported by the installed binaries depend on, so
+    # supporting the component build becomes a burden.
+    ['"<(wix_path)" != "" and component != "shared_library"', {
+      'targets': [
+        {
+          'target_name': 'remoting_host_installation',
+          'type': 'none',
+          'dependencies': [
+            'remoting_host_controller',
+            'remoting_service',
+            'remoting_me2me_host',
+          ],
+          'sources': [
+            'host/installer/chromoting.wxs',
+          ],
+          'outputs': [
+            '<(PRODUCT_DIR)/chromoting.msi',
+          ],
+          'variables': {
+            'sas_dll_path': '<(DEPTH)/third_party/platformsdk_win7/files/redist/x86/sas.dll'
+          },
+          'rules': [
+            {
+              'rule_name': 'candle',
+              'extension': 'wxs',
+              'inputs': [ ],
+              'outputs': [
+                '<(INTERMEDIATE_DIR)/<(RULE_INPUT_ROOT).wixobj',
+              ],
+              'process_outputs_as_sources': 1,
+              'msvs_cygwin_shell': 0,
+              'msvs_quote_cmd': 0,
+              'action': [
+                '"<(wix_path)\\bin\\candle"',
+                '-ext "<(wix_path)\\bin\\WixFirewallExtension.dll"',
+                '-ext "<(wix_path)\\bin\\WixUIExtension.dll"',
+                '-ext "<(wix_path)\\bin\\WixUtilExtension.dll"',
+                '-dVersion=<(version_full) '
+                '"-dFileSource=<(PRODUCT_DIR)." '
+                '"-dSasDllPath=<(sas_dll_path)" '
+                '-out <@(_outputs)',
+                '"<(RULE_INPUT_PATH)"',
+              ],
+              'message': 'Generating <@(_outputs)',
+            },
+            {
+              'rule_name': 'light',
+              'extension': 'wixobj',
+              'inputs': [
+                '<(PRODUCT_DIR)/remoting_me2me_host.exe',
+                '<(PRODUCT_DIR)/remoting_service.exe',
+                '<(sas_dll_path)'
+              ],
+              'outputs': [
+                '<(PRODUCT_DIR)/<(RULE_INPUT_ROOT).msi',
+                '<(PRODUCT_DIR)/<(RULE_INPUT_ROOT).wixpdb',
+              ],
+              'msvs_cygwin_shell': 0,
+              'msvs_quote_cmd': 0,
+              'action': [
+                '"<(wix_path)\\bin\\light"',
+                '-ext "<(wix_path)\\bin\\WixFirewallExtension.dll"',
+                '-ext "<(wix_path)\\bin\\WixUIExtension.dll"',
+                '-ext "<(wix_path)\\bin\\WixUtilExtension.dll"',
+                '-cultures:en-us',
+                '-dVersion=<(version_full) '
+                '"-dFileSource=<(PRODUCT_DIR)." '
+                '"-dSasDllPath=<(sas_dll_path)" '
+                '-out "<(PRODUCT_DIR)/<(RULE_INPUT_ROOT).msi"',
+                '"<(RULE_INPUT_PATH)"',
+              ],
+              'message': 'Generating <(PRODUCT_DIR)/<(RULE_INPUT_ROOT).msi',
+            },
+          ],
+        },  # end of target 'remoting_host_installation'
+      ],  # end of 'targets'
+    }],  # '<(wix_path) != ""'
 
   ],  # end of 'conditions'
 
@@ -299,8 +500,6 @@
         'host/plugin/host_log_handler.cc',
         'host/plugin/host_log_handler.h',
         'host/plugin/host_plugin.cc',
-        'host/plugin/host_plugin.def',
-        'host/plugin/host_plugin.rc',
         'host/plugin/host_plugin_resource.h',
         'host/plugin/host_plugin_utils.cc',
         'host/plugin/host_plugin_utils.h',
@@ -343,13 +542,13 @@
         }],  # OS=="mac"
         [ 'OS=="win"', {
           'dependencies': [
-            '../ipc/ipc.gyp:ipc'
+            '../ipc/ipc.gyp:ipc',
+            'remoting_version_resources',
           ],
-        }],
-        ['OS!="win"', {
-          'sources!': [
+          'sources': [
             'host/plugin/host_plugin.def',
             'host/plugin/host_plugin.rc',
+            '<(SHARED_INTERMEDIATE_DIR)/remoting_version/host_plugin_version.rc'
           ],
         }],
       ],
@@ -393,6 +592,7 @@
             'webapp/verify-webapp.py',
             '<(PRODUCT_DIR)/remoting/webapp_verified.stamp',
             'webapp/_locales/en/messages.json',
+            'webapp/client_screen.js',
             'webapp/main.html',
             'webapp/host_table_entry.js',
             'webapp/manifest.json',
@@ -510,7 +710,6 @@
         'remoting_protocol',
         'differ_block',
         '../crypto/crypto.gyp:crypto',
-        '../content/content.gyp:content_common'
       ],
       'sources': [
         'host/capturer.h',
@@ -733,6 +932,8 @@
         '../base/base.gyp:base',
         '../base/base.gyp:base_i18n',
         '../media/media.gyp:media',
+        # TODO(hclam): Remove this dependency once we don't use URLFetcher.
+        '../content/content.gyp:content_common',
       ],
       'sources': [
         'host/host_event_logger.h',
@@ -746,11 +947,13 @@
         }],
         ['OS=="win"', {
           'dependencies': [
-            '../ipc/ipc.gyp:ipc'
+            '../ipc/ipc.gyp:ipc',
+            'remoting_version_resources',
           ],
           'sources': [
             'host/host_event_logger_win.cc',
             'host/remoting_host_messages.mc',
+            '<(SHARED_INTERMEDIATE_DIR)/remoting_version/remoting_me2me_host_version.rc'
           ],
           'include_dirs': [
             '<(INTERMEDIATE_DIR)',
@@ -931,6 +1134,7 @@
         'protocol/socket_reader_base.h',
         'protocol/ssl_hmac_channel_authenticator.cc',
         'protocol/ssl_hmac_channel_authenticator.h',
+        'protocol/transport.cc',
         'protocol/transport.h',
         'protocol/transport_config.cc',
         'protocol/transport_config.h',

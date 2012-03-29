@@ -4,10 +4,6 @@
 
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
 
-#if defined(TOOLKIT_USES_GTK)
-#include <gtk/gtk.h>
-#endif
-
 #include <algorithm>
 #include <map>
 
@@ -255,10 +251,11 @@ void LocationBarView::Init() {
     AddChildView(star_view_);
     star_view_->SetVisible(true);
 
-    // Also disable Chrome To Mobile for off-the-record and non-synced profiles.
-    if (!profile_->IsOffTheRecord() && profile_->IsSyncAccessible()) {
-      chrome_to_mobile_view_ =
-          new ChromeToMobileView(this, command_updater_);
+    // Also disable Chrome To Mobile for off-the-record and non-synced profiles,
+    // or if the feature is disabled by a command line flag or chrome://flags.
+    if (!profile_->IsOffTheRecord() && profile_->IsSyncAccessible() &&
+        ChromeToMobileService::IsChromeToMobileEnabled()) {
+      chrome_to_mobile_view_ = new ChromeToMobileView(this, command_updater_);
       AddChildView(chrome_to_mobile_view_);
       ChromeToMobileService* service =
           ChromeToMobileServiceFactory::GetForProfile(profile_);
@@ -478,7 +475,7 @@ void LocationBarView::SetInstantSuggestion(const string16& text,
         suggested_text_view_->SetFont(GetOmniboxViewWin()->GetFont());
 #endif
       AddChildView(suggested_text_view_);
-    } else if (suggested_text_view_->GetText() != text) {
+    } else if (suggested_text_view_->text() != text) {
       suggested_text_view_->SetText(text);
     }
     if (animate_to_complete && !location_entry_->IsImeComposing())
@@ -495,7 +492,7 @@ void LocationBarView::SetInstantSuggestion(const string16& text,
 }
 
 string16 LocationBarView::GetInstantSuggestion() const {
-  return HasValidSuggestText() ? suggested_text_view_->GetText() : string16();
+  return HasValidSuggestText() ? suggested_text_view_->text() : string16();
 }
 #endif
 
@@ -1303,7 +1300,7 @@ void LocationBarView::Observe(int type,
 #if defined(OS_WIN) || defined(USE_AURA)
 bool LocationBarView::HasValidSuggestText() const {
   return suggested_text_view_ && !suggested_text_view_->size().IsEmpty() &&
-      !suggested_text_view_->GetText().empty();
+      !suggested_text_view_->text().empty();
 }
 
 #if !defined(USE_AURA)

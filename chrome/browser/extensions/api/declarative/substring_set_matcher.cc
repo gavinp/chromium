@@ -31,7 +31,9 @@ bool SubstringPattern::operator<(const SubstringPattern& rhs) const {
 // SubstringSetMatcher
 //
 
-SubstringSetMatcher::SubstringSetMatcher() {}
+SubstringSetMatcher::SubstringSetMatcher() {
+  RebuildAhoCorasickTree();
+}
 
 SubstringSetMatcher::~SubstringSetMatcher() {}
 
@@ -88,6 +90,11 @@ bool SubstringSetMatcher::Match(const std::string& text,
   }
 
   return old_number_of_matches != matches->size();
+}
+
+bool SubstringSetMatcher::IsEmpty() const {
+  // An empty tree consists of only the root node.
+  return patterns_.empty() && tree_.size() == 1u;
 }
 
 void SubstringSetMatcher::RebuildAhoCorasickTree() {

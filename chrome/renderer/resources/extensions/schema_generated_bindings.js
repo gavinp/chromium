@@ -9,9 +9,7 @@
   require('event_bindings');
   var natives = requireNative('schema_generated_bindings');
   var GetExtensionAPIDefinition = natives.GetExtensionAPIDefinition;
-  var GetNextRequestId = natives.GetNextRequestId;
-  var StartRequest = natives.StartRequest;
-  var SetIconCommon = natives.SetIconCommon;
+  var sendRequest = require('sendRequest').sendRequest;
 
   var chromeHidden = requireNative('chrome_hidden').GetChromeHidden();
 
@@ -128,7 +126,12 @@
   // Finds the correct signature for the given arguments, then validates the
   // arguments against that signature. Returns a 'normalized' arguments list
   // where nulls are inserted where optional parameters were omitted.
-  chromeHidden.updateArgumentsValidate = function(args, funDef) {
+  function normalizeArgumentsAndValidate(args, funDef) {
+    if (funDef.allowAmbiguousOptionalArguments) {
+      chromeHidden.validate(args, funDef.definition.parameters);
+      return args;
+    }
+
     var definedSignature = funDef.definition.parameters;
     var resolvedSignature = resolveSignature(args, definedSignature);
     if (!resolvedSignature)
@@ -136,6 +139,7 @@
           getArgumentSignatureString(funDef.name, args) +
           " doesn't match definition " +
           getParameterSignatureString(funDef.name, definedSignature));
+
     chromeHidden.validate(args, resolvedSignature);
 
     var normalizedArgs = [];
@@ -150,7 +154,10 @@
   };
 
   // Validates that a given schema for an API function is not ambiguous.
-  function isDefinedSignatureAmbiguous(definedSignature) {
+  function isFunctionSignatureAmbiguous(functionDef) {
+    if (functionDef.allowAmbiguousOptionalArguments)
+      return false;
+
     var signaturesAmbiguous = function(signature1, signature2) {
       if (signature1.length != signature2.length)
         return false;
@@ -162,7 +169,7 @@
       return true;
     };
 
-    var candidateSignatures = getSignatures(definedSignature);
+    var candidateSignatures = getSignatures(functionDef.parameters);
     for (var i = 0; i < candidateSignatures.length; i++) {
       for (var j = i + 1; j < candidateSignatures.length; j++) {
         if (signaturesAmbiguous(candidateSignatures[i], candidateSignatures[j]))
@@ -171,181 +178,6 @@
     }
     return false;
   };
-
-  // Callback handling.
-  var requests = [];
-  chromeHidden.handleResponse = function(requestId, name,
-                                         success, response, error) {
-    try {
-      var request = requests[requestId];
-      if (success) {
-        delete chrome.extension.lastError;
-      } else {
-        if (!error) {
-          error = "Unknown error.";
-        }
-        console.error("Error during " + name + ": " + error);
-        chrome.extension.lastError = {
-          "message": error
-        };
-      }
-
-      if (request.customCallback) {
-        request.customCallback(name, request, response);
-      }
-
-      if (request.callback) {
-        // Callbacks currently only support one callback argument.
-        var callbackArgs = response ? [chromeHidden.JSON.parse(response)] : [];
-
-        // Validate callback in debug only -- and only when the
-        // caller has provided a callback. Implementations of api
-        // calls my not return data if they observe the caller
-        // has not provided a callback.
-        if (chromeHidden.validateCallbacks && !error) {
-          try {
-            if (!request.callbackSchema.parameters) {
-              throw "No callback schemas defined";
-            }
-
-            if (request.callbackSchema.parameters.length > 1) {
-              throw "Callbacks may only define one parameter";
-            }
-
-            chromeHidden.validate(callbackArgs,
-                request.callbackSchema.parameters);
-          } catch (exception) {
-            return "Callback validation error during " + name + " -- " +
-                   exception.stack;
-          }
-        }
-
-        if (response) {
-          request.callback(callbackArgs[0]);
-        } else {
-          request.callback();
-        }
-      }
-    } finally {
-      delete requests[requestId];
-      delete chrome.extension.lastError;
-    }
-
-    return undefined;
-  };
-
-  function prepareRequest(args, argSchemas) {
-    var request = {};
-    var argCount = args.length;
-
-    // Look for callback param.
-    if (argSchemas.length > 0 &&
-        args.length == argSchemas.length &&
-        argSchemas[argSchemas.length - 1].type == "function") {
-      request.callback = args[argSchemas.length - 1];
-      request.callbackSchema = argSchemas[argSchemas.length - 1];
-      --argCount;
-    }
-
-    request.args = [];
-    for (var k = 0; k < argCount; k++) {
-      request.args[k] = args[k];
-    }
-
-    return request;
-  }
-
-  // Send an API request and optionally register a callback.
-  // |opt_args| is an object with optional parameters as follows:
-  // - noStringify: true if we should not stringify the request arguments.
-  // - customCallback: a callback that should be called instead of the standard
-  //   callback.
-  // - nativeFunction: the v8 native function to handle the request, or
-  //   StartRequest if missing.
-  // - forIOThread: true if this function should be handled on the browser IO
-  //   thread.
-  function sendRequest(functionName, args, argSchemas, opt_args) {
-    if (!opt_args)
-      opt_args = {};
-    var request = prepareRequest(args, argSchemas);
-    if (opt_args.customCallback) {
-      request.customCallback = opt_args.customCallback;
-    }
-    // JSON.stringify doesn't support a root object which is undefined.
-    if (request.args === undefined)
-      request.args = null;
-
-    var sargs = opt_args.noStringify ?
-        request.args : chromeHidden.JSON.stringify(request.args);
-    var nativeFunction = opt_args.nativeFunction || StartRequest;
-
-    var requestId = GetNextRequestId();
-    request.id = requestId;
-    requests[requestId] = request;
-    var hasCallback =
-        (request.callback || opt_args.customCallback) ? true : false;
-    return nativeFunction(functionName, sargs, requestId, hasCallback,
-                          opt_args.forIOThread);
-  }
-
-  // TODO(kalman): It's a shame to need to define this function here, since it's
-  // only used in 2 APIs (browserAction and pageAction). It would be nice to
-  // only load this if one of those APIs has been loaded.
-  // That said, both of those APIs are always injected into pages anyway (see
-  // chrome/common/extensions/extension_permission_set.cc).
-  function setIcon(details, name, parameters, actionType) {
-    var iconSize = 19;
-    if ("iconIndex" in details) {
-      sendRequest(name, [details], parameters);
-    } else if ("imageData" in details) {
-      // Verify that this at least looks like an ImageData element.
-      // Unfortunately, we cannot use instanceof because the ImageData
-      // constructor is not public.
-      //
-      // We do this manually instead of using JSONSchema to avoid having these
-      // properties show up in the doc.
-      if (!("width" in details.imageData) ||
-          !("height" in details.imageData) ||
-          !("data" in details.imageData)) {
-        throw new Error(
-            "The imageData property must contain an ImageData object.");
-      }
-
-      if (details.imageData.width > iconSize ||
-          details.imageData.height > iconSize) {
-        throw new Error(
-            "The imageData property must contain an ImageData object that " +
-            "is no larger than " + iconSize + " pixels square.");
-      }
-
-      sendRequest(name, [details], parameters,
-                  {noStringify: true, nativeFunction: SetIconCommon});
-    } else if ("path" in details) {
-      var img = new Image();
-      img.onerror = function() {
-        console.error("Could not load " + actionType + " icon '" +
-                      details.path + "'.");
-      };
-      img.onload = function() {
-        var canvas = document.createElement("canvas");
-        canvas.width = img.width > iconSize ? iconSize : img.width;
-        canvas.height = img.height > iconSize ? iconSize : img.height;
-
-        var canvas_context = canvas.getContext('2d');
-        canvas_context.clearRect(0, 0, canvas.width, canvas.height);
-        canvas_context.drawImage(img, 0, 0, canvas.width, canvas.height);
-        delete details.path;
-        details.imageData = canvas_context.getImageData(0, 0, canvas.width,
-                                                        canvas.height);
-        sendRequest(name, [details], parameters,
-                    {noStringify: true, nativeFunction: SetIconCommon});
-      };
-      img.src = details.path;
-    } else {
-      throw new Error(
-          "Either the path or imageData property must be specified.");
-    }
-  }
 
   // Stores the name and definition of each API function, with methods to
   // modify their behaviour (such as a custom way to handle requests to the
@@ -476,9 +308,7 @@
   // JSON.
   var customTypes = {};
   chromeHidden.registerCustomType = function(typeName, customTypeFactory) {
-    var customType = customTypeFactory({
-      sendRequest: sendRequest,
-    });
+    var customType = customTypeFactory();
     customType.prototype = new CustomBindingsObject();
     customTypes[typeName] = customType;
   };
@@ -531,6 +361,11 @@
     var platform = getPlatform();
 
     apiDefinitions.forEach(function(apiDef) {
+      // TODO(kalman): Remove this, or refactor schema_generated_bindings.js so
+      // that it isn't necessary. For now, chrome.app is entirely handwritten.
+      if (apiDef.namespace === 'app')
+        return;
+
       if (!isSchemaNodeSupported(apiDef, platform, manifestVersion))
         return;
 
@@ -599,16 +434,17 @@
           apiFunction.definition = functionDef;
           apiFunction.name = apiFunctionName;
 
-          // Validate API for ambiguity only in DEBUG mode.
-          // We do not validate 'extension.sendRequest' because we know it is
-          // ambiguous. We disambiguate calls in 'updateArgumentsPrevalidate'.
           // TODO(aa): It would be best to run this in a unit test, but in order
           // to do that we would need to better factor this code so that it
-          // didn't depend on so much v8::Extension machinery.
+          // doesn't depend on so much v8::Extension machinery.
           if (chromeHidden.validateAPI &&
-              apiFunction.name != "extension.sendRequest" &&
-              isDefinedSignatureAmbiguous(apiFunction.definition.parameters))
-            throw new Error(apiFunction.name + " is ambiguous");
+              isFunctionSignatureAmbiguous(apiFunction.definition)) {
+            throw new Error(
+                apiFunction.name + ' has ambiguous optional arguments. ' +
+                'To implement custom disambiguation logic, add ' +
+                '"allowAmbiguousOptionalArguments" to the function\'s schema.');
+          }
+
           apiFunctions.register(apiFunction.name, apiFunction);
 
           mod[functionDef.name] = (function() {
@@ -616,7 +452,7 @@
             if (this.updateArgumentsPreValidate)
               args = this.updateArgumentsPreValidate.apply(this, args);
 
-            args = chromeHidden.updateArgumentsValidate(args, this);
+            args = normalizeArgumentsAndValidate(args, this);
             if (this.updateArgumentsPostValidate)
               args = this.updateArgumentsPostValidate.apply(this, args);
 
@@ -736,8 +572,6 @@
       hook({
         apiFunctions: new NamespacedAPIFunctions(apiDef.namespace,
                                                  apiFunctions),
-        sendRequest: sendRequest,
-        setIcon: setIcon,
         apiDefinitions: apiDefinitions,
       }, extensionId);
     });

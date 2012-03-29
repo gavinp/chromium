@@ -219,12 +219,11 @@ class DnsUDPAttempt {
     }
     if (response_->flags() & dns_protocol::kFlagTC)
       return ERR_DNS_SERVER_REQUIRES_TCP;
-    if (response_->rcode() != dns_protocol::kRcodeNOERROR &&
-        response_->rcode() != dns_protocol::kRcodeNXDOMAIN) {
-      return ERR_DNS_SERVER_FAILED;
-    }
-    if (response_->answer_count() == 0)
+    // TODO(szym): Extract TTL for NXDOMAIN results. http://crbug.com/115051
+    if (response_->rcode() == dns_protocol::kRcodeNXDOMAIN)
       return ERR_NAME_NOT_RESOLVED;
+    if (response_->rcode() != dns_protocol::kRcodeNOERROR)
+      return ERR_DNS_SERVER_FAILED;
 
     return OK;
   }
@@ -390,9 +389,17 @@ class DnsTransactionImpl : public DnsTransaction, public base::NonThreadSafe {
   int MakeAttempt() {
     unsigned attempt_number = attempts_.size();
 
+#if defined(OS_WIN)
+    // Avoid the Windows firewall warning about explicit UDP binding.
+    // TODO(szym): Reuse a pool of pre-bound sockets. http://crbug.com/107413
+    DatagramSocket::BindType bind_type = DatagramSocket::DEFAULT_BIND;
+#else
+    DatagramSocket::BindType bind_type = DatagramSocket::RANDOM_BIND;
+#endif
+
     scoped_ptr<DatagramClientSocket> socket(
         session_->socket_factory()->CreateDatagramClientSocket(
-            DatagramSocket::RANDOM_BIND,
+            bind_type,
             base::Bind(&base::RandInt),
             net_log_.net_log(),
             net_log_.source()));

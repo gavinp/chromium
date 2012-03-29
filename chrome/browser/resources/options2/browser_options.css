@@ -4,7 +4,6 @@
 
 #change-home-page-section {
   margin-left: 30px;
-  overflow-y: hidden;
 }
 
 #home-page-url {
@@ -38,9 +37,9 @@ html[dir=rtl] #account-picture-wrapper {
 }
 
 #account-picture {
-  height: 72px;
+  height: 56px;
   vertical-align: middle;
-  width: 72px;
+  width: 56px;
 }
 
 #change-picture-caption {
@@ -52,7 +51,7 @@ html[dir=rtl] #account-picture-wrapper {
   position: absolute;
   text-align: center;
   /* Width of #account-picture. */
-  width: 72px;
+  width: 56px;
 }
 
 #account-picture-wrapper:not(:hover) #change-picture-caption {
@@ -60,7 +59,7 @@ html[dir=rtl] #account-picture-wrapper {
 }
 
 #sync-general {
-  -webkit-margin-start: 100px;
+  -webkit-margin-start: 76px;
   margin-bottom: 10px;
 }
 
@@ -104,10 +103,6 @@ html[dir=rtl] #account-picture-wrapper {
   padding: 0;
 }
 
-#enable-auto-login-checkbox {
-  margin-top: 10px;
-}
-
 #mac-passwords-warning {
   margin-top: 10px;
 }
@@ -131,7 +126,7 @@ input[type='range'] {
   -webkit-box-orient: horizontal;
   display: -webkit-box;
   height: 42px;
-  vertical-align: baseline;
+  vertical-align: middle;
 }
 
 list:not([disabled]) > .network-group:hover,
@@ -143,6 +138,7 @@ list:not([disabled]) > .network-group[selected] {
 }
 
 .network-group-labels {
+  -webkit-box-flex: 1;
   -webkit-box-orient: vertical;
   display: -webkit-box;
   padding-top: 3px;
@@ -184,11 +180,15 @@ list:not([disabled]) > .network-group[selected] {
 }
 
 .network-wifi {
-  background-image: url('chrome://theme/IDR_STATUSBAR_NETWORK_ARCS');
+  background-image: url('chrome://theme/IDR_STATUSBAR_NETWORK_ARCS_DARK');
 }
 
 .network-cellular {
-  background-image: url('chrome://theme/IDR_STATUSBAR_NETWORK_BARS');
+  background-image: url('chrome://theme/IDR_STATUSBAR_NETWORK_BARS_DARK');
+}
+
+.network-vpn {
+  background-image: url('chrome://theme/IDR_STATUSBAR_VPN');
 }
 
 .network-add-connection,
@@ -197,8 +197,6 @@ list:not([disabled]) > .network-group[selected] {
   background-position: center center !important;
   background-repeat: no-repeat;
 }
-
-/* TODO(kevers): Update following URLs once resources are available */
 
 .network-add-connection {
   background-image: url('chrome://theme/IDR_SIDETABS_NEW_TAB');
@@ -215,13 +213,19 @@ list:not([disabled]) > .network-group[selected] {
 .network-options-button {
   -webkit-box-flex: 0;
   -webkit-transform: scale(0.6);
-  background-image: url('chrome://theme/IDR_INFOBAR_QUESTION_MARK');
+  background-image: none;
   background-position: center center;
   display: block;
+  opacity: 0.5;
   vertical-align: middle;
   width: 19px;
 }
 
+.network-menu-item:hover .network-options-button {
+  background-image: url('chrome://theme/IDR_STATUSBAR_EDIT');
+}
+
+.network-group > .controlled-setting-indicator,
 .network-menu-item > .controlled-setting-indicator {
   -webkit-box-flex: 0;
   -webkit-margin-end: 5px;
@@ -231,15 +235,29 @@ list:not([disabled]) > .network-group[selected] {
   width: 16px;
 }
 
+.network-group > .controlled-setting-indicator {
+  margin-top: 0;
+}
+
 .network-options-button:hover {
-  /* TODO(kevers): Update once proper assets received for the options
-     button. */
-  border: 2px solid #333;
-  border-radius: 10px;
+  opacity: 1;
+}
+
+@-webkit-keyframes vpn-connecting-animation {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.2;
+  }
 }
 
 .network-connecting {
   -webkit-animation: connecting-animation 1s step-end infinite;
+}
+
+.network-vpn.network-connecting {
+  -webkit-animation: vpn-connecting-animation 500ms alternate infinite;
 }
 
 .network-title {
@@ -299,6 +317,10 @@ list:not([disabled]) > .network-group[selected] {
   white-space: nowrap;
 }
 
+.network-disabled-control {
+  color: #999;
+}
+
 .network-menu-header {
   -webkit-padding-start: 36px;
   color: #999;
@@ -327,6 +349,10 @@ list:not([disabled]) > .network-group[selected] {
   opacity: 0.4;
 }
 
+#shared-proxies {
+  margin-top: 12px;
+}
+
 #web-content-section select,
 .web-content-select-label {
   min-width: 145px;
@@ -346,18 +372,19 @@ list:not([disabled]) > .network-group[selected] {
   line-height: 1.8em;
 }
 
-#privacy-explanation span:first-child {
-  display: block;
-}
-
 #advanced-settings {
   height: 0;
   margin-top: 8px;
   overflow: hidden;
 }
 
+#auto-open-file-types-label {
+  padding: 0.45em 0
+}
+
 .sliding {
   -webkit-transition: height 200ms;
+  overflow-y: hidden;
 }
 
 #sessionRestoreOverlay {

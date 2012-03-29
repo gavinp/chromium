@@ -79,8 +79,9 @@ class CONTENT_EXPORT MediaStreamImpl
   // WebKit::WebUserMediaClient implementation
   virtual void requestUserMedia(
       const WebKit::WebUserMediaRequest& user_media_request,
-      const WebKit::WebVector<WebKit::WebMediaStreamSource>&
-          media_stream_source_vector) OVERRIDE;
+      const WebKit::WebVector<WebKit::WebMediaStreamSource>& audio_sources,
+      const WebKit::WebVector<WebKit::WebMediaStreamSource>& video_sources)
+      OVERRIDE;
   virtual void cancelUserMediaRequest(
       const WebKit::WebUserMediaRequest& user_media_request) OVERRIDE;
 
@@ -133,7 +134,10 @@ class CONTENT_EXPORT MediaStreamImpl
   void InitializeWorkerThread(
       talk_base::Thread** thread,
       base::WaitableEvent* event);
+
+  void CreateIpcNetworkManagerOnWorkerThread(base::WaitableEvent*);
   void DeleteIpcNetworkManager();
+
   bool EnsurePeerConnectionFactory();
 
   scoped_ptr<MediaStreamDependencyFactory> dependency_factory_;

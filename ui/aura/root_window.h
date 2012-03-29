@@ -7,6 +7,7 @@
 #pragma once
 
 #include "base/basictypes.h"
+#include "base/memory/ref_counted.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/message_loop.h"
@@ -33,6 +34,7 @@ class Transform;
 
 namespace aura {
 
+class RootWindow;
 class RootWindowHost;
 class RootWindowObserver;
 class KeyEvent;
@@ -42,6 +44,31 @@ class ScrollEvent;
 class TouchEvent;
 class GestureEvent;
 
+// This class represents a lock on the compositor, that can be used to prevent a
+// compositing pass from happening while we're waiting for an asynchronous
+// event. The typical use case is when waiting for a renderer to produce a frame
+// at the right size. The caller keeps a reference on this object, and drops the
+// reference once it desires to release the lock.
+// Note however that the lock is canceled after a short timeout to ensure
+// responsiveness of the UI, so the compositor tree should be kept in a
+// "reasonable" state while the lock is held.
+// Don't instantiate this class directly, use RootWindow::GetCompositorLock.
+class AURA_EXPORT CompositorLock :
+    public base::RefCounted<CompositorLock>,
+    public base::SupportsWeakPtr<CompositorLock> {
+ public:
+  ~CompositorLock();
+
+ private:
+  friend class RootWindow;
+
+  CompositorLock(RootWindow* root_window);
+  void CancelLock();
+
+  RootWindow* root_window_;
+  DISALLOW_COPY_AND_ASSIGN(CompositorLock);
+};
+
 // RootWindow is responsible for hosting a set of windows.
 class AURA_EXPORT RootWindow : public ui::CompositorDelegate,
                                public ui::CompositorObserver,
@@ -49,16 +76,8 @@ class AURA_EXPORT RootWindow : public ui::CompositorDelegate,
                                public internal::FocusManager,
                                public ui::LayerAnimationObserver {
  public:
-  RootWindow();
+  explicit RootWindow(const gfx::Rect& initial_bounds);
   virtual ~RootWindow();
-
-  // TODO(oshima): Move this to monitor manager.
-  static void set_use_fullscreen_host_window(bool use_fullscreen) {
-    use_fullscreen_host_window_ = use_fullscreen;
-  }
-  static bool use_fullscreen_host_window() {
-    return use_fullscreen_host_window_;
-  }
 
   static void set_hide_host_cursor(bool hide) {
     hide_host_cursor_ = hide;
@@ -81,6 +100,9 @@ class AURA_EXPORT RootWindow : public ui::CompositorDelegate,
   // Sets the size of the root window.
   void SetHostSize(const gfx::Size& size);
   gfx::Size GetHostSize() const;
+
+  // Sets the bounds of the host window.
+  void SetHostBounds(const gfx::Rect& size);
 
   // Sets the currently-displayed cursor. If the cursor was previously hidden
   // via ShowCursor(false), it will remain hidden until ShowCursor(true) is
@@ -140,7 +162,10 @@ class AURA_EXPORT RootWindow : public ui::CompositorDelegate,
   // |last_moust_location()|.
   void OnWindowTransformed(Window* window, bool contained_mouse);
 
-  // Add/remove observer.
+  // Add/remove observer. There is no need to remove the observer if
+  // the root window is being deleted. In particular, you SHOULD NOT remove
+  // in |WindowObserver::OnWindowDestroying| of the observer observing
+  // the root window because it is too late to remove it.
   void AddRootWindowObserver(RootWindowObserver* observer);
   void RemoveRootWindowObserver(RootWindowObserver* observer);
 
@@ -194,18 +219,27 @@ class AURA_EXPORT RootWindow : public ui::CompositorDelegate,
   void HoldMouseMoves();
   void ReleaseMouseMoves();
 
+  // Creates a compositor lock.
+  scoped_refptr<CompositorLock> GetCompositorLock();
+
+  // Sets if the window should be focused when shown.
+  void SetFocusWhenShown(bool focus_when_shown);
+
   // Overridden from Window:
   virtual RootWindow* GetRootWindow() OVERRIDE;
+  virtual const RootWindow* GetRootWindow() const OVERRIDE;
   virtual void SetTransform(const ui::Transform& transform) OVERRIDE;
 
   // Overridden from ui::CompositorDelegate:
   virtual void ScheduleDraw() OVERRIDE;
 
   // Overridden from ui::CompositorObserver:
+  virtual void OnCompositingStarted(ui::Compositor*) OVERRIDE;
   virtual void OnCompositingEnded(ui::Compositor*) OVERRIDE;
 
  private:
   friend class Window;
+  friend class CompositorLock;
 
   // Called whenever the mouse moves, tracks the current |mouse_moved_handler_|,
   // sending exited and entered events as its value changes.
@@ -252,11 +286,10 @@ class AURA_EXPORT RootWindow : public ui::CompositorDelegate,
   // Initializes the root window.
   void Init();
 
-  // We hold and aggregregate mouse drags as a way of throttling resizes
-  // when HoldMouseMoves() is called. The following methods are used to
-  // dispatch held and newly incoming mouse events, typically when an event
-  // other than a mouse drag needs dispatching or a matching ReleaseMouseMoves()
-  // is called.
+  // We hold and aggregate mouse drags as a way of throttling resizes when
+  // HoldMouseMoves() is called. The following methods are used to dispatch held
+  // and newly incoming mouse events, typically when an event other than a mouse
+  // drag needs dispatching or a matching ReleaseMouseMoves() is called.
   bool DispatchMouseEventImpl(MouseEvent* event);
   void DispatchHeldMouseMove();
 
@@ -272,16 +305,12 @@ class AURA_EXPORT RootWindow : public ui::CompositorDelegate,
   // current mouse location.
   void SynthesizeMouseMoveEvent();
 
+  // Called by CompositorLock.
+  void UnlockCompositor();
+
   scoped_ptr<ui::Compositor> compositor_;
 
   scoped_ptr<RootWindowHost> host_;
-
-  static RootWindow* instance_;
-
-  // If set before the RootWindow is created, the host window will cover the
-  // entire screen.  Note that this can still be overridden via the
-  // switches::kAuraHostWindowSize flag.
-  static bool use_fullscreen_host_window_;
 
   // If set before the RootWindow is created, the cursor will be drawn within
   // the Aura root window but hidden outside of it, and it'll remain hidden
@@ -315,8 +344,6 @@ class AURA_EXPORT RootWindow : public ui::CompositorDelegate,
   Window* mouse_pressed_handler_;
   Window* mouse_moved_handler_;
   Window* focused_window_;
-  Window* touch_event_handler_;
-  Window* gesture_handler_;
 
   // The gesture_recognizer_ for this.
   scoped_ptr<GestureRecognizer> gesture_recognizer_;
@@ -331,8 +358,12 @@ class AURA_EXPORT RootWindow : public ui::CompositorDelegate,
   // while the count is > 0.
   int mouse_move_hold_count_;
   bool should_hold_mouse_moves_;
-  bool release_mouse_moves_after_draw_;
   scoped_ptr<MouseEvent> held_mouse_move_;
+
+  CompositorLock* compositor_lock_;
+  bool draw_on_compositor_unlock_;
+
+  int draw_trace_count_;
 
   DISALLOW_COPY_AND_ASSIGN(RootWindow);
 };

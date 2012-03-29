@@ -14,6 +14,7 @@
 
 namespace content {
 
+class ShellBrowserContext;
 class ShellBrowserMainParts;
 
 class ShellContentBrowserClient : public ContentBrowserClient {
@@ -120,6 +121,7 @@ class ShellContentBrowserClient : public ContentBrowserClient {
   virtual void RequestMediaAccessPermission(
       const content::MediaStreamRequest* request,
       const content::MediaResponseCallback& callback) OVERRIDE;
+  virtual MediaObserver* GetMediaObserver() OVERRIDE;
   virtual void RequestDesktopNotificationPermission(
       const GURL& source_origin,
       int callback_context,
@@ -144,7 +146,8 @@ class ShellContentBrowserClient : public ContentBrowserClient {
       const GURL& origin,
       WindowContainerType container_type,
       content::ResourceContext* context,
-      int render_process_id) OVERRIDE;
+      int render_process_id,
+      bool* no_javascript_access) OVERRIDE;
   virtual std::string GetWorkerProcessTitle(
       const GURL& url, content::ResourceContext* context) OVERRIDE;
   virtual void ResourceDispatcherHostCreated() OVERRIDE;
@@ -182,6 +185,8 @@ class ShellContentBrowserClient : public ContentBrowserClient {
       crypto::CryptoModuleBlockingPasswordDelegate* GetCryptoPasswordDelegate(
           const GURL& url) OVERRIDE;
 #endif
+
+  ShellBrowserContext* browser_context();
 
  private:
   ShellBrowserMainParts* shell_browser_main_parts_;

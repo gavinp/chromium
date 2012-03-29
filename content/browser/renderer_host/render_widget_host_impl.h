@@ -48,6 +48,7 @@ struct WebScreenInfo;
 namespace content {
 
 class RenderWidgetHostViewPort;
+class TapSuppressionController;
 
 // This implements the RenderWidgetHost interface that is exposed to
 // embedders of content, and adds things only visible to content.
@@ -110,7 +111,6 @@ class CONTENT_EXPORT RenderWidgetHostImpl : virtual public RenderWidgetHost,
   virtual void SetIgnoreInputEvents(bool ignore_input_events) OVERRIDE;
   virtual void Stop() OVERRIDE;
   virtual void WasResized() OVERRIDE;
-  virtual bool OnMessageReceivedForTesting(const IPC::Message& msg) OVERRIDE;
   virtual void AddKeyboardListener(KeyboardListener* listener) OVERRIDE;
   virtual void RemoveKeyboardListener(KeyboardListener* listener) OVERRIDE;
 
@@ -203,8 +203,9 @@ class CONTENT_EXPORT RenderWidgetHostImpl : virtual public RenderWidgetHost,
   void StartHangMonitorTimeout(base::TimeDelta delay);
 
   // Stops all existing hang monitor timeouts and assumes the renderer is
-  // responsive.
-  void StopHangMonitorTimeout();
+  // responsive. It is virtual so RenderViewHost can make a decision whether
+  // the timer should be stopped.
+  virtual void StopHangMonitorTimeout();
 
   // Forwards the given message to the renderer. These are called by the view
   // when it has received a message.
@@ -533,6 +534,10 @@ class CONTENT_EXPORT RenderWidgetHostImpl : virtual public RenderWidgetHost,
   // renderer.
   void ProcessTouchAck(WebKit::WebInputEvent::Type type, bool processed);
 
+  // Called when there is a new auto resize (using a post to avoid a stack
+  // which may get in recursive loops).
+  void DelayedAutoResized();
+
   // Created during construction but initialized during Init*(). Therefore, it
   // is guaranteed never to be NULL, but its channel may be NULL if the
   // renderer crashed, so you must always check that.
@@ -578,6 +583,9 @@ class CONTENT_EXPORT RenderWidgetHostImpl : virtual public RenderWidgetHost,
   // |resize_ack_pending_|, but the latter is not set if the new size has width
   // or height zero, which is why we need this too.
   gfx::Size in_flight_size_;
+
+  // The next auto resize to send.
+  gfx::Size new_auto_size_;
 
   // True if the render widget host should track the render widget's size as
   // opposed to visa versa.
@@ -691,6 +699,8 @@ class CONTENT_EXPORT RenderWidgetHostImpl : virtual public RenderWidgetHost,
   bool has_touch_handler_;
 
   base::WeakPtrFactory<RenderWidgetHostImpl> weak_factory_;
+
+  scoped_ptr<TapSuppressionController> tap_suppression_controller_;
 
   DISALLOW_COPY_AND_ASSIGN(RenderWidgetHostImpl);
 };

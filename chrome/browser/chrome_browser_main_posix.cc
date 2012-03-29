@@ -26,7 +26,8 @@
 #include <asm/page.h>  // for PAGE_SIZE needed by PTHREAD_STACK_MIN
 #endif
 
-#if defined(TOOLKIT_USES_GTK) && !defined(OS_CHROMEOS)
+#if defined(TOOLKIT_USES_GTK)
+#include "chrome/browser/chrome_browser_main_extra_parts_gtk.h"
 #include "chrome/browser/printing/print_dialog_gtk.h"
 #endif
 
@@ -267,8 +268,31 @@ void ChromeBrowserMainPartsPosix::PostMainMessageLoopStart() {
   action.sa_handler = SIGHUPHandler;
   CHECK(sigaction(SIGHUP, &action, NULL) == 0);
 
-#if defined(TOOLKIT_USES_GTK) && !defined(OS_CHROMEOS)
+#if defined(TOOLKIT_USES_GTK)
   printing::PrintingContextGtk::SetCreatePrintDialogFunction(
       &PrintDialogGtk::CreatePrintDialog);
+#endif
+}
+
+void ChromeBrowserMainPartsPosix::ShowMissingLocaleMessageBox() {
+#if defined(OS_CHROMEOS)
+  NOTREACHED();  // Should not ever happen on ChromeOS.
+#elif defined(OS_ANDROID)
+  // TODO(port) Update this as needed.
+  // Probably should not ever happen on Android, but at the time of this
+  // writing, Android isn't even using ChromeBrowserMainPartsPosix yet.
+  NOTREACHED();
+#elif defined(OS_MACOSX)
+  // Not called on Mac because we load the locale files differently.
+  NOTREACHED();
+#elif defined(TOOLKIT_USES_GTK)
+  ChromeBrowserMainExtraPartsGtk::ShowMessageBox(
+      chrome_browser::kMissingLocaleDataMessage);
+#elif defined(USE_AURA)
+  // TODO(port): We may want a views based message dialog here eventually, but
+  // for now, crash.
+  NOTREACHED();
+#else
+#error "Need MessageBox implementation."
 #endif
 }

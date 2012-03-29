@@ -11,6 +11,7 @@
 #include "base/memory/scoped_ptr.h"
 #include "base/observer_list.h"
 #include "base/threading/thread.h"
+#include "net/base/backoff_entry.h"
 #include "remoting/base/encoder.h"
 #include "remoting/host/capturer.h"
 #include "remoting/host/client_session.h"
@@ -106,6 +107,7 @@ class ChromotingHost : public base::RefCountedThreadSafe<ChromotingHost>,
   ////////////////////////////////////////////////////////////////////////////
   // ClientSession::EventHandler implementation.
   virtual void OnSessionAuthenticated(ClientSession* client) OVERRIDE;
+  virtual void OnSessionChannelsConnected(ClientSession* client) OVERRIDE;
   virtual void OnSessionAuthenticationFailed(ClientSession* client) OVERRIDE;
   virtual void OnSessionClosed(ClientSession* session) OVERRIDE;
   virtual void OnSessionSequenceNumber(ClientSession* session,
@@ -113,8 +115,7 @@ class ChromotingHost : public base::RefCountedThreadSafe<ChromotingHost>,
   virtual void OnSessionRouteChange(
       ClientSession* session,
       const std::string& channel_name,
-      const net::IPEndPoint& remote_end_point,
-      const net::IPEndPoint& local_end_point) OVERRIDE;
+      const protocol::TransportRoute& route) OVERRIDE;
 
   // SessionManager::Listener implementation.
   virtual void OnSessionManagerReady() OVERRIDE;
@@ -202,6 +203,9 @@ class ChromotingHost : public base::RefCountedThreadSafe<ChromotingHost>,
 
   // Configuration of the protocol.
   scoped_ptr<protocol::CandidateSessionConfig> protocol_config_;
+
+  // Login backoff state.
+  net::BackoffEntry login_backoff_;
 
   // Flags used for RejectAuthenticatingClient().
   bool authenticating_client_;

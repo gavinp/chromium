@@ -443,6 +443,11 @@ class WebGraphicsContext3DCommandBufferImpl
 
   virtual void setVisibilityCHROMIUM(bool visible);
 
+  virtual void discardFramebufferEXT(WGC3Denum target,
+                                     WGC3Dsizei numAttachments,
+                                     const WGC3Denum* attachments);
+  virtual void ensureFramebufferCHROMIUM();
+
   virtual void setMemoryAllocationChangedCallbackCHROMIUM(
       WebGraphicsMemoryAllocationChangedCallbackCHROMIUM* callback);
 
@@ -538,7 +543,7 @@ class WebGraphicsContext3DCommandBufferImpl
   bool free_command_buffer_when_invisible_;
 
   // State needed by MaybeInitializeGL.
-  GpuChannelHost* host_;
+  scoped_refptr<GpuChannelHost> host_;
   int32 surface_id_;
   GURL active_url_;
   base::WeakPtr<WebGraphicsContext3DSwapBuffersClient> swap_client_;

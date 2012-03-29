@@ -175,6 +175,7 @@
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/guid.h"
 #include "chrome/common/metrics/metrics_log_manager.h"
+#include "chrome/common/net/test_server_locations.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/render_messages.h"
 #include "content/public/browser/child_process_data.h"
@@ -239,6 +240,11 @@ const size_t kUploadLogAvoidRetransmitSize = 50000;
 
 // Interval, in minutes, between state saves.
 const int kSaveStateIntervalMinutes = 5;
+
+// Used to indicate that the response code is currently not set at all --
+// RESPONSE_CODE_INVALID can sometimes be returned in response to a request if,
+// e.g., the server is down.
+const int kNoResponseCode = content::URLFetcher::RESPONSE_CODE_INVALID - 1;
 
 }
 
@@ -651,9 +657,8 @@ void MetricsService::InitializeMetricsState() {
 #if defined(OS_POSIX)
   server_url_xml_ = ASCIIToUTF16(kServerUrlXml);
   server_url_proto_ = ASCIIToUTF16(kServerUrlProto);
-  network_stats_server_ = "chrome.googleechotest.com";
-  // TODO(simonjam): Figure out where this will be hosted.
-  http_pipelining_test_server_ = "";
+  network_stats_server_ = chrome_common_net::kEchoTestServerLocation;
+  http_pipelining_test_server_ = chrome_common_net::kPipelineTestServerBaseUrl;
 #else
   BrowserDistribution* dist = BrowserDistribution::GetDistribution();
   server_url_xml_ = dist->GetStatsServerURL();
@@ -867,6 +872,7 @@ void MetricsService::StopRecording() {
   MetricsLog* current_log =
       static_cast<MetricsLog*>(log_manager_.current_log());
   DCHECK(current_log);
+  current_log->RecordEnvironmentProto(plugins_);
   current_log->RecordIncrementalStabilityElements(plugins_);
   RecordCurrentHistograms();
 
@@ -1198,7 +1204,7 @@ void MetricsService::OnURLFetchComplete(const content::URLFetcher* source) {
   // We should only be able to reach here once we've received responses to both
   // the XML and the protobuf requests.  We should always have the response code
   // available.
-  DCHECK_NE(response_code_, content::URLFetcher::RESPONSE_CODE_INVALID);
+  DCHECK_NE(response_code_, kNoResponseCode);
   waiting_for_asynchronus_reporting_step_ = false;
 
 
@@ -1269,7 +1275,7 @@ void MetricsService::OnURLFetchComplete(const content::URLFetcher* source) {
   }
 
   // Reset the cached response data.
-  response_code_ = content::URLFetcher::RESPONSE_CODE_INVALID;
+  response_code_ = kNoResponseCode;
   response_data_ = std::string();
   response_status_ = std::string();
 }

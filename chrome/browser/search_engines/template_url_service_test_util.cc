@@ -226,10 +226,6 @@ void TemplateURLServiceTestUtil::SetGoogleBaseURL(
       content::NotificationService::NoDetails());
 }
 
-WebDataService* TemplateURLServiceTestUtil::GetWebDataService() {
-  return profile_->GetWebDataService(Profile::EXPLICIT_ACCESS);
-}
-
 TemplateURLService* TemplateURLServiceTestUtil::model() const {
   return TemplateURLServiceFactory::GetForProfile(profile());
 }
@@ -240,4 +236,8 @@ TestingProfile* TemplateURLServiceTestUtil::profile() const {
 
 void TemplateURLServiceTestUtil::StartIOThread() {
   profile_->StartIOThread();
+}
+
+void TemplateURLServiceTestUtil::PumpLoop() {
+  message_loop_.RunAllPending();
 }

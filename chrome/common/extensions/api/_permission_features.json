@@ -59,6 +59,9 @@
   "devtools": {
     "extension_types": ["extension", "packaged_app", "platform_app"]
   },
+  "dns": {
+    "extension_types": ["platform_app"]
+  },
   "experimental": {
     "extension_types": [
       "extension", "packaged_app", "hosted_app", "platform_app"
@@ -78,6 +81,9 @@
   },
   "history": {
     "extension_types": ["extension", "packaged_app", "platform_app"]
+  },
+  "identity": {
+    "extension_types": ["platform_app"]
   },
   "idle": {
     "extension_types": ["extension", "packaged_app", "platform_app"]
@@ -118,6 +124,10 @@
       "extension", "packaged_app", "hosted_app", "platform_app"
     ]
   },
+  "offersPrivate": {
+    "extension_types": ["extension", "packaged_app", "platform_app"],
+    "location": "component"
+  },
   "pageCapture": {
     "extension_types": ["extension", "packaged_app", "platform_app"]
   },
@@ -130,18 +140,22 @@
   "proxy": {
     "extension_types": ["extension", "packaged_app", "platform_app"]
   },
+  "serial": {
+    "extension_types": ["platform_app"]
+  },
   "socket": {
     "extension_types": ["platform_app"]
   },
   "storage": {
-    "extension_types": ["extension", "packaged_app", "platform_app"]
+    "extension_types": ["extension", "packaged_app", "platform_app"],
+    "min_manifest_version": 2
   },
   "systemPrivate": {
     "extension_types": ["extension", "packaged_app", "platform_app"],
     "location": "component"
   },
   "tabs": {
-    "extension_types": ["extension", "packaged_app"]
+    "extension_types": ["extension", "packaged_app", "platform_app"]
   },
   "terminalPrivate": {
     "extension_types": ["extension", "packaged_app", "platform_app"],
@@ -149,6 +163,9 @@
       "pnhechapfaindjhompbnflcldabbghjo",  // HTerm
       "okddffdblfhhnmhodogpojmfkjmhinfp"   // HTerm dev
     ]
+  },
+  "topSites": {
+    "extension_types": ["extension", "packaged_app"]
   },
   "tts": {
     "extension_types": ["extension", "packaged_app", "platform_app"]

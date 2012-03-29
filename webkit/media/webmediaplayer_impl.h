@@ -130,7 +130,16 @@ class WebMediaPlayerImpl
   // Methods for painting.
   virtual void setSize(const WebKit::WebSize& size);
 
+#if WEBKIT_USING_SKIA
+  // This variant (without alpha) is just present during staging of this API
+  // change. Later we will again only have one virtual paint().
   virtual void paint(WebKit::WebCanvas* canvas, const WebKit::WebRect& rect);
+  virtual void paint(WebKit::WebCanvas* canvas,
+                     const WebKit::WebRect& rect,
+                     uint8_t alpha);
+#else
+  virtual void paint(WebKit::WebCanvas* canvas, const WebKit::WebRect& rect);
+#endif
 
   // True if the loaded media has a playable video/audio track.
   virtual bool hasVideo() const;
@@ -274,7 +283,9 @@ class WebMediaPlayerImpl
 
   scoped_refptr<media::MediaLog> media_log_;
 
-  bool is_accelerated_compositing_active_;
+  // Since accelerated compositing status is only known after the first layout,
+  // we delay reporting it to UMA until that time.
+  bool accelerated_compositing_reported_;
 
   bool incremented_externally_allocated_memory_;
 

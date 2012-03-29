@@ -32,16 +32,16 @@ class AudioUtil : public AudioUtilInterface {
  public:
   AudioUtil() {}
 
-  virtual double GetAudioHardwareSampleRate() OVERRIDE {
+  virtual int GetAudioHardwareSampleRate() OVERRIDE {
     return media::GetAudioHardwareSampleRate();
   }
-  virtual double GetAudioInputHardwareSampleRate(
+  virtual int GetAudioInputHardwareSampleRate(
       const std::string& device_id) OVERRIDE {
     return media::GetAudioInputHardwareSampleRate(device_id);
   }
-  virtual uint32 GetAudioInputHardwareChannelCount(
+  virtual ChannelLayout GetAudioInputHardwareChannelLayout(
       const std::string& device_id) OVERRIDE {
-    return media::GetAudioInputHardwareChannelCount(device_id);
+    return media::GetAudioInputHardwareChannelLayout(device_id);
   }
  private:
   DISALLOW_COPY_AND_ASSIGN(AudioUtil);
@@ -49,29 +49,29 @@ class AudioUtil : public AudioUtilInterface {
 
 class AudioUtilNoHardware : public AudioUtilInterface {
  public:
-  AudioUtilNoHardware(double output_rate, double input_rate,
-                      uint32 input_channels)
+  AudioUtilNoHardware(int output_rate, int input_rate,
+                      ChannelLayout input_channel_layout)
       : output_rate_(output_rate),
         input_rate_(input_rate),
-        input_channels_(input_channels) {
+        input_channel_layout_(input_channel_layout) {
   }
 
-  virtual double GetAudioHardwareSampleRate() OVERRIDE {
+  virtual int GetAudioHardwareSampleRate() OVERRIDE {
     return output_rate_;
   }
-  virtual double GetAudioInputHardwareSampleRate(
+  virtual int GetAudioInputHardwareSampleRate(
       const std::string& device_id) OVERRIDE {
     return input_rate_;
   }
-  virtual uint32 GetAudioInputHardwareChannelCount(
+  virtual ChannelLayout GetAudioInputHardwareChannelLayout(
       const std::string& device_id) OVERRIDE {
-    return input_channels_;
+    return input_channel_layout_;
   }
 
  private:
-  double output_rate_;
-  double input_rate_;
-  uint32 input_channels_;
+  int output_rate_;
+  int input_rate_;
+  ChannelLayout input_channel_layout_;
   DISALLOW_COPY_AND_ASSIGN(AudioUtilNoHardware);
 };
 
@@ -237,7 +237,7 @@ TEST_F(WebRTCAudioDeviceTest, TestValidOutputRates) {
 // Basic test that instantiates and initializes an instance of
 // WebRtcAudioDeviceImpl.
 TEST_F(WebRTCAudioDeviceTest, Construct) {
-  AudioUtilNoHardware audio_util(48000.0, 48000.0, 1);
+  AudioUtilNoHardware audio_util(48000, 48000, CHANNEL_LAYOUT_MONO);
   SetAudioUtilCallback(&audio_util);
   scoped_refptr<WebRtcAudioDeviceImpl> audio_device(
       new WebRtcAudioDeviceImpl());
@@ -437,6 +437,7 @@ TEST_F(WebRTCAudioDeviceTest, PlayLocalFile) {
   EXPECT_EQ(0, base->StartPlayout(ch));
 
   ScopedWebRTCPtr<webrtc::VoEFile> file(engine.get());
+  ASSERT_TRUE(file.valid());
   int duration = 0;
   EXPECT_EQ(0, file->GetFileDuration(file_path.c_str(), duration,
                                      webrtc::kFileFormatPcm16kHzFile));
@@ -465,8 +466,8 @@ TEST_F(WebRTCAudioDeviceTest, PlayLocalFile) {
 // where they are decoded and played out on the default audio output device.
 // Disabled when running headless since the bots don't have the required config.
 // TODO(henrika): improve quality by using a wideband codec, enabling noise-
-// suppressions and perhaps also the digital AGC.
-TEST_F(WebRTCAudioDeviceTest, FullDuplexAudio) {
+// suppressions etc.
+TEST_F(WebRTCAudioDeviceTest, FullDuplexAudioWithAGC) {
   if (IsRunningHeadless())
     return;
 
@@ -477,13 +478,13 @@ TEST_F(WebRTCAudioDeviceTest, FullDuplexAudio) {
     return;
 
   EXPECT_CALL(media_observer(),
-    OnSetAudioStreamStatus(_, 1, StrEq("created")));
+      OnSetAudioStreamStatus(_, 1, StrEq("created")));
   EXPECT_CALL(media_observer(),
-    OnSetAudioStreamPlaying(_, 1, true));
+      OnSetAudioStreamPlaying(_, 1, true));
   EXPECT_CALL(media_observer(),
-    OnSetAudioStreamStatus(_, 1, StrEq("closed")));
+      OnSetAudioStreamStatus(_, 1, StrEq("closed")));
   EXPECT_CALL(media_observer(),
-    OnDeleteAudioStream(_, 1)).Times(AnyNumber());
+      OnDeleteAudioStream(_, 1)).Times(AnyNumber());
 
   scoped_refptr<WebRtcAudioDeviceImpl> audio_device(
       new WebRtcAudioDeviceImpl());
@@ -496,10 +497,19 @@ TEST_F(WebRTCAudioDeviceTest, FullDuplexAudio) {
   int err = base->Init(audio_device);
   ASSERT_EQ(0, err);
 
+  ScopedWebRTCPtr<webrtc::VoEAudioProcessing> audio_processing(engine.get());
+  ASSERT_TRUE(audio_processing.valid());
+  bool enabled = false;
+  webrtc::AgcModes agc_mode =  webrtc::kAgcDefault;
+  EXPECT_EQ(0, audio_processing->GetAgcStatus(enabled, agc_mode));
+  EXPECT_TRUE(enabled);
+  EXPECT_EQ(agc_mode, webrtc::kAgcAdaptiveAnalog);
+
   int ch = base->CreateChannel();
   EXPECT_NE(-1, ch);
 
   ScopedWebRTCPtr<webrtc::VoENetwork> network(engine.get());
+  ASSERT_TRUE(network.valid());
   scoped_ptr<WebRTCTransportImpl> transport(
       new WebRTCTransportImpl(network.get()));
   EXPECT_EQ(0, network->RegisterExternalTransport(ch, *transport.get()));

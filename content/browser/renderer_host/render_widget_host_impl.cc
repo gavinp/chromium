@@ -23,6 +23,7 @@
 #include "content/browser/renderer_host/render_process_host_impl.h"
 #include "content/browser/renderer_host/render_view_host_impl.h"
 #include "content/browser/renderer_host/render_widget_helper.h"
+#include "content/browser/renderer_host/tap_suppression_controller.h"
 #include "content/common/accessibility_messages.h"
 #include "content/common/gpu/gpu_messages.h"
 #include "content/common/view_messages.h"
@@ -128,7 +129,8 @@ RenderWidgetHostImpl::RenderWidgetHostImpl(RenderProcessHost* process,
       suppress_next_char_events_(false),
       pending_mouse_lock_request_(false),
       has_touch_handler_(false),
-      ALLOW_THIS_IN_INITIALIZER_LIST(weak_factory_(this)) {
+      ALLOW_THIS_IN_INITIALIZER_LIST(weak_factory_(this)),
+      tap_suppression_controller_(new TapSuppressionController(this)) {
   if (routing_id_ == MSG_ROUTING_NONE) {
     routing_id_ = process_->GetNextRoutingID();
     surface_id_ = GpuSurfaceTracker::Get()->AddSurfaceForRenderer(
@@ -204,11 +206,6 @@ RenderWidgetHostView* RenderWidgetHostImpl::GetView() const {
 
 RenderWidgetHostImpl* RenderWidgetHostImpl::AsRenderWidgetHostImpl() {
   return this;
-}
-
-bool RenderWidgetHostImpl::OnMessageReceivedForTesting(
-    const IPC::Message& msg) {
-  return OnMessageReceived(msg);
 }
 
 gfx::NativeViewId RenderWidgetHostImpl::GetNativeViewId() const {
@@ -696,7 +693,12 @@ void RenderWidgetHostImpl::ForwardMouseEvent(const WebMouseEvent& mouse_event) {
     }
     mouse_move_pending_ = true;
   } else if (mouse_event.type == WebInputEvent::MouseDown) {
+    if (tap_suppression_controller_->ShouldDeferMouseDown(mouse_event))
+      return;
     OnUserGesture();
+  } else if (mouse_event.type == WebInputEvent::MouseUp) {
+    if (tap_suppression_controller_->ShouldSuppressMouseUp())
+      return;
   }
 
   ForwardInputEvent(mouse_event, sizeof(WebMouseEvent), false);
@@ -748,6 +750,9 @@ void RenderWidgetHostImpl::ForwardGestureEvent(
   if (ignore_input_events_ || process_->IgnoreInputEvents())
     return;
 
+  if (gesture_event.type == WebInputEvent::GestureFlingCancel)
+    tap_suppression_controller_->GestureFlingCancel(
+        gesture_event.timeStampSeconds);
   ForwardInputEvent(gesture_event, sizeof(WebGestureEvent), false);
 }
 
@@ -1186,7 +1191,14 @@ void RenderWidgetHostImpl::OnMsgUpdateRect(
   }
 
   if (should_auto_resize_) {
-    OnRenderAutoResized(params.view_size);
+    bool post_callback = new_auto_size_.IsEmpty();
+    new_auto_size_ = params.view_size;
+    if (post_callback) {
+      MessageLoop::current()->PostTask(
+          FROM_HERE,
+          base::Bind(&RenderWidgetHostImpl::DelayedAutoResized,
+                     weak_factory_.GetWeakPtr()));
+    }
   }
 
   // Log the time delta for processing a paint message. On platforms that don't
@@ -1296,6 +1308,8 @@ void RenderWidgetHostImpl::OnMsgInputEventAck(WebInputEvent::Type event_type,
     ProcessWheelAck(processed);
   } else if (WebInputEvent::isTouchEventType(type)) {
     ProcessTouchAck(event_type, processed);
+  } else if (type == WebInputEvent::GestureFlingCancel) {
+    tap_suppression_controller_->GestureFlingCancelAck(processed);
   }
 
   // This is used only for testing, and the other end does not use the
@@ -1687,6 +1701,18 @@ void RenderWidgetHostImpl::AcknowledgePostSubBuffer(int32 route_id,
   GpuProcessHostUIShim* ui_shim = GpuProcessHostUIShim::FromID(gpu_host_id);
   if (ui_shim)
     ui_shim->Send(new AcceleratedSurfaceMsg_PostSubBufferACK(route_id));
+}
+
+void RenderWidgetHostImpl::DelayedAutoResized() {
+  gfx::Size new_size = new_auto_size_;
+  // Clear the new_auto_size_ since the empty value is used as a flag to
+  // indicate that no callback is in progress (i.e. without this line
+  // DelayedAutoResized will not get called again).
+  new_auto_size_.SetSize(0, 0);
+  if (!should_auto_resize_)
+    return;
+
+  OnRenderAutoResized(new_size);
 }
 
 }  // namespace content

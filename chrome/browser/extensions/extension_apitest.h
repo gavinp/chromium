@@ -32,6 +32,26 @@ class FilePath;
 
 class ExtensionApiTest : public ExtensionBrowserTest {
  public:
+  // Flags used to configure how the tests are run.
+  enum Flags {
+    kFlagNone = 0,
+
+    // Allow the extension to run in incognito mode.
+    kFlagEnableIncognito = 1 << 0,
+
+    // Launch the test page in an incognito window.
+    kFlagUseIncognito = 1 << 1,
+
+    // Allow file access for the extension.
+    kFlagEnableFileAccess = 1 << 2,
+
+    // Loads the extension with location COMPONENT.
+    kFlagLoadAsComponent = 1 << 3,
+
+    // Launch the extension in a platform app shell.
+    kFlagLaunchAppShell = 1 << 4
+  };
+
   ExtensionApiTest();
   virtual ~ExtensionApiTest();
 
@@ -103,21 +123,10 @@ class ExtensionApiTest : public ExtensionBrowserTest {
   bool RunExtensionSubtest(const char* extension_name,
                            const std::string& page_url);
 
-  // Same as RunExtensionSubtest, but loads extension as component.
-  bool RunComponentExtensionSubtest(const char* extension_name,
-                                    const std::string& page_url);
-
-  // Same as RunExtensionSubtest, but disables file access.
-  bool RunExtensionSubtestNoFileAccess(const char* extension_name,
-                                       const std::string& page_url);
-
-  // Same as RunExtensionSubtest, but enables the extension for incognito mode.
-  bool RunExtensionSubtestIncognito(const char* extension_name,
-                                    const std::string& page_url);
-
-  // Same as RunExtensionSubtestIncognito, but disables file access.
-  bool RunExtensionSubtestIncognitoNoFileAccess(const char* extension_name,
-                                                const std::string& page_url);
+  // Same as RunExtensionSubtest, except run with the specific |flags|.
+  bool RunExtensionSubtest(const char* extension_name,
+                           const std::string& page_url,
+                           int flags);
 
   // Load |page_url| and wait for pass / fail notification from the extension
   // API on the page.
@@ -147,13 +156,6 @@ class ExtensionApiTest : public ExtensionBrowserTest {
   std::string message_;
 
  private:
-  enum Flags {
-    kFlagNone = 0,
-    kFlagEnableIncognito = 1 << 0,
-    kFlagEnableFileAccess = 1 << 1,
-    kFlagLoadAsComponent = 1 << 2,
-    kFlagLaunchAppShell = 1 << 3
-  };
   bool RunExtensionTestImpl(const char* extension_name,
                             const std::string& test_page,
                             int flags);
@@ -164,6 +166,16 @@ class ExtensionApiTest : public ExtensionBrowserTest {
 
   // Hold the test WebSocket server.
   scoped_ptr<ui_test_utils::TestWebSocketServer> websocket_server_;
+};
+
+// PlatformAppApiTest sets up the command-line flags necessary for platform
+// apps (if any).
+class PlatformAppApiTest : public ExtensionApiTest {
+ public:
+  PlatformAppApiTest();
+  virtual ~PlatformAppApiTest();
+
+  virtual void SetUpCommandLine(CommandLine* command_line) OVERRIDE;
 };
 
 #endif  // CHROME_BROWSER_EXTENSIONS_EXTENSION_APITEST_H_

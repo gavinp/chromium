@@ -88,18 +88,24 @@ class Preferences : public content::NotificationObserver {
   void UpdateAutoRepeatRate();
 
   BooleanPrefMember tap_to_click_enabled_;
+  BooleanPrefMember natural_scroll_;
   BooleanPrefMember vert_edge_scroll_enabled_;
   BooleanPrefMember accessibility_enabled_;
   IntegerPrefMember speed_factor_;
   IntegerPrefMember sensitivity_;
-  BooleanPrefMember use_24hour_clock_;
   BooleanPrefMember primary_mouse_button_right_;
+  BooleanPrefMember use_24hour_clock_;
+  BooleanPrefMember disable_gdata_;
+  BooleanPrefMember disable_gdata_over_cellular_;
+  BooleanPrefMember disable_gdata_hosted_files_;
 
   // Input method preferences.
   StringPrefMember hotkey_next_engine_in_menu_;
   StringPrefMember hotkey_previous_engine_;
   StringPrefMember preferred_languages_;
   StringPrefMember preload_engines_;
+  StringPrefMember current_input_method_;
+  StringPrefMember previous_input_method_;
 
   BooleanPrefMember chewing_boolean_prefs_[
       language_prefs::kNumChewingBooleanPrefs];

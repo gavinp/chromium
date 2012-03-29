@@ -54,7 +54,7 @@ thunk::PPB_AudioInput_API* PPB_AudioInput_Shared::AsPPB_AudioInput_API() {
 
 int32_t PPB_AudioInput_Shared::EnumerateDevices(
     PP_Resource* devices,
-    PP_CompletionCallback callback) {
+    const PP_CompletionCallback& callback) {
   if (!callback.func)
     return PP_ERROR_BLOCKS_MAIN_THREAD;
   if (TrackedCallback::IsPending(enumerate_devices_callback_))
@@ -68,7 +68,7 @@ int32_t PPB_AudioInput_Shared::Open(
     PP_Resource config,
     PPB_AudioInput_Callback audio_input_callback,
     void* user_data,
-    PP_CompletionCallback callback) {
+    const PP_CompletionCallback& callback) {
   if (!audio_input_callback)
     return PP_ERROR_BADARGUMENT;
 
@@ -91,16 +91,29 @@ PP_Bool PPB_AudioInput_Shared::StartCapture() {
   if (capturing_)
     return PP_TRUE;
 
+  // If the audio input device hasn't been opened, set |capturing_| to true and
+  // return directly. Capturing will be started once the open operation is
+  // completed.
+  if (open_state_ == BEFORE_OPEN) {
+    capturing_ = true;
+    return PP_TRUE;
+  }
+
   return InternalStartCapture();
 }
 
 PP_Bool PPB_AudioInput_Shared::StopCapture() {
-  if (open_state_ == CLOSED || (open_state_ == BEFORE_OPEN &&
-                                !TrackedCallback::IsPending(open_callback_))) {
+  if (open_state_ == CLOSED)
     return PP_FALSE;
-  }
   if (!capturing_)
     return PP_TRUE;
+
+  // If the audio input device hasn't been opened, set |capturing_| to false and
+  // return directly.
+  if (open_state_ == BEFORE_OPEN) {
+    capturing_ = false;
+    return PP_TRUE;
+  }
 
   return InternalStopCapture();
 }
@@ -150,6 +163,7 @@ void PPB_AudioInput_Shared::OnOpenComplete(
     // Clean up the handles.
     base::SyncSocket temp_socket(socket_handle);
     base::SharedMemory temp_mem(shared_memory_handle, false);
+    capturing_ = false;
   }
 
   // The callback may have been aborted by Close().
@@ -166,11 +180,6 @@ void PPB_AudioInput_Shared::SetStartCaptureState() {
   DCHECK(!capturing_);
   DCHECK(!audio_input_thread_.get());
 
-  // If the socket doesn't exist, that means that the plugin has started before
-  // the browser has had a chance to create all the shared memory info and
-  // notify us. This is a common case. In this case, we just set the capturing_
-  // flag and the capture will automatically start when that data is available
-  // in SetStreamInfo.
   if (audio_input_callback_ && socket_.get())
     StartThread();
   capturing_ = true;
@@ -194,12 +203,16 @@ void PPB_AudioInput_Shared::SetStreamInfo(
   shared_memory_.reset(new base::SharedMemory(shared_memory_handle, false));
   shared_memory_size_ = shared_memory_size;
 
-  if (audio_input_callback_) {
+  if (audio_input_callback_)
     shared_memory_->Map(shared_memory_size_);
 
-    // StartCapture() may be called before SetSreamInfo().
-    if (capturing_)
-      StartThread();
+  // There is a pending capture request before SetStreamInfo().
+  if (capturing_) {
+    // Set |capturing_| to false so that the state looks consistent to
+    // InternalStartCapture(). It will be reset to true by
+    // SetStartCaptureState().
+    capturing_ = false;
+    InternalStartCapture();
   }
 }
 

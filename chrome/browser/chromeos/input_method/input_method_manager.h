@@ -38,6 +38,17 @@ class XKeyboard;
 // InputMethodManager::GetInstance().
 class InputMethodManager {
  public:
+  enum State {
+    STATE_LOGIN_SCREEN = 0,
+    // The user entered the correct password (= NOTIFICATION_LOGIN_USER_CHANGED
+    // has been sent), but NOTIFICATION_SESSION_STARTED has not.
+    STATE_LOGGING_IN,
+    // The browser window for user session is ready.
+    STATE_BROWSER_SCREEN,
+    STATE_LOCK_SCREEN,
+    STATE_TERMINATING,
+  };
+
   class Observer {
    public:
     virtual ~Observer() {}
@@ -129,7 +140,8 @@ class InputMethodManager {
 
   // Returns the list of input methods we can select (i.e. active). If the cros
   // library is not found or IBus/DBus daemon is not alive, this function
-  // returns a fallback input method list (and never returns NULL).
+  // returns a fallback input method list (and never returns NULL). Caller has
+  // to delete the returned list.
   virtual InputMethodDescriptors* GetActiveInputMethods() = 0;
 
   // Returns the number of active input methods.
@@ -204,6 +216,10 @@ class InputMethodManager {
   // engines are removed.
   virtual void SetEnableAutoImeShutdown(bool enable) = 0;
 
+  // Controls whether extension IME are displayed in the language menu, and can
+  // be selected.
+  virtual void SetEnableExtensionIMEs(bool enable) = 0;
+
   // Sends a handwriting stroke to libcros. See chromeos::SendHandwritingStroke
   // for details.
   virtual void SendHandwritingStroke(
@@ -247,11 +263,6 @@ class InputMethodManager {
   // Returns a InputMethodUtil object.
   virtual InputMethodUtil* GetInputMethodUtil() = 0;
 
-#if !defined(USE_AURA)
-  // Returns a hotkey manager object which could be used to detect Control+space
-  // and Shift+Alt key presses.
-  virtual HotkeyManager* GetHotkeyManager() = 0;
-#endif
   // Enable all input method hotkeys.
   virtual void EnableHotkeys() = 0;
   // Disable all input method hotkeys.

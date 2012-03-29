@@ -7,13 +7,15 @@
 #include "base/sys_string_conversions.h"
 #include "base/utf_string_conversions.h"
 #include "content/browser/renderer_host/test_render_view_host.h"
-#include "content/browser/tab_contents/test_tab_contents.h"
+#include "content/browser/tab_contents/test_web_contents.h"
 #import "content/browser/tab_contents/web_drag_dest_mac.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #import "third_party/mozilla/NSPasteboard+Utils.h"
 #import "ui/base/dragdrop/cocoa_dnd_util.h"
 #import "ui/base/test/ui_cocoa_test_helper.h"
 #include "webkit/glue/webdropdata.h"
+
+using content::RenderViewHostImplTestHarness;
 
 namespace {
 NSString* const kCrCorePasteboardFlavorType_url =
@@ -22,10 +24,10 @@ NSString* const kCrCorePasteboardFlavorType_urln =
     @"CorePasteboardFlavorType 0x75726C6E"; // 'urln'  title
 }  // namespace
 
-class WebDragDestTest : public RenderViewHostTestHarness {
+class WebDragDestTest : public RenderViewHostImplTestHarness {
  public:
   virtual void SetUp() {
-    RenderViewHostTestHarness::SetUp();
+    RenderViewHostImplTestHarness::SetUp();
     drag_dest_.reset([[WebDragDest alloc] initWithTabContents:contents()]);
   }
 

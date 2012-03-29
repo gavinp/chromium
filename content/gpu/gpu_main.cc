@@ -81,10 +81,22 @@ int GpuMain(const content::MainFunctionParams& parameters) {
       LOG(INFO) << "gpu_info_collector::CollectGraphicsInfo failed";
     }
 
+#if defined(OS_LINUX)
+    if (gpu_info.vendor_id == 0x10de) {  // NVIDIA
+      base::ThreadRestrictions::AssertIOAllowed();
+      if (access("/dev/nvidiactl", R_OK) != 0) {
+        LOG(INFO) << "NVIDIA device file /dev/nvidiactl access denied";
+        gpu_info.gpu_accessible = false;
+        dead_on_arrival = true;
+      }
+    }
+#endif
+
     // Set the GPU info even if it failed.
     content::GetContentClient()->SetGpuInfo(gpu_info);
   } else {
     LOG(INFO) << "gfx::GLSurface::InitializeOneOff failed";
+    gpu_info.gpu_accessible = false;
     dead_on_arrival = true;
   }
 
@@ -93,6 +105,10 @@ int GpuMain(const content::MainFunctionParams& parameters) {
 #if defined(OS_WIN)
   // Preload this DLL because the sandbox prevents it from loading.
   LoadLibrary(L"setupapi.dll");
+
+  // Cause advapi32 to load before the sandbox is turned on.
+  unsigned int dummy_rand;
+  rand_s(&dummy_rand);
 
   sandbox::TargetServices* target_services =
       parameters.sandbox_info->target_services;

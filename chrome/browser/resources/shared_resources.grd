@@ -21,11 +21,14 @@ without changes to the corresponding grd file. -->
       <include name="IDR_SHARED_CSS_LIST"
                file="shared/css/list.css" type="BINDATA" />
       <include name="IDR_SHARED_CSS_MENU"
-               file="shared/css/menu.css" type="BINDATA" />
+               file="shared/css/menu.css" type="BINDATA" flattenhtml="true" />
       <include name="IDR_SHARED_CSS_CHROME"
                file="shared/css/chrome_shared.css" type="BINDATA" />
       <include name="IDR_SHARED_CSS_CHROME2"
                file="shared/css/chrome_shared2.css" type="BINDATA" />
+      <include name="IDR_SHARED_CSS_CHROME2_TOUCH"
+               file="shared/css/chrome_shared2_touch.css" type="BINDATA"
+               flattenhtml="true" />
       <include name="IDR_SHARED_CSS_OVERLAY"
                file="shared/css/overlay.css" type="BINDATA" />
       <include name="IDR_SHARED_CSS_SPINNER"
@@ -36,6 +39,8 @@ without changes to the corresponding grd file. -->
                file="shared/css/tabs.css" type="BINDATA" />
       <include name="IDR_SHARED_CSS_THROBBER"
                file="shared/css/throbber.css" type="BINDATA" />
+      <include name="IDR_SHARED_CSS_TRASH"
+               file="shared/css/trash.css" type="BINDATA" />
       <include name="IDR_SHARED_CSS_TREE"
                file="shared/css/tree.css" type="BINDATA" />
       <include name="IDR_SHARED_CSS_TREE_JS"
@@ -51,20 +56,12 @@ without changes to the corresponding grd file. -->
                file="shared/images/checkbox_white.png" type="BINDATA" />
       <include name="IDR_SHARED_IMAGES_DISABLED_SELECT"
                file="shared/images/disabled_select.png" type="BINDATA" />
-      <include name="IDR_SHARED_IMAGES_GOOGLE_LOGO_41"
-               file="shared/images/google-logo-41.png" type="BINDATA" />
-      <include name="IDR_SHARED_IMAGES_GOOGLE_MAIL"
-               file="shared/images/google-mail.png" type="BINDATA" />
       <include name="IDR_SHARED_IMAGES_GOOGLE_TRANSPARENT"
                file="shared/images/google-transparent.png" type="BINDATA" />
       <include name="IDR_SHARED_IMAGES_SELECT"
                file="shared/images/select.png" type="BINDATA" />
       <include name="IDR_SHARED_IMAGES_SPINNER"
                file="shared/images/spinner.svg" type="BINDATA" />
-      <include name="IDR_SHARED_IMAGES_SYNC_BACKUP"
-               file="shared/images/sync-backup.png" type="BINDATA" />
-      <include name="IDR_SHARED_IMAGES_SYNC"
-               file="shared/images/sync.png" type="BINDATA" />
       <include name="IDR_SHARED_IMAGES_THROBBER"
                file="shared/images/throbber.svg" type="BINDATA" />
       <include name="IDR_SHARED_IMAGES_TRASH"

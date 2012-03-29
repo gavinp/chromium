@@ -11,23 +11,30 @@
 #include "ash/shell.h"
 #include "ash/shell_delegate.h"
 #include "ash/shell_window_ids.h"
+#include "ash/wm/shelf_layout_manager.h"
 #include "ui/aura/window.h"
 #include "ui/gfx/canvas.h"
 #include "ui/gfx/compositor/layer.h"
 #include "ui/gfx/image/image.h"
 #include "ui/views/accessible_pane_view.h"
-#include "ui/views/painter.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_delegate.h"
 
 namespace ash {
 
+namespace {
+
+// Max alpha of the background.
+const int kBackgroundAlpha = 128;
+
+}
+
 // The contents view of the Widget. This view contains LauncherView and
 // sizes it to the width of the widget minus the size of the status area.
 class Launcher::DelegateView : public views::WidgetDelegate,
-                               public views::AccessiblePaneView {
+                               public views::AccessiblePaneView{
  public:
-  explicit DelegateView();
+  explicit DelegateView(Launcher* launcher);
   virtual ~DelegateView();
 
   void SetStatusWidth(int width);
@@ -41,15 +48,13 @@ class Launcher::DelegateView : public views::WidgetDelegate,
   virtual gfx::Size GetPreferredSize() OVERRIDE;
   virtual void Layout() OVERRIDE;
 
+  // views::WidgetDelegateView overrides:
   virtual views::Widget* GetWidget() OVERRIDE {
     return View::GetWidget();
   }
-
   virtual const views::Widget* GetWidget() const OVERRIDE {
     return View::GetWidget();
   }
-
-  // views::WidgetDelegateView overrides:
   virtual bool CanActivate() const OVERRIDE {
     // We don't want mouse clicks to activate us, but we need to allow
     // activation when the user is using the keyboard (FocusCycler).
@@ -57,22 +62,23 @@ class Launcher::DelegateView : public views::WidgetDelegate,
   }
 
  private:
+  Launcher* launcher_;
+
+  // Width of the status area.
   int status_width_;
+
   const internal::FocusCycler* focus_cycler_;
 
   DISALLOW_COPY_AND_ASSIGN(DelegateView);
 };
 
-Launcher::DelegateView::DelegateView()
-    : status_width_(0),
+Launcher::DelegateView::DelegateView(Launcher* launcher)
+    : launcher_(launcher),
+      status_width_(0),
       focus_cycler_(NULL) {
 }
 
 Launcher::DelegateView::~DelegateView() {
-}
-
-void Launcher::SetFocusCycler(const internal::FocusCycler* focus_cycler) {
-  delegate_view_->set_focus_cycler(focus_cycler);
 }
 
 void Launcher::DelegateView::SetStatusWidth(int width) {
@@ -93,11 +99,15 @@ void Launcher::DelegateView::Layout() {
   child_at(0)->SetBounds(0, 0, std::max(0, width() - status_width_), height());
 }
 
+// Launcher --------------------------------------------------------------------
+
 Launcher::Launcher(aura::Window* window_container)
     : widget_(NULL),
       window_container_(window_container),
       delegate_view_(NULL),
-      launcher_view_(NULL) {
+      launcher_view_(NULL),
+      ALLOW_THIS_IN_INITIALIZER_LIST(
+          background_animator_(this, 0, kBackgroundAlpha)) {
   model_.reset(new LauncherModel);
   if (Shell::GetInstance()->delegate()) {
     delegate_.reset(
@@ -107,14 +117,15 @@ Launcher::Launcher(aura::Window* window_container)
   widget_.reset(new views::Widget);
   views::Widget::InitParams params(
       views::Widget::InitParams::TYPE_WINDOW_FRAMELESS);
-  params.create_texture_for_layer = true;
+  // The launcher only ever draws a solid color.
+  params.layer_type = ui::LAYER_SOLID_COLOR;
   params.transparent = true;
   params.ownership = views::Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET;
   params.parent = Shell::GetInstance()->GetContainer(
       ash::internal::kShellWindowId_LauncherContainer);
   launcher_view_ = new internal::LauncherView(model_.get(), delegate_.get());
   launcher_view_->Init();
-  delegate_view_ = new DelegateView;
+  delegate_view_ = new DelegateView(this);
   delegate_view_->AddChildView(launcher_view_);
   params.delegate = delegate_view_;
   widget_->Init(params);
@@ -130,6 +141,17 @@ Launcher::Launcher(aura::Window* window_container)
 }
 
 Launcher::~Launcher() {
+}
+
+void Launcher::SetFocusCycler(internal::FocusCycler* focus_cycler) {
+  delegate_view_->set_focus_cycler(focus_cycler);
+  focus_cycler->AddWidget(widget_.get());
+}
+
+void Launcher::SetPaintsBackground(
+      bool value,
+      internal::BackgroundAnimator::ChangeType change_type) {
+  background_animator_.SetPaintsBackground(value, change_type);
 }
 
 void Launcher::SetStatusWidth(int width) {
@@ -157,8 +179,17 @@ gfx::Rect Launcher::GetScreenBoundsOfItemIconForWindow(aura::Window* window) {
                    bounds.height());
 }
 
-internal::LauncherView* Launcher::GetLauncherViewForTest() {
-  return static_cast<internal::LauncherView*>(
-      widget_->GetContentsView()->child_at(0));
+bool Launcher::IsShowingMenu() const {
+  return launcher_view_->IsShowingMenu();
 }
+
+internal::LauncherView* Launcher::GetLauncherViewForTest() {
+  return launcher_view_;
+}
+
+void Launcher::UpdateBackground(int alpha) {
+  ui::Layer* layer = widget_->GetNativeView()->layer();
+  layer->SetColor(SkColorSetARGB(alpha, 0, 0, 0));
+}
+
 }  // namespace ash

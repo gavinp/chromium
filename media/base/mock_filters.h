@@ -81,7 +81,7 @@ class MockDataSource : public DataSource {
   MOCK_METHOD0(OnAudioRendererDisabled, void());
 
   // DataSource implementation.
-  MOCK_METHOD4(Read, void(int64 position, size_t size, uint8* data,
+  MOCK_METHOD4(Read, void(int64 position, int size, uint8* data,
                           const DataSource::ReadCB& callback));
   MOCK_METHOD1(GetSize, bool(int64* size_out));
   MOCK_METHOD1(SetPreload, void(Preload preload));
@@ -233,7 +233,7 @@ class MockVideoRenderer : public VideoRenderer {
   MOCK_METHOD0(OnAudioRendererDisabled, void());
 
   // VideoRenderer implementation.
-  MOCK_METHOD4(Initialize, void(VideoDecoder* decoder,
+  MOCK_METHOD4(Initialize, void(const scoped_refptr<VideoDecoder>& decoder,
                                 const PipelineStatusCB& status_cb,
                                 const StatisticsCB& statistics_cb,
                                 const TimeCB& time_cb));

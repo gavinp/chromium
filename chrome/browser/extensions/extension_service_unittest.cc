@@ -54,7 +54,7 @@
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/extensions/extension.h"
-#include "chrome/common/extensions/extension_constants.h"
+#include "chrome/common/extensions/extension_manifest_constants.h"
 #include "chrome/common/extensions/extension_resource.h"
 #include "chrome/common/extensions/url_pattern.h"
 #include "chrome/common/pref_names.h"
@@ -2008,7 +2008,6 @@ TEST_F(ExtensionServiceTest, EnsureCWSOrdinalsInitialized) {
                                     FilePath(FILE_PATH_LITERAL("web_store")));
   service_->Init();
 
-
   ExtensionSorting* sorting = service_->extension_prefs()->extension_sorting();
   EXPECT_TRUE(
       sorting->GetPageOrdinal(extension_misc::kWebStoreAppId).IsValid());
@@ -2265,6 +2264,7 @@ TEST_F(ExtensionServiceTest, UpdateExtensionPreservesState) {
   // over to the updated version.
   service_->DisableExtension(good->id());
   service_->SetIsIncognitoEnabled(good->id(), true);
+  service_->extension_prefs()->SetDidExtensionEscalatePermissions(good, true);
 
   path = data_dir_.AppendASCII("good2.crx");
   UpdateExtension(good_crx, path, INSTALLED);
@@ -2272,6 +2272,8 @@ TEST_F(ExtensionServiceTest, UpdateExtensionPreservesState) {
   const Extension* good2 = service_->GetExtensionById(good_crx, true);
   ASSERT_EQ("1.0.0.1", good2->version()->GetString());
   EXPECT_TRUE(service_->IsIncognitoEnabled(good2->id()));
+  EXPECT_TRUE(service_->extension_prefs()->DidExtensionEscalatePermissions(
+      good2->id()));
 }
 
 // Tests that updating preserves extension location.
@@ -4000,9 +4002,8 @@ TEST_F(ExtensionServiceTest, GetSyncData) {
   const Extension* extension = service_->GetInstalledExtension(good_crx);
   ASSERT_TRUE(extension);
 
-  TestSyncProcessorStub processor;
   service_->MergeDataAndStartSyncing(syncable::EXTENSIONS, SyncDataList(),
-      &processor);
+      scoped_ptr<SyncChangeProcessor>(new TestSyncProcessorStub));
 
   SyncDataList list = service_->GetAllSyncData(syncable::EXTENSIONS);
   ASSERT_EQ(list.size(), 1U);
@@ -4025,7 +4026,7 @@ TEST_F(ExtensionServiceTest, GetSyncDataTerminated) {
 
   TestSyncProcessorStub processor;
   service_->MergeDataAndStartSyncing(syncable::EXTENSIONS, SyncDataList(),
-      &processor);
+      scoped_ptr<SyncChangeProcessor>(new TestSyncProcessorStub));
 
   SyncDataList list = service_->GetAllSyncData(syncable::EXTENSIONS);
   ASSERT_EQ(list.size(), 1U);
@@ -4047,7 +4048,7 @@ TEST_F(ExtensionServiceTest, GetSyncDataFilter) {
 
   TestSyncProcessorStub processor;
   service_->MergeDataAndStartSyncing(syncable::APPS, SyncDataList(),
-      &processor);
+      scoped_ptr<SyncChangeProcessor>(new TestSyncProcessorStub));
 
   SyncDataList list = service_->GetAllSyncData(syncable::EXTENSIONS);
   ASSERT_EQ(list.size(), 0U);
@@ -4061,7 +4062,7 @@ TEST_F(ExtensionServiceTest, GetSyncExtensionDataUserSettings) {
 
   TestSyncProcessorStub processor;
   service_->MergeDataAndStartSyncing(syncable::EXTENSIONS, SyncDataList(),
-      &processor);
+      scoped_ptr<SyncChangeProcessor>(new TestSyncProcessorStub));
 
   {
     SyncDataList list = service_->GetAllSyncData(syncable::EXTENSIONS);
@@ -4108,7 +4109,7 @@ TEST_F(ExtensionServiceTest, GetSyncAppDataUserSettings) {
 
   TestSyncProcessorStub processor;
   service_->MergeDataAndStartSyncing(syncable::APPS, SyncDataList(),
-      &processor);
+      scoped_ptr<SyncChangeProcessor>(new TestSyncProcessorStub));
 
   StringOrdinal initial_ordinal = StringOrdinal::CreateInitialOrdinal();
   {
@@ -4119,7 +4120,8 @@ TEST_F(ExtensionServiceTest, GetSyncAppDataUserSettings) {
     EXPECT_TRUE(initial_ordinal.Equal(data.page_ordinal()));
   }
 
-  service_->SetAppLaunchOrdinal(app->id(), initial_ordinal.CreateAfter());
+  ExtensionSorting* sorting = service_->extension_prefs()->extension_sorting();
+  sorting->SetAppLaunchOrdinal(app->id(), initial_ordinal.CreateAfter());
   {
     SyncDataList list = service_->GetAllSyncData(syncable::APPS);
     ASSERT_EQ(list.size(), 1U);
@@ -4128,7 +4130,7 @@ TEST_F(ExtensionServiceTest, GetSyncAppDataUserSettings) {
     EXPECT_TRUE(initial_ordinal.Equal(data.page_ordinal()));
   }
 
-  service_->SetPageOrdinal(app->id(), initial_ordinal.CreateAfter());
+  sorting->SetPageOrdinal(app->id(), initial_ordinal.CreateAfter());
   {
     SyncDataList list = service_->GetAllSyncData(syncable::APPS);
     ASSERT_EQ(list.size(), 1U);
@@ -4152,7 +4154,7 @@ TEST_F(ExtensionServiceTest, GetSyncAppDataUserSettingsOnExtensionMoved) {
 
   TestSyncProcessorStub processor;
   service_->MergeDataAndStartSyncing(syncable::APPS, SyncDataList(),
-      &processor);
+      scoped_ptr<SyncChangeProcessor>(new TestSyncProcessorStub));
 
   service_->OnExtensionMoved(apps[0]->id(), apps[1]->id(), apps[2]->id());
   {
@@ -4187,9 +4189,9 @@ TEST_F(ExtensionServiceTest, GetSyncDataList) {
 
   TestSyncProcessorStub processor;
   service_->MergeDataAndStartSyncing(syncable::APPS, SyncDataList(),
-      &processor);
+      scoped_ptr<SyncChangeProcessor>(new TestSyncProcessorStub));
   service_->MergeDataAndStartSyncing(syncable::EXTENSIONS, SyncDataList(),
-      &processor);
+      scoped_ptr<SyncChangeProcessor>(new TestSyncProcessorStub));
 
   service_->DisableExtension(page_action);
   TerminateExtension(theme2_crx);
@@ -4202,7 +4204,7 @@ TEST_F(ExtensionServiceTest, ProcessSyncDataUninstall) {
   InitializeEmptyExtensionService();
   TestSyncProcessorStub processor;
   service_->MergeDataAndStartSyncing(syncable::EXTENSIONS, SyncDataList(),
-      &processor);
+      scoped_ptr<SyncChangeProcessor>(new TestSyncProcessorStub));
 
   sync_pb::EntitySpecifics specifics;
   sync_pb::ExtensionSpecifics* ext_specifics = specifics.mutable_extension();
@@ -4277,7 +4279,7 @@ TEST_F(ExtensionServiceTest, ProcessSyncDataSettings) {
   InitializeExtensionProcessManager();
   TestSyncProcessorStub processor;
   service_->MergeDataAndStartSyncing(syncable::EXTENSIONS, SyncDataList(),
-      &processor);
+      scoped_ptr<SyncChangeProcessor>(new TestSyncProcessorStub));
 
   InstallCRX(data_dir_.AppendASCII("good.crx"), INSTALL_NEW);
   EXPECT_TRUE(service_->IsExtensionEnabled(good_crx));
@@ -4331,7 +4333,7 @@ TEST_F(ExtensionServiceTest, ProcessSyncDataTerminatedExtension) {
   InitializeExtensionServiceWithUpdater();
   TestSyncProcessorStub processor;
   service_->MergeDataAndStartSyncing(syncable::EXTENSIONS, SyncDataList(),
-      &processor);
+      scoped_ptr<SyncChangeProcessor>(new TestSyncProcessorStub));
 
   InstallCRX(data_dir_.AppendASCII("good.crx"), INSTALL_NEW);
   TerminateExtension(good_crx);
@@ -4362,7 +4364,7 @@ TEST_F(ExtensionServiceTest, ProcessSyncDataVersionCheck) {
   InitializeRequestContext();
   TestSyncProcessorStub processor;
   service_->MergeDataAndStartSyncing(syncable::EXTENSIONS, SyncDataList(),
-      &processor);
+      scoped_ptr<SyncChangeProcessor>(new TestSyncProcessorStub));
 
   InstallCRX(data_dir_.AppendASCII("good.crx"), INSTALL_NEW);
   EXPECT_TRUE(service_->IsExtensionEnabled(good_crx));
@@ -4419,7 +4421,7 @@ TEST_F(ExtensionServiceTest, ProcessSyncDataNotInstalled) {
   InitializeRequestContext();
   TestSyncProcessorStub processor;
   service_->MergeDataAndStartSyncing(syncable::EXTENSIONS, SyncDataList(),
-      &processor);
+      scoped_ptr<SyncChangeProcessor>(new TestSyncProcessorStub));
 
   sync_pb::EntitySpecifics specifics;
   sync_pb::ExtensionSpecifics* ext_specifics = specifics.mutable_extension();

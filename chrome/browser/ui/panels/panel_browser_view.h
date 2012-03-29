@@ -79,6 +79,8 @@ class PanelBrowserView : public BrowserView,
   virtual void OnDisplayChanged() OVERRIDE;
   virtual void OnWorkAreaChanged() OVERRIDE;
   virtual bool WillProcessWorkAreaChange() const OVERRIDE;
+  virtual void OnWindowBeginUserBoundsChange() OVERRIDE;
+  virtual void OnWindowEndUserBoundsChange() OVERRIDE;
 
   // Overridden from views::Widget::Observer
   virtual void OnWidgetActivationChanged(views::Widget* widget,
@@ -124,6 +126,7 @@ class PanelBrowserView : public BrowserView,
   virtual void EnsurePanelFullyVisible() OVERRIDE;
   virtual void SetPanelAppIconVisibility(bool visible) OVERRIDE;
   virtual void SetPanelAlwaysOnTop(bool on_top) OVERRIDE;
+  virtual void EnableResizeByMouse(bool enable) OVERRIDE;
 
   // Overridden from AnimationDelegate:
   virtual void AnimationEnded(const ui::Animation* animation) OVERRIDE;
@@ -134,6 +137,8 @@ class PanelBrowserView : public BrowserView,
   void SetBoundsInternal(const gfx::Rect& bounds, bool animate);
 
   void ShowOrHidePanelAppIcon(bool show);
+
+  bool IsAnimatingBounds() const;
 
   scoped_ptr<Panel> panel_;
   gfx::Rect bounds_;
@@ -147,9 +152,10 @@ class PanelBrowserView : public BrowserView,
   // Is the mouse button currently down?
   bool mouse_pressed_;
 
-  // Location the mouse was pressed at or dragged to. Used in drag-and-drop.
+  // Location the mouse was pressed at or dragged to last time when we process
+  // the mouse event. Used in drag-and-drop.
   // This point is represented in the screen coordinate system.
-  gfx::Point mouse_location_;
+  gfx::Point last_mouse_location_;
 
   // Timestamp when the mouse was pressed. Used to detect long click.
   base::TimeTicks mouse_pressed_time_;

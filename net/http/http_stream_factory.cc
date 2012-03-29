@@ -149,6 +149,45 @@ bool HttpStreamFactory::HasSpdyExclusion(const HostPortPair& endpoint) {
 }
 
 // static
+void HttpStreamFactory::EnableNpnSpdy() {
+  set_use_alternate_protocols(true);
+  std::vector<std::string> next_protos;
+  next_protos.push_back("http/1.1");
+  next_protos.push_back("spdy/2");
+  SetNextProtos(next_protos);
+}
+
+// static
+void HttpStreamFactory::EnableNpnHttpOnly() {
+  // Avoid alternate protocol in this case. Otherwise, browser will try SSL
+  // and then fallback to http. This introduces extra load.
+  set_use_alternate_protocols(false);
+  std::vector<std::string> next_protos;
+  next_protos.push_back("http/1.1");
+  next_protos.push_back("http1.1");
+  SetNextProtos(next_protos);
+}
+
+// static
+void HttpStreamFactory::EnableFlowControl() {
+  std::vector<std::string> next_protos;
+  next_protos.push_back("http/1.1");
+  next_protos.push_back("spdy/2");
+  next_protos.push_back("spdy/2.1");
+  SetNextProtos(next_protos);
+}
+
+// static
+void HttpStreamFactory::EnableNpnSpdy3() {
+  std::vector<std::string> next_protos;
+  next_protos.push_back("http/1.1");
+  next_protos.push_back("spdy/2");
+  next_protos.push_back("spdy/2.1");
+  next_protos.push_back("spdy/3");
+  SetNextProtos(next_protos);
+}
+
+// static
 void HttpStreamFactory::SetNextProtos(const std::vector<std::string>& value) {
   if (!next_protos_)
     next_protos_ = new std::vector<std::string>;

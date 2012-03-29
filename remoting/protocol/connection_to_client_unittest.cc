@@ -35,7 +35,8 @@ class ConnectionToClientTest : public testing::Test {
     viewer_->set_host_stub(&host_stub_);
     viewer_->set_input_stub(&input_stub_);
     viewer_->SetEventHandler(&handler_);
-    EXPECT_CALL(handler_, OnConnectionOpened(viewer_.get()));
+    EXPECT_CALL(handler_, OnConnectionAuthenticated(viewer_.get()));
+    EXPECT_CALL(handler_, OnConnectionChannelsConnected(viewer_.get()));
     session_->state_change_callback().Run(
         protocol::Session::CONNECTED);
     session_->state_change_callback().Run(
@@ -63,10 +64,8 @@ class ConnectionToClientTest : public testing::Test {
 };
 
 TEST_F(ConnectionToClientTest, SendUpdateStream) {
-  // Then send the actual data.
-  VideoPacket* packet = new VideoPacket();
-  viewer_->video_stub()->ProcessVideoPacket(
-      packet, base::Bind(&base::DeletePointer<VideoPacket>, packet));
+  scoped_ptr<VideoPacket> packet(new VideoPacket());
+  viewer_->video_stub()->ProcessVideoPacket(packet.Pass(), base::Closure());
 
   message_loop_.RunAllPending();
 
@@ -83,10 +82,8 @@ TEST_F(ConnectionToClientTest, SendUpdateStream) {
 }
 
 TEST_F(ConnectionToClientTest, NoWriteAfterDisconnect) {
-  // Then send the actual data.
-  VideoPacket* packet = new VideoPacket();
-  viewer_->video_stub()->ProcessVideoPacket(
-      packet, base::Bind(&base::DeletePointer<VideoPacket>, packet));
+  scoped_ptr<VideoPacket> packet(new VideoPacket());
+  viewer_->video_stub()->ProcessVideoPacket(packet.Pass(), base::Closure());
 
   // And then close the connection to ConnectionToClient.
   viewer_->Disconnect();
@@ -98,11 +95,11 @@ TEST_F(ConnectionToClientTest, NoWriteAfterDisconnect) {
 }
 
 TEST_F(ConnectionToClientTest, StateChange) {
-  EXPECT_CALL(handler_, OnConnectionClosed(viewer_.get()));
+  EXPECT_CALL(handler_, OnConnectionClosed(viewer_.get(), OK));
   session_->state_change_callback().Run(protocol::Session::CLOSED);
   message_loop_.RunAllPending();
 
-  EXPECT_CALL(handler_, OnConnectionFailed(viewer_.get(), SESSION_REJECTED));
+  EXPECT_CALL(handler_, OnConnectionClosed(viewer_.get(), SESSION_REJECTED));
   session_->set_error(SESSION_REJECTED);
   session_->state_change_callback().Run(protocol::Session::FAILED);
   message_loop_.RunAllPending();

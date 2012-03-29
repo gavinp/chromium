@@ -9,10 +9,16 @@
 #include "ash/system/tray/tray_constants.h"
 #include "base/utf_string_conversions.h"
 #include "grit/ash_strings.h"
+#include "skia/ext/image_operations.h"
+#include "third_party/skia/include/core/SkCanvas.h"
+#include "third_party/skia/include/core/SkPaint.h"
+#include "third_party/skia/include/core/SkPath.h"
+#include "third_party/skia/include/core/SkShader.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/gfx/canvas.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/size.h"
+#include "ui/gfx/skia_util.h"
 #include "ui/views/controls/button/button.h"
 #include "ui/views/controls/button/text_button.h"
 #include "ui/views/controls/image_view.h"
@@ -28,6 +34,8 @@ const int kUserInfoHorizontalPadding = 14;
 const int kUserInfoVerticalPadding = 10;
 const int kUserInfoPaddingBetweenItems = 3;
 
+const int kUserIconSize = 27;
+
 const SkColor kButtonStrokeColor = SkColorSetRGB(0xdd, 0xdd, 0xdd);
 
 // A custom textbutton with some extra vertical padding, and custom border,
@@ -42,6 +50,7 @@ class TrayButton : public views::TextButton {
         hover_border_(views::Border::CreateSolidBorder(1, kButtonStrokeColor)) {
     set_alignment(ALIGN_CENTER);
     set_border(NULL);
+    set_focusable(true);
   }
 
   virtual ~TrayButton() {}
@@ -95,22 +104,38 @@ namespace tray {
 class UserView : public views::View,
                  public views::ButtonListener {
  public:
-  explicit UserView(ash::user::LoginStatus status)
-      : username_(NULL),
+  explicit UserView(ash::user::LoginStatus login)
+      : login_(login),
+        username_(NULL),
         email_(NULL),
         update_(NULL),
         shutdown_(NULL),
         signout_(NULL),
         lock_(NULL) {
-    CHECK(status != ash::user::LOGGED_IN_NONE);
+    CHECK(login_ != ash::user::LOGGED_IN_NONE);
     SetLayoutManager(new views::BoxLayout(views::BoxLayout::kVertical,
           0, 0, 0));
-    set_background(views::Background::CreateSolidBackground(SK_ColorWHITE));
+    set_background(views::Background::CreateSolidBackground(kBackgroundColor));
 
-    bool guest = status == ash::user::LOGGED_IN_GUEST;
-    bool kiosk = status == ash::user::LOGGED_IN_KIOSK;
+    bool guest = login_ == ash::user::LOGGED_IN_GUEST;
+    bool kiosk = login_ == ash::user::LOGGED_IN_KIOSK;
+    bool locked = login_ == ash::user::LOGGED_IN_LOCKED;
+
     if (!guest && !kiosk)
       AddUserInfo();
+
+    // A user should not be able to modify logged in state when screen is
+    // locked.
+    if (!locked)
+      AddButtonContainer();
+  }
+
+  virtual ~UserView() {}
+
+  // Create container for buttons.
+  void AddButtonContainer() {
+    bool guest = login_ == ash::user::LOGGED_IN_GUEST;
+    bool kiosk = login_ == ash::user::LOGGED_IN_KIOSK;
 
     views::View* button_container = new views::View;
     views::BoxLayout *layout = new
@@ -154,44 +179,6 @@ class UserView : public views::View,
     AddChildView(button_container);
   }
 
-  virtual ~UserView() {}
-
-  // Shows update notification if available.
-  void RefreshForUpdate() {
-    ash::SystemTrayDelegate* tray = ash::Shell::GetInstance()->tray_delegate();
-    if (tray->SystemShouldUpgrade()) {
-      if (update_)
-        return;
-      update_ = new views::View;
-      update_->SetLayoutManager(new
-          views::BoxLayout(views::BoxLayout::kHorizontal, 0, 0, 3));
-
-      ui::ResourceBundle& bundle = ui::ResourceBundle::GetSharedInstance();
-      views::Label *label = new views::Label(bundle.GetLocalizedString(
-          IDS_ASH_STATUS_TRAY_UPDATE));
-      label->SetFont(label->font().DeriveFont(-1));
-      update_->AddChildView(label);
-
-      views::ImageView* icon = new views::ImageView;
-      icon->SetImage(bundle.GetImageNamed(tray->GetSystemUpdateIconResource()).
-          ToSkBitmap());
-      update_->AddChildView(icon);
-
-      update_->set_border(views::Border::CreateEmptyBorder(
-          kUserInfoVerticalPadding,
-          kUserInfoHorizontalPadding,
-          kUserInfoVerticalPadding,
-          kUserInfoHorizontalPadding));
-
-      user_info_->AddChildView(update_);
-    } else if (update_) {
-      delete update_;
-      update_ = NULL;
-    }
-    user_info_->InvalidateLayout();
-    user_info_->SchedulePaint();
-  }
-
  private:
   void AddUserInfo() {
     user_info_ = new views::View;
@@ -207,7 +194,10 @@ class UserView : public views::View,
     username_ = new views::Label(UTF8ToUTF16(tray->GetUserDisplayName()));
     username_->SetFont(username_->font().DeriveFont(2));
     username_->SetHorizontalAlignment(views::Label::ALIGN_LEFT);
-    user->AddChildView(username_);
+    // Username is not made visible yet, because chromeos does not have support
+    // for that yet. See http://crosbug/23624
+    username_->SetVisible(false);
+    AddChildView(username_);
 
     email_ = new views::Label(UTF8ToUTF16(tray->GetUserEmail()));
     email_->SetHorizontalAlignment(views::Label::ALIGN_LEFT);
@@ -216,8 +206,6 @@ class UserView : public views::View,
 
     user_info_->AddChildView(user);
     AddChildView(user_info_);
-
-    RefreshForUpdate();
   }
 
   // Overridden from views::ButtonListener.
@@ -246,6 +234,8 @@ class UserView : public views::View,
     update_->SetBoundsRect(bounds);
   }
 
+  user::LoginStatus login_;
+
   views::View* user_info_;
   views::Label* username_;
   views::Label* email_;
@@ -258,6 +248,68 @@ class UserView : public views::View,
   DISALLOW_COPY_AND_ASSIGN(UserView);
 };
 
+// A custom image view with rounded edges.
+class RoundedImageView : public views::View {
+ public:
+  // Constructs a new rounded image view with rounded corners of radius
+  // |corner_radius|.
+  explicit RoundedImageView(int corner_radius) : corner_radius_(corner_radius) {
+  }
+
+  virtual ~RoundedImageView() {
+  }
+
+  // Set the bitmap that should be displayed from a pointer. The pointer
+  // contents is copied in the receiver's bitmap.
+  void SetImage(const SkBitmap& bm, const gfx::Size& size) {
+    image_ = bm;
+    image_size_ = size;
+
+    // Try to get the best image quality for the avatar.
+    resized_ = skia::ImageOperations::Resize(image_,
+        skia::ImageOperations::RESIZE_BEST, size.width(), size.height());
+    PreferredSizeChanged();
+    SchedulePaint();
+  }
+
+  // Overridden from views::View.
+  virtual gfx::Size GetPreferredSize() OVERRIDE {
+    return gfx::Size(image_size_.width() + GetInsets().width(),
+                     image_size_.height() + GetInsets().height());
+  }
+
+  virtual void OnPaint(gfx::Canvas* canvas) OVERRIDE {
+    View::OnPaint(canvas);
+    gfx::Rect image_bounds(GetPreferredSize());
+    image_bounds.Inset(GetInsets());
+    const SkScalar kRadius = SkIntToScalar(corner_radius_);
+    SkPath path;
+    path.addRoundRect(gfx::RectToSkRect(image_bounds), kRadius, kRadius);
+
+    SkPaint paint;
+    SkShader* shader = SkShader::CreateBitmapShader(resized_,
+                                                    SkShader::kRepeat_TileMode,
+                                                    SkShader::kRepeat_TileMode);
+    SkMatrix shader_matrix;
+    shader_matrix.setTranslate(SkIntToScalar(image_bounds.x()),
+                               SkIntToScalar(image_bounds.y()));
+    shader->setLocalMatrix(shader_matrix);
+
+    paint.setShader(shader);
+    paint.setXfermodeMode(SkXfermode::kSrcOver_Mode);
+    shader->unref();
+    canvas->sk_canvas()->drawPath(path, paint);
+  }
+
+ private:
+  SkBitmap image_;
+  SkBitmap resized_;
+  gfx::Size image_size_;
+  int corner_radius_;
+
+  DISALLOW_COPY_AND_ASSIGN(RoundedImageView);
+};
+
 }  // namespace tray
 
 TrayUser::TrayUser() {
@@ -267,13 +319,17 @@ TrayUser::~TrayUser() {
 }
 
 views::View* TrayUser::CreateTrayView(user::LoginStatus status) {
-  views::ImageView* avatar = new views::ImageView;
-  if (status == user::LOGGED_IN_USER || status == user::LOGGED_IN_OWNER) {
-    avatar->SetImage(
-        ash::Shell::GetInstance()->tray_delegate()->GetUserImage());
-    avatar->SetImageSize(gfx::Size(32, 32));
+  avatar_.reset(new tray::RoundedImageView(kTrayRoundedBorderRadius));
+  if (status != user::LOGGED_IN_NONE && status != user::LOGGED_IN_KIOSK &&
+      status != user::LOGGED_IN_GUEST) {
+    avatar_->SetImage(
+        ash::Shell::GetInstance()->tray_delegate()->GetUserImage(),
+        gfx::Size(kUserIconSize, kUserIconSize));
+  } else {
+    avatar_->SetVisible(false);
   }
-  return avatar;
+  avatar_->set_border(views::Border::CreateEmptyBorder(0, 6, 0, 0));
+  return avatar_.get();
 }
 
 views::View* TrayUser::CreateDefaultView(user::LoginStatus status) {
@@ -289,6 +345,7 @@ views::View* TrayUser::CreateDetailedView(user::LoginStatus status) {
 }
 
 void TrayUser::DestroyTrayView() {
+  avatar_.reset();
 }
 
 void TrayUser::DestroyDefaultView() {
@@ -298,9 +355,10 @@ void TrayUser::DestroyDefaultView() {
 void TrayUser::DestroyDetailedView() {
 }
 
-void TrayUser::OnUpdateRecommended() {
-  if (user_.get())
-    user_->RefreshForUpdate();
+void TrayUser::OnUserUpdate() {
+  avatar_->SetImage(
+      ash::Shell::GetInstance()->tray_delegate()->GetUserImage(),
+      gfx::Size(kUserIconSize, kUserIconSize));
 }
 
 }  // namespace internal

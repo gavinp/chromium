@@ -12,8 +12,9 @@
 #include "base/values.h"
 #include "chrome/browser/chromeos/cros_settings_provider.h"
 #include "chrome/browser/chromeos/device_settings_provider.h"
+#include "chrome/browser/chromeos/login/signed_settings_helper.h"
 #include "chrome/browser/chromeos/stub_cros_settings_provider.h"
-#include "chrome/browser/ui/webui/options/chromeos/system_settings_provider.h"
+#include "chrome/browser/ui/webui/options2/chromeos/system_settings_provider2.h"
 #include "chrome/common/chrome_notification_types.h"
 #include "chrome/common/chrome_switches.h"
 #include "content/public/browser/notification_details.h"
@@ -218,14 +219,13 @@ const base::Value* CrosSettings::GetPref(const std::string& path) const {
   return NULL;
 }
 
-bool CrosSettings::GetTrusted(const std::string& path,
-                              const base::Closure& callback) const {
+bool CrosSettings::PrepareTrustedValues(const base::Closure& callback) const {
   DCHECK(CalledOnValidThread());
-  CrosSettingsProvider* provider = GetProvider(path);
-  if (provider)
-    return provider->GetTrusted(path, callback);
-  NOTREACHED() << "CrosSettings::GetTrusted called for unknown pref : " << path;
-  return false;
+  for (size_t i = 0; i < providers_.size(); ++i) {
+    if (!providers_[i]->PrepareTrustedValues(callback))
+      return false;
+  }
+  return true;
 }
 
 bool CrosSettings::GetBoolean(const std::string& path,
@@ -282,10 +282,11 @@ CrosSettings::CrosSettings() {
           switches::kStubCrosSettings)) {
     AddSettingsProvider(new StubCrosSettingsProvider(notify_cb));
   } else {
-    AddSettingsProvider(new DeviceSettingsProvider(notify_cb));
+    AddSettingsProvider(
+        new DeviceSettingsProvider(notify_cb, SignedSettingsHelper::Get()));
   }
   // System settings are not mocked currently.
-  AddSettingsProvider(new SystemSettingsProvider(notify_cb));
+  AddSettingsProvider(new options2::SystemSettingsProvider(notify_cb));
 }
 
 CrosSettings::~CrosSettings() {

@@ -7,7 +7,7 @@
 #include "base/bind.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
-#include "chrome/browser/chromeos/kiosk_mode/kiosk_mode_helper.h"
+#include "chrome/browser/chromeos/kiosk_mode/kiosk_mode_settings.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
@@ -27,8 +27,8 @@ ScreensaverExtensionDialog* g_instance = NULL;
 
 namespace browser {
 
-void ShowScreensaverDialog() {
-  ScreensaverExtensionDialog::ShowScreensaverDialog();
+void ShowScreensaverDialog(scoped_refptr<Extension> extension) {
+  ScreensaverExtensionDialog::ShowScreensaverDialog(extension);
 }
 
 void CloseScreensaverDialog() {
@@ -38,9 +38,10 @@ void CloseScreensaverDialog() {
 }  // namespace browser
 
 // static
-void ScreensaverExtensionDialog::ShowScreensaverDialog() {
+void ScreensaverExtensionDialog::ShowScreensaverDialog(
+    scoped_refptr<Extension> extension) {
   if (!g_instance)
-    g_instance = new ScreensaverExtensionDialog();
+    g_instance = new ScreensaverExtensionDialog(extension);
   g_instance->Show();
 }
 
@@ -50,68 +51,14 @@ void ScreensaverExtensionDialog::CloseScreensaverDialog() {
     g_instance->Close();
 }
 
-ScreensaverExtensionDialog::ScreensaverExtensionDialog()
-    : screensaver_extension_(NULL),
-      loading_extension_(false) {
-}
-
-void ScreensaverExtensionDialog::LoadExtension() {
-  // If the helper is not initialized, call us again when it is.
-  // We can't get the screensaver path till the helper is ready.
-  if (!chromeos::KioskModeHelper::Get()->is_initialized()) {
-    chromeos::KioskModeHelper::Get()->Initialize(
-            base::Bind(&ScreensaverExtensionDialog::LoadExtension,
-                       base::Unretained(this)));
-    return;
-  }
-
-  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::FILE));
-  std::string error;
-
-  scoped_refptr<Extension> screensaver_extension =
-      extension_file_util::LoadExtension(
-          FilePath(chromeos::KioskModeHelper::Get()->GetScreensaverPath()),
-          Extension::COMPONENT,
-          Extension::NO_FLAGS,
-          &error);
-
-  if (!screensaver_extension) {
-    LOG(ERROR) << "Could not load screensaver extension from: " <<
-        chromeos::KioskModeHelper::Get()->GetScreensaverPath();
-    return;
-  }
-
-  BrowserThread::PostTask(BrowserThread::UI,
-                          FROM_HERE,
-                          base::Bind(
-                              &ScreensaverExtensionDialog::SetExtensionAndShow,
-                              base::Unretained(this),
-                              screensaver_extension));
-}
-
-void ScreensaverExtensionDialog::SetExtensionAndShow(
-    scoped_refptr<Extension> extension) {
-  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  screensaver_extension_ = extension;
-  loading_extension_ = false;
-  Show();
+ScreensaverExtensionDialog::ScreensaverExtensionDialog(
+    scoped_refptr<Extension> extension)
+    : screensaver_extension_(extension) {
 }
 
 void ScreensaverExtensionDialog::Show() {
-  // Whenever we're loading the extension, Show() will
-  // be called after the load finishes, so return.
-  if (loading_extension_)
+  if (!screensaver_extension_)
     return;
-
-  if (!screensaver_extension_) {
-    loading_extension_ = true;
-    BrowserThread::PostTask(BrowserThread::FILE,
-                            FROM_HERE,
-                            base::Bind(
-                                &ScreensaverExtensionDialog::LoadExtension,
-                                base::Unretained(this)));
-    return;
-  }
 
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
   Profile* default_profile = ProfileManager::GetDefaultProfile();

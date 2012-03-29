@@ -16,6 +16,7 @@ class GURL;
 namespace net {
 class SocketStreamJob;
 class URLRequestContext;
+class SSLInfo;
 }  // namespace net
 
 // Host of SocketStreamHandle.
@@ -28,12 +29,15 @@ class URLRequestContext;
 // SocketStreamDispatcherHost.
 class SocketStreamHost {
  public:
-  SocketStreamHost(net::SocketStream::Delegate* delegate, int socket_id);
+  SocketStreamHost(net::SocketStream::Delegate* delegate,
+                   int render_view_id,
+                   int socket_id);
   ~SocketStreamHost();
 
   // Gets socket_id associated with |socket|.
   static int SocketIdFromSocketStream(net::SocketStream* socket);
 
+  int render_view_id() const { return render_view_id_; }
   int socket_id() const { return socket_id_; }
 
   // Starts to open connection to |url|.
@@ -49,8 +53,21 @@ class SocketStreamHost {
   // Closes the socket stream.
   void Close();
 
+  // Following CancelWithError, CancelWithSSLError, and ContinueDespiteError
+  // will be called by net::SocketStream::Delegate in OnSSLCertificateError.
+  // CancelWithError Cancels the connection because of an error.
+  // |error| is net::Error which represents the error.
+  void CancelWithError(int error);
+
+  // Cancels the connection because of receiving a certificate with an error.
+  void CancelWithSSLError(const net::SSLInfo& ssl_info);
+
+  // Continue to establish the connection in spite of an error.
+  void ContinueDespiteError();
+
  private:
   net::SocketStream::Delegate* delegate_;
+  int render_view_id_;
   int socket_id_;
 
   scoped_refptr<net::SocketStreamJob> socket_;

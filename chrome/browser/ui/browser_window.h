@@ -6,6 +6,7 @@
 #define CHROME_BROWSER_UI_BROWSER_WINDOW_H_
 #pragma once
 
+#include "base/callback_forward.h"
 #include "chrome/browser/ui/base_window.h"
 #include "chrome/browser/ui/bookmarks/bookmark_bar.h"
 #include "chrome/browser/ui/fullscreen_exit_bubble_type.h"
@@ -21,7 +22,6 @@ class GURL;
 class LocationBar;
 class Profile;
 class StatusBubble;
-class TabContents;
 class TabContentsWrapper;
 class TemplateURL;
 #if !defined(OS_MACOSX)
@@ -217,6 +217,14 @@ class BrowserWindow : public BaseWindow {
   // Shows the Chrome To Mobile bubble.
   virtual void ShowChromeToMobileBubble() = 0;
 
+#if defined(ENABLE_ONE_CLICK_SIGNIN)
+  // Shows the one-click sign in bubble.  The given closures are run
+  // when their corresponding links are clicked.
+  virtual void ShowOneClickSigninBubble(
+      const base::Closure& learn_more_callback,
+      const base::Closure& advanced_callback) = 0;
+#endif
+
   // Whether or not the shelf view is visible.
   virtual bool IsDownloadShelfVisible() const = 0;
 
@@ -351,6 +359,11 @@ class BrowserWindow : public BaseWindow {
 
   // Shows the avatar bubble on the window frame off of the avatar button.
   virtual void ShowAvatarBubbleFromAvatarButton() = 0;
+
+  // Show bubble for password generation positioned relative to |rect|. A stub
+  // implementation is provided since this feature is currently only available
+  // for Windows.
+  virtual void ShowPasswordGenerationBubble(const gfx::Rect& rect) {}
 
  protected:
   friend class BrowserList;

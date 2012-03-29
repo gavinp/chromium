@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,20 +26,22 @@ class NaClBrokerHost : public content::BrowserChildProcessHostDelegate {
 
   // Send a message to the broker process, causing it to launch
   // a Native Client loader process.
-  bool LaunchLoader(const std::wstring& loader_channel_id);
+  bool LaunchLoader(const std::string& loader_channel_id);
+
+  bool LaunchDebugExceptionHandler(int32 pid);
 
   // Stop the broker process.
   void StopBroker();
 
  private:
   // Handler for NaClProcessMsg_LoaderLaunched message
-  void OnLoaderLaunched(const std::wstring& loader_channel_id,
+  void OnLoaderLaunched(const std::string& loader_channel_id,
                         base::ProcessHandle handle);
+  // Handler for NaClProcessMsg_DebugExceptionHandlerLaunched message
+  void OnDebugExceptionHandlerLaunched(int32 pid);
 
   // BrowserChildProcessHostDelegate implementation:
   virtual bool OnMessageReceived(const IPC::Message& msg);
-
-  bool stopping_;
 
   scoped_ptr<content::BrowserChildProcessHost> process_;
 

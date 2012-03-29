@@ -7,12 +7,16 @@
 #include "ash/app_list/app_list_item_model.h"
 #include "ash/app_list/app_list_model_view.h"
 #include "ash/app_list/drop_shadow_label.h"
+#include "base/bind.h"
+#include "base/message_loop.h"
+#include "base/synchronization/cancellation_flag.h"
+#include "base/threading/worker_pool.h"
 #include "base/utf_string_conversions.h"
-#include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/animation/throb_animation.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/gfx/canvas.h"
 #include "ui/gfx/font.h"
+#include "ui/gfx/skbitmap_operations.h"
 #include "ui/views/controls/image_view.h"
 #include "ui/views/controls/menu/menu_item_view.h"
 #include "ui/views/controls/menu/menu_model_adapter.h"
@@ -23,7 +27,6 @@ namespace ash {
 namespace {
 
 const int kTopBottomPadding = 10;
-const int kLeftRightPadding = 20;
 const int kIconTitleSpacing = 10;
 
 const SkColor kTitleColor = SK_ColorWHITE;
@@ -46,6 +49,8 @@ const int kBoldFontSize = 14;
 const int kMinFontSize = 12;
 
 const int kMinTitleChars = 15;
+
+const int kLeftRightPaddingChars = 1;
 
 const gfx::Font& GetTitleFontForIconSize(const gfx::Size& size) {
   static int icon_height;
@@ -94,6 +99,78 @@ int g_min_title_width = 0;
 // static
 const char AppListItemView::kViewClassName[] = "ash/app_list/AppListItemView";
 
+// AppListItemView::IconOperation wraps background icon processing.
+class AppListItemView::IconOperation
+    : public base::RefCountedThreadSafe<AppListItemView::IconOperation> {
+ public:
+  IconOperation(const SkBitmap& bitmap, const gfx::Size& size)
+      : bitmap_(bitmap),
+        size_(size) {
+  }
+
+  static void Run(scoped_refptr<IconOperation> op) {
+    op->ResizeAndGenerateShadow();
+  }
+
+  // Padding space around icon to contain its shadow. Note it should be at least
+  // the max size of shadow radius + shadow offset in shadow generation code.
+  static const int kShadowPadding = 15;
+
+  void ResizeAndGenerateShadow() {
+    // If you change shadow radius and shadow offset, please also update
+    // kShadowPaddingAbove.
+    const SkColor kShadowColor[] = {
+      SkColorSetARGB(0xCC, 0, 0, 0),
+      SkColorSetARGB(0x33, 0, 0, 0),
+      SkColorSetARGB(0x4C, 0, 0, 0),
+    };
+    const gfx::Point kShadowOffset[] = {
+      gfx::Point(0, 0),
+      gfx::Point(0, 4),
+      gfx::Point(0, 5),
+    };
+    const SkScalar kShadowRadius[] = {
+      SkIntToScalar(2),
+      SkIntToScalar(4),
+      SkIntToScalar(10),
+    };
+
+    if (cancel_flag_.IsSet())
+      return;
+
+    if (size_ != gfx::Size(bitmap_.width(), bitmap_.height()))
+      bitmap_ = SkBitmapOperations::CreateResizedBitmap(bitmap_, size_);
+
+    if (cancel_flag_.IsSet())
+      return;
+
+    bitmap_ = SkBitmapOperations::CreateDropShadow(
+        bitmap_,
+        arraysize(kShadowColor),
+        kShadowColor,
+        kShadowOffset,
+        kShadowRadius);
+  }
+
+  void Cancel() {
+    cancel_flag_.Set();
+  }
+
+  const SkBitmap& bitmap() const {
+    return bitmap_;
+  }
+
+ private:
+  friend class base::RefCountedThreadSafe<AppListItemView::IconOperation>;
+
+  base::CancellationFlag cancel_flag_;
+
+  SkBitmap bitmap_;
+  const gfx::Size size_;
+
+  DISALLOW_COPY_AND_ASSIGN(IconOperation);
+};
+
 AppListItemView::AppListItemView(AppListModelView* list_model_view,
                                  AppListItemModel* model,
                                  views::ButtonListener* listener)
@@ -102,7 +179,8 @@ AppListItemView::AppListItemView(AppListModelView* list_model_view,
       list_model_view_(list_model_view),
       icon_(new StaticImageView),
       title_(new DropShadowLabel),
-      selected_(false) {
+      selected_(false),
+      ALLOW_THIS_IN_INITIALIZER_LIST(apply_shadow_factory_(this)) {
   title_->SetBackgroundColor(0);
   title_->SetEnabledColor(kTitleColor);
   title_->SetDropShadowSize(3);
@@ -120,20 +198,29 @@ AppListItemView::AppListItemView(AppListModelView* list_model_view,
 
 AppListItemView::~AppListItemView() {
   model_->RemoveObserver(this);
+  CancelPendingIconOperation();
 }
 
 // static
 gfx::Size AppListItemView::GetPreferredSizeForIconSize(
     const gfx::Size& icon_size) {
   int min_title_width = g_min_title_width;
+  // Fixed 20px is used for left/right padding before switching to padding
+  // based on number of chars. It is also a number used for test case
+  // AppList.ModelViewCalculateLayout.
+  int left_right_padding = 20;
   if (min_title_width == 0) {
     const gfx::Font& title_font = GetTitleFontForIconSize(icon_size);
-    min_title_width = kMinTitleChars * title_font.GetAverageCharacterWidth();
+    // Use big char such as 'G' to calculate min title width.
+    min_title_width = kMinTitleChars *
+        title_font.GetStringWidth(ASCIIToUTF16("G"));
+    left_right_padding = kLeftRightPaddingChars *
+        title_font.GetAverageCharacterWidth();
   }
 
   int dimension = std::max(icon_size.width() * 2, min_title_width);
   gfx::Size size(dimension, dimension);
-  size.Enlarge(kLeftRightPadding, kTopBottomPadding);
+  size.Enlarge(left_right_padding, kTopBottomPadding);
   return size;
 }
 
@@ -143,8 +230,12 @@ void AppListItemView::SetMinTitleWidth(int width) {
 }
 
 void AppListItemView::SetIconSize(const gfx::Size& size) {
+  if (icon_size_ == size)
+    return;
+
   icon_size_ = size;
   title_->SetFont(GetTitleFontForIconSize(size));
+  UpdateIcon();
 }
 
 void AppListItemView::SetSelected(bool selected) {
@@ -155,8 +246,49 @@ void AppListItemView::SetSelected(bool selected) {
   SchedulePaint();
 }
 
+void AppListItemView::UpdateIcon() {
+  // Skip if |icon_size_| has not been determined.
+  if (icon_size_.IsEmpty())
+    return;
+
+  SkBitmap icon = model_->icon();
+  // Clear icon and bail out if model icon is empty.
+  if (icon.empty()) {
+    icon_->SetImage(NULL);
+    return;
+  }
+
+  CancelPendingIconOperation();
+
+  // Schedule resize and shadow generation.
+  icon_op_ = new IconOperation(icon, icon_size_);
+  base::WorkerPool::PostTaskAndReply(
+      FROM_HERE,
+      base::Bind(&IconOperation::Run, icon_op_),
+      base::Bind(&AppListItemView::ApplyShadow,
+                 apply_shadow_factory_.GetWeakPtr(),
+                 icon_op_),
+      true /* task_is_slow */);
+}
+
+void AppListItemView::CancelPendingIconOperation() {
+  // Set canceled flag of previous request to skip unneeded processing.
+  if (icon_op_.get())
+    icon_op_->Cancel();
+
+  // Cancel reply callback for previous request.
+  apply_shadow_factory_.InvalidateWeakPtrs();
+}
+
+void AppListItemView::ApplyShadow(scoped_refptr<IconOperation> op) {
+  icon_->SetImage(op->bitmap());
+
+  DCHECK(op.get() == icon_op_.get());
+  icon_op_ = NULL;
+}
+
 void AppListItemView::ItemIconChanged() {
-  icon_->SetImage(model_->icon());
+  UpdateIcon();
 }
 
 void AppListItemView::ItemTitleChanged() {
@@ -177,17 +309,22 @@ gfx::Size AppListItemView::GetPreferredSize() {
 
 void AppListItemView::Layout() {
   gfx::Rect rect(GetContentsBounds());
-  rect.Inset(kLeftRightPadding, kTopBottomPadding);
+
+  int left_right_padding = kLeftRightPaddingChars *
+      title_->font().GetAverageCharacterWidth();
+  rect.Inset(left_right_padding, kTopBottomPadding);
+
   gfx::Size title_size = title_->GetPreferredSize();
   int height = icon_size_.height() + kIconTitleSpacing +
       title_size.height();
   int y = rect.y() + (rect.height() - height) / 2;
 
-  icon_->SetImageSize(icon_size_);
-  icon_->SetBounds(rect.x(), y, rect.width(), icon_size_.height());
+  gfx::Rect icon_bounds(rect.x(), y, rect.width(), icon_size_.height());
+  icon_bounds.Inset(0, -IconOperation::kShadowPadding);
+  icon_->SetBoundsRect(icon_bounds);
 
   title_->SetBounds(rect.x(),
-                    icon_->bounds().bottom() + kIconTitleSpacing,
+                    y + icon_size_.height() + kIconTitleSpacing,
                     rect.width(),
                     title_size.height());
 }

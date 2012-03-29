@@ -42,7 +42,6 @@
 #include "chrome/browser/service/service_process_control.h"
 #include "chrome/browser/sync/profile_sync_service.h"
 #include "chrome/browser/sync/profile_sync_service_factory.h"
-#include "chrome/browser/sync/sync_setup_flow.h"
 #include "chrome/browser/sync/sync_ui_util.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/themes/theme_service_factory.h"
@@ -287,6 +286,8 @@ void BrowserOptionsHandler::GetLocalizedValues(DictionaryValue* values) {
       IDS_OPTIONS2_DEVICE_GROUP_POINTER_SETTINGS_BUTTON_TITLE },
     { "sectionTitleDevice", IDS_OPTIONS_DEVICE_GROUP_NAME },
     { "sectionTitleInternet", IDS_OPTIONS_INTERNET_OPTIONS_GROUP_LABEL },
+    { "syncOverview", IDS_SYNC_OVERVIEW },
+    { "syncButtonTextStart", IDS_SYNC_SETUP_BUTTON_LABEL },
     { "timezone", IDS_OPTIONS_SETTINGS_TIMEZONE_DESCRIPTION },
     { "use24HourClock", IDS_OPTIONS_SETTINGS_USE_24HOUR_CLOCK_DESCRIPTION },
 #else
@@ -309,6 +310,7 @@ void BrowserOptionsHandler::GetLocalizedValues(DictionaryValue* values) {
   RegisterStrings(values, resources, arraysize(resources));
   RegisterCloudPrintValues(values);
 
+#if !defined(OS_CHROMEOS)
   values->SetString(
       "syncOverview",
       l10n_util::GetStringFUTF16(IDS_SYNC_OVERVIEW,
@@ -317,6 +319,7 @@ void BrowserOptionsHandler::GetLocalizedValues(DictionaryValue* values) {
       "syncButtonTextStart",
       l10n_util::GetStringFUTF16(IDS_SYNC_START_SYNC_BUTTON_LABEL,
           l10n_util::GetStringUTF16(IDS_SHORT_PRODUCT_NAME)));
+#endif
 
   values->SetString("syncLearnMoreURL", chrome::kSyncLearnMoreURL);
   values->SetString(
@@ -611,7 +614,7 @@ void BrowserOptionsHandler::InitializePage() {
   SetupMetricsReportingSettingVisibility();
   SetupFontSizeSelector();
   SetupPageZoomSelector();
-  SetupAutoOpenFileTypesDisabledAttribute();
+  SetupAutoOpenFileTypes();
   SetupProxySettingsSection();
   SetupSSLConfigSettings();
 #if !defined(OS_CHROMEOS)
@@ -829,7 +832,7 @@ void BrowserOptionsHandler::Observe(
     if (*pref_name == prefs::kDefaultBrowserSettingEnabled) {
       UpdateDefaultBrowserState();
     } else if (*pref_name == prefs::kDownloadExtensionsToOpen) {
-      SetupAutoOpenFileTypesDisabledAttribute();
+      SetupAutoOpenFileTypes();
 #if !defined(OS_CHROMEOS)
     } else if (proxy_prefs_->IsObserved(*pref_name)) {
       SetupProxySettingsSection();
@@ -923,7 +926,8 @@ void BrowserOptionsHandler::SendProfilesInfo() {
     if (is_gaia_picture) {
       gfx::Image icon = profiles::GetAvatarIconForWebUI(
           cache.GetAvatarIconOfProfileAtIndex(i), true);
-      profile_value->SetString("iconURL", web_ui_util::GetImageDataUrl(icon));
+      profile_value->SetString("iconURL",
+          web_ui_util::GetImageDataUrl(*icon.ToSkBitmap()));
     } else {
       size_t icon_index = cache.GetAvatarIconIndexOfProfileAtIndex(i);
       profile_value->SetString("iconURL",
@@ -1000,7 +1004,7 @@ DictionaryValue* BrowserOptionsHandler::GetSyncStateDictionary() {
 
   sync_status->SetBoolean("setupCompleted",
                           service->HasSyncSetupCompleted());
-  sync_status->SetBoolean("setupInProgress", service->SetupInProgress());
+  sync_status->SetBoolean("setupInProgress", service->FirstSetupInProgress());
 
   string16 status_label;
   string16 link_label;
@@ -1349,16 +1353,16 @@ void BrowserOptionsHandler::SetupPageZoomSelector() {
       "BrowserOptions.setupPageZoomSelector", zoom_factors_value);
 }
 
-void BrowserOptionsHandler::SetupAutoOpenFileTypesDisabledAttribute() {
-  // Set the enabled state for the AutoOpenFileTypesResetToDefault button.
-  // We enable the button if the user has any auto-open file types registered.
+void BrowserOptionsHandler::SetupAutoOpenFileTypes() {
+  // Set the hidden state for the AutoOpenFileTypesResetToDefault button.
+  // We show the button if the user has any auto-open file types registered.
   DownloadManager* manager =
       web_ui()->GetWebContents()->GetBrowserContext()->GetDownloadManager();
-  bool disabled = !(manager &&
-      DownloadPrefs::FromDownloadManager(manager)->IsAutoOpenUsed());
-  base::FundamentalValue value(disabled);
+  bool display = manager &&
+      DownloadPrefs::FromDownloadManager(manager)->IsAutoOpenUsed();
+  base::FundamentalValue value(display);
   web_ui()->CallJavascriptFunction(
-      "BrowserOptions.setAutoOpenFileTypesDisabledAttribute", value);
+      "BrowserOptions.setAutoOpenFileTypesDisplayed", value);
 }
 
 void BrowserOptionsHandler::SetupProxySettingsSection() {

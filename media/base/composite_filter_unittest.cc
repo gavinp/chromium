@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "base/bind.h"
+#include "base/callback_helpers.h"
 #include "base/message_loop.h"
 #include "media/base/composite_filter.h"
 #include "media/base/mock_callback.h"
@@ -336,7 +337,7 @@ void CompositeFilterTest::RunFilter1Callback() {
   EXPECT_TRUE(HasFilter1Callback());
 
   if (!filter_1_status_cb_.is_null()) {
-    ResetAndRunCB(&filter_1_status_cb_, filter_1_status_);
+    base::ResetAndReturn(&filter_1_status_cb_).Run(filter_1_status_);
     filter_1_status_ = PIPELINE_OK;
     return;
   }
@@ -356,7 +357,7 @@ void CompositeFilterTest::RunFilter2Callback() {
   EXPECT_TRUE(HasFilter2Callback());
 
   if (!filter_2_status_cb_.is_null()) {
-    ResetAndRunCB(&filter_2_status_cb_, filter_2_status_);
+    base::ResetAndReturn(&filter_2_status_cb_).Run(filter_2_status_);
     filter_2_status_ = PIPELINE_OK;
     return;
   }
@@ -367,18 +368,6 @@ void CompositeFilterTest::RunFilter2Callback() {
   callback.Run();
 }
 
-// Test AddFilter() failure cases.
-TEST_F(CompositeFilterTest, TestAddFilterFailCases) {
-  // Test adding a null pointer.
-  EXPECT_FALSE(composite_->AddFilter(NULL));
-
-  scoped_refptr<StrictMock<MockFilter> > filter = new StrictMock<MockFilter>();
-  EXPECT_EQ(NULL, filter->host());
-
-  // Test failing because set_host() hasn't been called yet.
-  EXPECT_FALSE(composite_->AddFilter(filter));
-}
-
 // Test successful {Add,Remove}Filter() cases.
 TEST_F(CompositeFilterTest, TestAddRemoveFilter) {
   composite_->set_host(mock_filter_host_.get());
@@ -387,13 +376,25 @@ TEST_F(CompositeFilterTest, TestAddRemoveFilter) {
   scoped_refptr<StrictMock<MockFilter> > filter = new StrictMock<MockFilter>();
   EXPECT_EQ(NULL, filter->host());
 
-  EXPECT_TRUE(composite_->AddFilter(filter));
+  composite_->AddFilter(filter);
   EXPECT_TRUE(filter->host() != NULL);
   composite_->RemoveFilter(filter);
   EXPECT_TRUE(filter->host() == NULL);
 }
 
 class CompositeFilterDeathTest : public CompositeFilterTest {};
+
+// Test AddFilter() failure cases.
+TEST_F(CompositeFilterDeathTest, TestAddFilterFailCases) {
+  // Test adding a null pointer.
+  EXPECT_DEATH_IF_SUPPORTED(composite_->AddFilter(NULL), "");
+
+  scoped_refptr<StrictMock<MockFilter> > filter = new StrictMock<MockFilter>();
+  EXPECT_EQ(NULL, filter->host());
+
+  // Test failing because set_host() hasn't been called yet.
+  EXPECT_DEATH_IF_SUPPORTED(composite_->AddFilter(filter), "");
+}
 
 // Test failure of RemoveFilter() on an unknown filter.
 TEST_F(CompositeFilterDeathTest, TestRemoveUnknownFilter) {

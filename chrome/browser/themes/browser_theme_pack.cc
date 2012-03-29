@@ -31,8 +31,9 @@ using content::BrowserThread;
 namespace {
 
 // Version number of the current theme pack. We just throw out and rebuild
-// theme packs that aren't int-equal to this.
-const int kThemePackVersion = 19;
+// theme packs that aren't int-equal to this. Increment this number if you
+// change default theme assets.
+const int kThemePackVersion = 20;
 
 // IDs that are in the DataPack won't clash with the positive integer
 // uint16. kHeaderID should always have the maximum value because we want the
@@ -502,12 +503,10 @@ SkBitmap* BrowserThemePack::GetBitmapNamed(int idr_id) const {
   if (!image)
     return NULL;
 
-  const SkBitmap* bitmap = *image;
-
   // TODO(sail): This cast should be removed. Currently we use this const_cast
   // to avoid changing the BrowserThemePack::GetBitmapNamed API. Once we
   // switch to using gfx::Image everywhere this can be removed.
-  return const_cast<SkBitmap*>(bitmap);
+  return const_cast<SkBitmap*>(image->ToSkBitmap());
 }
 
 const gfx::Image* BrowserThemePack::GetImageNamed(int idr_id) const {
@@ -1002,7 +1001,7 @@ void BrowserThemePack::GenerateTabBackgroundImages(ImageCache* bitmaps) const {
         // If they've provided a custom image, overlay it.
         ImageCache::const_iterator overlay_it = bitmaps->find(prs_id);
         if (overlay_it != bitmaps->end()) {
-          const SkBitmap* overlay = *(overlay_it->second);
+          const SkBitmap* overlay = overlay_it->second->ToSkBitmap();
           SkCanvas canvas(*bg_tab);
           for (int x = 0; x < bg_tab->width(); x += overlay->width())
             canvas.drawBitmap(*overlay, static_cast<SkScalar>(x), 0, NULL);
@@ -1024,7 +1023,8 @@ void BrowserThemePack::RepackImages(const ImageCache& images,
   for (ImageCache::const_iterator it = images.begin();
        it != images.end(); ++it) {
     std::vector<unsigned char> image_data;
-    if (!gfx::PNGCodec::EncodeBGRASkBitmap(*(it->second), false, &image_data)) {
+    if (!gfx::PNGCodec::EncodeBGRASkBitmap(*it->second->ToSkBitmap(), false,
+                                           &image_data)) {
       NOTREACHED() << "Image file for resource " << it->first
                    << " could not be encoded.";
     } else {

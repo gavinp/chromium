@@ -36,6 +36,7 @@
 #include "chrome/browser/geolocation/chrome_access_token_store.h"
 #include "chrome/browser/google/google_util.h"
 #include "chrome/browser/infobars/infobar_tab_helper.h"
+#include "chrome/browser/media/media_internals.h"
 #include "chrome/browser/net/chrome_net_log.h"
 #include "chrome/browser/notifications/desktop_notification_service.h"
 #include "chrome/browser/notifications/desktop_notification_service_factory.h"
@@ -102,13 +103,15 @@
 #elif defined(OS_CHROMEOS)
 #include "chrome/browser/chromeos/chrome_browser_main_chromeos.h"
 #include "chrome/browser/chromeos/login/user_manager.h"
-#elif defined(OS_LINUX) || defined(OS_OPENBSD)
+#elif defined(OS_LINUX)
 #include "chrome/browser/chrome_browser_main_linux.h"
 #elif defined(OS_POSIX)
 #include "chrome/browser/chrome_browser_main_posix.h"
 #endif
 
-#if defined(OS_WIN) && !defined(USE_AURA)
+#if defined(USE_AURA)
+#include "chrome/browser/tab_contents/chrome_web_contents_view_delegate_aura.h"
+#elif defined(OS_WIN)
 #include "chrome/browser/tab_contents/chrome_web_contents_view_delegate_win.h"
 #endif
 
@@ -321,7 +324,7 @@ content::BrowserMainParts* ChromeContentBrowserClient::CreateBrowserMainParts(
   main_parts = new ChromeBrowserMainPartsMac(parameters);
 #elif defined(OS_CHROMEOS)
   main_parts = new ChromeBrowserMainPartsChromeos(parameters);
-#elif defined(OS_LINUX) || defined(OS_OPENBSD)
+#elif defined(OS_LINUX)
   main_parts = new ChromeBrowserMainPartsLinux(parameters);
 #elif defined(OS_ANDROID)
   // Do nothing for Android.
@@ -345,12 +348,12 @@ content::BrowserMainParts* ChromeContentBrowserClient::CreateBrowserMainParts(
   main_parts->AddParts(new ChromeBrowserMainExtraPartsViews());
 #endif
 
-#if defined(USE_AURA)
-  main_parts->AddParts(new ChromeBrowserMainExtraPartsAura());
-#endif
-
 #if defined(USE_ASH)
   main_parts->AddParts(new ChromeBrowserMainExtraPartsAsh());
+#endif
+
+#if defined(USE_AURA)
+  main_parts->AddParts(new ChromeBrowserMainExtraPartsAura());
 #endif
 
   return main_parts;
@@ -359,8 +362,9 @@ content::BrowserMainParts* ChromeContentBrowserClient::CreateBrowserMainParts(
 content::WebContentsView*
     ChromeContentBrowserClient::OverrideCreateWebContentsView(
         WebContents* web_contents) {
-#if defined(TOOLKIT_VIEWS)
-  return new TabContentsViewViews(web_contents);
+#if defined(TOOLKIT_VIEWS) && (!defined(OS_WIN) || defined(USE_AURA))
+  return new TabContentsViewViews(web_contents,
+                                  GetWebContentsViewDelegate(web_contents));
 #endif
   return NULL;
 }
@@ -376,6 +380,8 @@ content::WebContentsViewDelegate*
   return
       chrome_web_contents_view_delegate_mac::CreateWebContentsViewDelegateMac(
           web_contents);
+#elif defined(USE_AURA)
+  return new ChromeWebContentsViewDelegateAura(web_contents);
 #else
   return NULL;
 #endif
@@ -787,6 +793,7 @@ void ChromeContentBrowserClient::AppendExtraCommandLineSwitches(
   } else if (process_type == switches::kUtilityProcess) {
     static const char* const kSwitchNames[] = {
       switches::kEnableExperimentalExtensionApis,
+      switches::kEnablePlatformApps,
       switches::kWhitelistedExtensionID,
     };
 
@@ -1157,6 +1164,10 @@ void ChromeContentBrowserClient::RequestMediaAccessPermission(
 #endif  // TOOLKIT_VIEWS || OS_LINUX
 }
 
+content::MediaObserver* ChromeContentBrowserClient::GetMediaObserver() {
+  return MediaInternals::GetInstance();
+}
+
 void ChromeContentBrowserClient::RequestDesktopNotificationPermission(
     const GURL& source_origin,
     int callback_context,
@@ -1259,29 +1270,35 @@ bool ChromeContentBrowserClient::CanCreateWindow(
     const GURL& source_origin,
     WindowContainerType container_type,
     content::ResourceContext* context,
-    int render_process_id) {
+    int render_process_id,
+    bool* no_javascript_access) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
+
+  *no_javascript_access = false;
+
   // If the opener is trying to create a background window but doesn't have
   // the appropriate permission, fail the attempt.
   if (container_type == WINDOW_CONTAINER_TYPE_BACKGROUND) {
     ProfileIOData* io_data = ProfileIOData::FromResourceContext(context);
     ExtensionInfoMap* map = io_data->GetExtensionInfoMap();
 
-    // If the opener is not allowed to script its background window, then return
-    // false so that the window.open call returns null.  In this case, only
-    // the manifest is permitted to create a background window.
+    if (!map->SecurityOriginHasAPIPermission(
+            source_origin,
+            render_process_id,
+            ExtensionAPIPermission::kBackground)) {
+      return false;
+    }
+
     // Note: this use of GetExtensionOrAppByURL is safe but imperfect.  It may
     // return a recently installed Extension even if this CanCreateWindow call
     // was made by an old copy of the page in a normal web process.  That's ok,
-    // because the permission check below will still fail.  We must use the
-    // full URL to find hosted apps, though, and not just the origin.
+    // because the permission check above would have caused an early return
+    // already. We must use the full URL to find hosted apps, though, and not
+    // just the origin.
     const Extension* extension = map->extensions().GetExtensionOrAppByURL(
         ExtensionURLInfo(opener_url));
     if (extension && !extension->allow_background_js_access())
-      return false;
-
-    return map->SecurityOriginHasAPIPermission(
-        source_origin, render_process_id, ExtensionAPIPermission::kBackground);
+      *no_javascript_access = true;
   }
   return true;
 }

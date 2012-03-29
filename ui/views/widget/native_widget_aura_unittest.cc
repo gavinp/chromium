@@ -8,7 +8,6 @@
 #include "base/memory/scoped_ptr.h"
 #include "base/message_loop.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "ui/aura/env.h"
 #include "ui/aura/layout_manager.h"
 #include "ui/aura/monitor_manager.h"
 #include "ui/aura/root_window.h"
@@ -36,8 +35,8 @@ class NativeWidgetAuraTest : public testing::Test {
 
   // testing::Test overrides:
   virtual void SetUp() OVERRIDE {
-    root_window_.reset(aura::Env::GetInstance()->monitor_manager()->
-                       CreateRootWindowForPrimaryMonitor());
+    root_window_.reset(
+        aura::MonitorManager::CreateRootWindowForPrimaryMonitor());
     gfx::Screen::SetInstance(new aura::TestScreen(root_window_.get()));
     root_window_->SetBounds(gfx::Rect(0, 0, 640, 480));
     root_window_->SetHostSize(gfx::Size(640, 480));
@@ -64,7 +63,7 @@ class NativeWidgetAuraTest : public testing::Test {
 TEST_F(NativeWidgetAuraTest, CenterWindowLargeParent) {
   // Make a parent window larger than the host represented by rootwindow.
   scoped_ptr<aura::Window> parent(new aura::Window(NULL));
-  parent->Init(ui::Layer::LAYER_NOT_DRAWN);
+  parent->Init(ui::LAYER_NOT_DRAWN);
   parent->SetBounds(gfx::Rect(0, 0, 1024, 800));
   scoped_ptr<Widget>  widget(new Widget());
   NativeWidgetAura* window = Init(parent.get(), widget.get());
@@ -80,7 +79,7 @@ TEST_F(NativeWidgetAuraTest, CenterWindowLargeParent) {
 TEST_F(NativeWidgetAuraTest, CenterWindowSmallParent) {
   // Make a parent window smaller than the host represented by rootwindow.
   scoped_ptr<aura::Window> parent(new aura::Window(NULL));
-  parent->Init(ui::Layer::LAYER_NOT_DRAWN);
+  parent->Init(ui::LAYER_NOT_DRAWN);
   parent->SetBounds(gfx::Rect(0, 0, 480, 320));
   scoped_ptr<Widget> widget(new Widget());
   NativeWidgetAura* window  = Init(parent.get(), widget.get());

@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -234,36 +234,24 @@ void ScreenRecorder::DoInvalidateFullScreen() {
 
 // Network thread --------------------------------------------------------------
 
-void ScreenRecorder::DoSendVideoPacket(VideoPacket* packet) {
+void ScreenRecorder::DoSendVideoPacket(scoped_ptr<VideoPacket> packet) {
   DCHECK(network_loop_->BelongsToCurrentThread());
 
-  bool last = (packet->flags() & VideoPacket::LAST_PARTITION) != 0;
-
-  if (network_stopped_ || connections_.empty()) {
-    delete packet;
+  if (network_stopped_ || connections_.empty())
     return;
-  }
 
-  for (ConnectionToClientList::const_iterator i = connections_.begin();
-       i < connections_.end(); ++i) {
-    base::Closure done_task;
+  base::Closure callback;
+  if ((packet->flags() & VideoPacket::LAST_PARTITION) != 0)
+    callback = base::Bind(&ScreenRecorder::VideoFrameSentCallback, this);
 
-    // Call FrameSentCallback() only for the last packet in the first
-    // connection.
-    if (last && i == connections_.begin()) {
-      done_task = base::Bind(&ScreenRecorder::FrameSentCallback, this, packet);
-    } else {
-      // TODO(hclam): Fix this code since it causes multiple deletion if there's
-      // more than one connection.
-      done_task = base::Bind(&base::DeletePointer<VideoPacket>, packet);
-    }
-
-    (*i)->video_stub()->ProcessVideoPacket(packet, done_task);
-  }
+  // TODO(sergeyu): Currently we send the data only to the first
+  // connection. Send it to all connections if necessary.
+  connections_.front()->video_stub()->ProcessVideoPacket(
+      packet.Pass(), callback);
 }
 
-void ScreenRecorder::FrameSentCallback(VideoPacket* packet) {
-  delete packet;
+void ScreenRecorder::VideoFrameSentCallback() {
+  DCHECK(network_loop_->BelongsToCurrentThread());
 
   if (network_stopped_)
     return;
@@ -297,11 +285,11 @@ void ScreenRecorder::DoEncode(
   // Early out if there's nothing to encode.
   if (!capture_data || capture_data->dirty_region().isEmpty()) {
     // Send an empty video packet to keep network active.
-    VideoPacket* packet = new VideoPacket();
+    scoped_ptr<VideoPacket> packet(new VideoPacket());
     packet->set_flags(VideoPacket::LAST_PARTITION);
     network_loop_->PostTask(
         FROM_HERE, base::Bind(&ScreenRecorder::DoSendVideoPacket,
-                              this, packet));
+                              this, base::Passed(packet.Pass())));
     return;
   }
 
@@ -322,7 +310,8 @@ void ScreenRecorder::DoStopOnEncodeThread(const base::Closure& done_task) {
   capture_loop_->PostTask(FROM_HERE, done_task);
 }
 
-void ScreenRecorder::EncodedDataAvailableCallback(VideoPacket* packet) {
+void ScreenRecorder::EncodedDataAvailableCallback(
+    scoped_ptr<VideoPacket> packet) {
   DCHECK_EQ(encode_loop_, MessageLoop::current());
 
   if (encoder_stopped_)
@@ -338,7 +327,8 @@ void ScreenRecorder::EncodedDataAvailableCallback(VideoPacket* packet) {
   }
 
   network_loop_->PostTask(
-      FROM_HERE, base::Bind(&ScreenRecorder::DoSendVideoPacket, this, packet));
+      FROM_HERE, base::Bind(&ScreenRecorder::DoSendVideoPacket, this,
+                            base::Passed(packet.Pass())));
 }
 
 }  // namespace remoting

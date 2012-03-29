@@ -33,7 +33,7 @@ namespace net {
 class CookieStore;
 class FraudulentCertificateReporter;
 class HttpTransactionFactory;
-class OriginBoundCertService;
+class ServerBoundCertService;
 class ProxyConfigService;
 class ProxyService;
 class SSLConfigService;
@@ -158,6 +158,8 @@ class ProfileIOData {
 
   explicit ProfileIOData(bool is_incognito);
 
+  static std::string GetSSLSessionCacheShard();
+
   void InitializeOnUIThread(Profile* profile);
   void ApplyProfileParamsToContext(ChromeURLRequestContext* context) const;
 
@@ -178,12 +180,12 @@ class ProfileIOData {
     return chrome_url_data_manager_backend_.get();
   }
 
-  // An OriginBoundCertService object is created by a derived class of
+  // A ServerBoundCertService object is created by a derived class of
   // ProfileIOData, and the derived class calls this method to set the
-  // origin_bound_cert_service_ member and transfers ownership to the base
+  // server_bound_cert_service_ member and transfers ownership to the base
   // class.
-  void set_origin_bound_cert_service(
-      net::OriginBoundCertService* origin_bound_cert_service) const;
+  void set_server_bound_cert_service(
+      net::ServerBoundCertService* server_bound_cert_service) const;
 
   net::NetworkDelegate* network_delegate() const {
     return network_delegate_.get();
@@ -217,15 +219,12 @@ class ProfileIOData {
     // ResourceContext implementation:
     virtual net::HostResolver* GetHostResolver() OVERRIDE;
     virtual net::URLRequestContext* GetRequestContext() OVERRIDE;
-    virtual content::MediaObserver* GetMediaObserver() OVERRIDE;
-
     void EnsureInitialized();
 
     ProfileIOData* const io_data_;
 
     net::HostResolver* host_resolver_;
     net::URLRequestContext* request_context_;
-    content::MediaObserver* media_observer_;
   };
 
   typedef base::hash_map<std::string, scoped_refptr<ChromeURLRequestContext> >
@@ -273,7 +272,7 @@ class ProfileIOData {
   // Pointed to by URLRequestContext.
   mutable scoped_ptr<ChromeURLDataManagerBackend>
       chrome_url_data_manager_backend_;
-  mutable scoped_ptr<net::OriginBoundCertService> origin_bound_cert_service_;
+  mutable scoped_ptr<net::ServerBoundCertService> server_bound_cert_service_;
   mutable scoped_ptr<net::NetworkDelegate> network_delegate_;
   mutable scoped_ptr<net::FraudulentCertificateReporter>
       fraudulent_certificate_reporter_;

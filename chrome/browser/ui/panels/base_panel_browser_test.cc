@@ -22,16 +22,24 @@
 #include "chrome/common/chrome_notification_types.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
+#include "chrome/common/extensions/extension_manifest_constants.h"
 #include "chrome/common/string_ordinal.h"
 #include "chrome/test/base/ui_test_utils.h"
-#include "content/browser/tab_contents/test_tab_contents.h"
+#include "content/test/web_contents_tester.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/common/url_constants.h"
+
+#if defined(OS_LINUX)
+#include "ui/base/x/x11_util.h"
+#endif
 
 #if defined(OS_MACOSX)
 #include "base/mac/scoped_nsautorelease_pool.h"
 #include "chrome/browser/ui/cocoa/find_bar/find_bar_bridge.h"
+#include "chrome/browser/ui/cocoa/run_loop_testing.h"
 #endif
+
+using content::WebContentsTester;
 
 namespace {
 
@@ -431,7 +439,8 @@ Panel* BasePanelBrowserTest::CreateOverflowPanel(const std::string& name,
 
 void BasePanelBrowserTest::CreateTestTabContents(Browser* browser) {
   TabContentsWrapper* tab_contents =
-      new TabContentsWrapper(new TestTabContents(browser->profile(), NULL));
+      new TabContentsWrapper(
+          WebContentsTester::CreateTestWebContents(browser->profile(), NULL));
   browser->AddTab(tab_contents, content::PAGE_TRANSITION_LINK);
 }
 
@@ -481,6 +490,17 @@ void BasePanelBrowserTest::CloseWindowAndWait(Browser* browser) {
   signal.Wait();
   // Now we have one less browser instance.
   EXPECT_EQ(browser_count - 1, BrowserList::size());
+
+#if defined(OS_MACOSX)
+  // Mac window controllers may be autoreleased, and in the non-test
+  // environment, may actually depend on the autorelease pool being recycled
+  // with the run loop in order to perform important work. Replicate this in
+  // the test environment.
+  AutoreleasePool()->Recycle();
+
+  // Make sure that everything has a chance to run.
+  chrome::testing::NSRunLoopRunAllPending();
+#endif  // OS_MACOSX
 }
 
 void BasePanelBrowserTest::MoveMouse(const gfx::Point& position) {

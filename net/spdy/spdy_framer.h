@@ -22,6 +22,7 @@
 typedef struct z_stream_s z_stream;  // Forward declaration for zlib.
 
 namespace net {
+
 class HttpProxyClientSocketPoolTest;
 class HttpNetworkLayer;
 class HttpNetworkTransactionTest;
@@ -32,9 +33,6 @@ class SpdySessionTest;
 class SpdyStreamTest;
 class SpdyWebSocketStreamTest;
 class WebSocketJobTest;
-}
-
-namespace spdy {
 
 class SpdyFramer;
 class SpdyFrameBuilder;
@@ -76,6 +74,9 @@ class NET_EXPORT_PRIVATE SettingsFlagsAndId {
 // A datastructure for holding a set of ID/value pairs for a SETTINGS frame.
 typedef std::pair<SettingsFlagsAndId, uint32> SpdySetting;
 typedef std::list<SpdySetting> SpdySettings;
+// SpdySettingsMap has unique (flags, value) pair for give SpdySetting ID.
+typedef std::pair<SpdySettingsFlags, uint32> SettingsFlagsAndValue;
+typedef std::map<SpdySettingsIds, SettingsFlagsAndValue> SettingsMap;
 
 // A datastrcture for holding the contents of a CREDENTIAL frame.
 struct NET_EXPORT_PRIVATE SpdyCredential {
@@ -273,6 +274,7 @@ class NET_EXPORT_PRIVATE SpdyFramer {
   // |associated_stream_id| is the associated stream id for this stream.
   // |priority| is the priority (GetHighestPriority()-GetLowestPriority) for
   //    this stream.
+  // |credential_slot| is the CREDENTIAL slot to be used for this request.
   // |flags| is the flags to use with the data.
   //    To mark this frame as the last frame, enable CONTROL_FLAG_FIN.
   // |compressed| specifies whether the frame should be compressed.
@@ -280,6 +282,7 @@ class NET_EXPORT_PRIVATE SpdyFramer {
   SpdySynStreamControlFrame* CreateSynStream(SpdyStreamId stream_id,
                                              SpdyStreamId associated_stream_id,
                                              SpdyPriority priority,
+                                             uint8 credential_slot,
                                              SpdyControlFlags flags,
                                              bool compressed,
                                              const SpdyHeaderBlock* headers);
@@ -310,8 +313,8 @@ class NET_EXPORT_PRIVATE SpdyFramer {
   // prior to the shutting down of the TCP connection, and includes the
   // stream_id of the last stream the sender of the frame is willing to process
   // to completion.
-  SpdyGoAwayControlFrame* CreateGoAway(
-      SpdyStreamId last_accepted_stream_id) const;
+  SpdyGoAwayControlFrame* CreateGoAway(SpdyStreamId last_accepted_stream_id,
+                                       SpdyGoAwayStatus status) const;
 
   // Creates an instance of SpdyHeadersControlFrame. The HEADERS frame is used
   // for sending additional headers outside of a SYN_STREAM/SYN_REPLY. The
@@ -382,7 +385,7 @@ class NET_EXPORT_PRIVATE SpdyFramer {
 
   // Get the minimum size of the control frame for the given control frame
   // type. This is useful for validating frame blocks.
-  static size_t GetMinimumControlFrameSize(SpdyControlType type);
+  static size_t GetMinimumControlFrameSize(int version, SpdyControlType type);
 
   // Get the stream ID for the given control frame (SYN_STREAM, SYN_REPLY, and
   // HEADERS). If the control frame is NULL or of another type, this
@@ -592,10 +595,8 @@ class NET_EXPORT_PRIVATE SpdyFramer {
   // corrupt data that just looks like HTTP, but deterministic checking requires
   // a lot more state.
   bool probable_http_response_;
-
-  static bool compression_default_;
 };
 
-}  // namespace spdy
+}  // namespace net
 
 #endif  // NET_SPDY_SPDY_FRAMER_H_

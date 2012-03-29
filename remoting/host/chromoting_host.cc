@@ -31,6 +31,33 @@ using remoting::protocol::InputStub;
 
 namespace remoting {
 
+namespace {
+
+const net::BackoffEntry::Policy kDefaultBackoffPolicy = {
+  // Number of initial errors (in sequence) to ignore before applying
+  // exponential back-off rules.
+  0,
+
+  // Initial delay for exponential back-off in ms.
+  2000,
+
+  // Factor by which the waiting time will be multiplied.
+  2,
+
+  // Fuzzing percentage. ex: 10% will spread requests randomly
+  // between 90%-100% of the calculated time.
+  0,
+
+  // Maximum amount of time we are willing to delay our request in ms.
+  -1,
+
+  // Time to keep an entry from being discarded even when it
+  // has no significant state, -1 to never discard.
+  -1,
+};
+
+}  // namespace
+
 ChromotingHost::ChromotingHost(
     ChromotingHostContext* context,
     SignalStrategy* signal_strategy,
@@ -43,6 +70,7 @@ ChromotingHost::ChromotingHost(
       stopping_recorders_(0),
       state_(kInitial),
       protocol_config_(protocol::CandidateSessionConfig::CreateDefault()),
+      login_backoff_(&kDefaultBackoffPolicy),
       authenticating_client_(false),
       reject_authenticating_client_(false) {
   DCHECK(context_);
@@ -137,6 +165,12 @@ void ChromotingHost::SetAuthenticatorFactory(
 void ChromotingHost::OnSessionAuthenticated(ClientSession* client) {
   DCHECK(context_->network_message_loop()->BelongsToCurrentThread());
 
+  login_backoff_.Reset();
+}
+
+void ChromotingHost::OnSessionChannelsConnected(ClientSession* client) {
+  DCHECK(context_->network_message_loop()->BelongsToCurrentThread());
+
   // Disconnect all other clients.
   // Iterate over a copy of the list of clients, to avoid mutating the list
   // while iterating over it.
@@ -222,12 +256,11 @@ void ChromotingHost::OnSessionSequenceNumber(ClientSession* session,
 void ChromotingHost::OnSessionRouteChange(
     ClientSession* session,
     const std::string& channel_name,
-    const net::IPEndPoint& remote_end_point,
-    const net::IPEndPoint& local_end_point) {
+    const protocol::TransportRoute& route) {
   DCHECK(context_->network_message_loop()->BelongsToCurrentThread());
   FOR_EACH_OBSERVER(HostStatusObserver, status_observers_,
                     OnClientRouteChange(session->client_jid(), channel_name,
-                                        remote_end_point, local_end_point));
+                                        route));
 }
 
 void ChromotingHost::OnSessionManagerReady() {
@@ -246,6 +279,17 @@ void ChromotingHost::OnIncomingSession(
     return;
   }
 
+  if (login_backoff_.ShouldRejectRequest()) {
+    *response = protocol::SessionManager::OVERLOAD;
+    return;
+  }
+
+  // We treat each incoming connection as a failure to authenticate,
+  // and clear the backoff when a connection successfully
+  // authenticates. This allows the backoff to protect from parallel
+  // connection attempts as well as sequential ones.
+  login_backoff_.InformOfRequest(false);
+
   protocol::SessionConfig config;
   if (!protocol_config_->Select(session->candidate_config(), &config)) {
     LOG(WARNING) << "Rejecting connection from " << session->jid()
@@ -261,10 +305,10 @@ void ChromotingHost::OnIncomingSession(
   LOG(INFO) << "Client connected: " << session->jid();
 
   // Create a client object.
-  protocol::ConnectionToClient* connection =
-      new protocol::ConnectionToClient(session);
+  scoped_ptr<protocol::ConnectionToClient> connection(
+      new protocol::ConnectionToClient(session));
   ClientSession* client = new ClientSession(
-      this, connection, desktop_environment_->event_executor(),
+      this, connection.Pass(), desktop_environment_->event_executor(),
       desktop_environment_->capturer());
   clients_.push_back(client);
 }

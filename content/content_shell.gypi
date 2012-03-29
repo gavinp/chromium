@@ -41,6 +41,7 @@
         '../webkit/support/webkit_support.gyp:fileapi',
         '../webkit/support/webkit_support.gyp:glue',
         '../webkit/support/webkit_support.gyp:quota',
+        '../webkit/support/webkit_support.gyp:webkit_support',
       ],
       'include_dirs': [
         '..',
@@ -48,16 +49,22 @@
       'sources': [
         'shell/layout_test_controller_bindings.cc',
         'shell/layout_test_controller_bindings.h',
+        'shell/paths_mac.h',
+        'shell/paths_mac.mm',
         'shell/shell.cc',
         'shell/shell.h',
         'shell/shell_gtk.cc',
         'shell/shell_mac.mm',
         'shell/shell_win.cc',
+        'shell/shell_application_mac.h',
+        'shell/shell_application_mac.mm',
         'shell/shell_browser_context.cc',
         'shell/shell_browser_context.h',
         'shell/shell_browser_main.cc',
         'shell/shell_browser_main.h',
-        'shell/shell_browser_main_mac.mm',
+        'shell/shell_browser_main_parts.cc',
+        'shell/shell_browser_main_parts.h',
+        'shell/shell_browser_main_parts_mac.mm',
         'shell/shell_content_browser_client.cc',
         'shell/shell_content_browser_client.h',
         'shell/shell_content_client.cc',
@@ -72,10 +79,16 @@
         'shell/shell_devtools_delegate.h',
         'shell/shell_download_manager_delegate.cc',
         'shell/shell_download_manager_delegate.h',
+        'shell/shell_javascript_dialog_creator.cc',
+        'shell/shell_javascript_dialog_creator.h',
+        'shell/shell_javascript_dialog_mac.mm',
+        'shell/shell_javascript_dialog.h',
         'shell/shell_main_delegate.cc',
         'shell/shell_main_delegate.h',
         'shell/shell_messages.cc',
         'shell/shell_messages.h',
+        'shell/shell_network_delegate.cc',
+        'shell/shell_network_delegate.h',
         'shell/shell_render_process_observer.cc',
         'shell/shell_render_process_observer.h',
         'shell/shell_render_view_host_observer.cc',
@@ -138,7 +151,8 @@
           ],
         },
       ],
-    }, {
+    },
+    {
       'target_name': 'generate_content_shell_resources',
       'type': 'none',
       'variables': {
@@ -348,7 +362,7 @@
           'mac_bundle': 1,
           'mac_bundle_resources': [
             'shell/mac/English.lproj/MainMenu.xib',
-            '<(SHARED_INTERMEDIATE_DIR)/content/shell_resources.pak'
+            '<(PRODUCT_DIR)/content_shell.pak'
           ],
           'dependencies': [
             'content_shell_lib',

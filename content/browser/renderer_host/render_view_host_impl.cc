@@ -41,6 +41,7 @@
 #include "content/public/browser/notification_details.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/notification_types.h"
+#include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_view_host_delegate.h"
 #include "content/public/browser/render_view_host_observer.h"
 #include "content/public/browser/user_metrics.h"
@@ -282,12 +283,6 @@ void RenderViewHostImpl::Navigate(const ViewMsg_Navigate_Params& params) {
 
   ViewMsg_Navigate* nav_message = new ViewMsg_Navigate(GetRoutingID(), params);
 
-#if defined(OS_CHROMEOS)
-  // crosbug.com/26646.
-  LOG(ERROR) << "Navigation url=" << params.url
-             << ", suspended=" << navigations_suspended_;
-#endif
-
   // Only send the message if we aren't suspended at the start of a cross-site
   // request.
   if (navigations_suspended_) {
@@ -421,14 +416,17 @@ void RenderViewHostImpl::SwapOut(int new_render_process_host_id,
 
 void RenderViewHostImpl::OnSwapOutACK() {
   // Stop the hang monitor now that the unload handler has finished.
-  StopHangMonitorTimeout();
   is_waiting_for_unload_ack_ = false;
+  StopHangMonitorTimeout();
   delegate_->SwappedOut(this);
 }
 
 void RenderViewHostImpl::WasSwappedOut() {
-  // Don't bother reporting hung state anymore.
-  StopHangMonitorTimeout();
+  // If we are still waiting on the unload handler to be run, we consider
+  // the process hung and we should terminate it if there are no other tabs
+  // using the process. If there are other views using this process, the
+  // unresponsive renderer timeout will catch it.
+  bool hung = is_waiting_for_unload_ack_;
 
   // Now that we're no longer the active RVH in the tab, start filtering out
   // most IPC messages.  Usually the renderer will have stopped sending
@@ -437,6 +435,43 @@ void RenderViewHostImpl::WasSwappedOut() {
   // We filter them out, as long as that won't cause problems (e.g., we
   // still allow synchronous messages through).
   SetSwappedOut(true);
+
+  // Don't bother reporting hung state anymore.
+  StopHangMonitorTimeout();
+
+  // If we are not running the renderer in process and no other tab is using
+  // the hung process, kill it, assuming it is a real process (unit tests don't
+  // have real processes).
+  if (hung) {
+    base::ProcessHandle process_handle = GetProcess()->GetHandle();
+    int views = 0;
+
+    // Count the number of listeners for the process, which is equivalent to
+    // views using the process as of this writing.
+    content::RenderProcessHost::RenderWidgetHostsIterator iter(
+        GetProcess()->GetRenderWidgetHostsIterator());
+    for (; !iter.IsAtEnd(); iter.Advance())
+      ++views;
+
+    if (!content::RenderProcessHost::run_renderer_in_process() &&
+        process_handle && views <= 1) {
+      // We expect the delegate for this RVH to be TabContents, as it is the
+      // only class that swaps out render view hosts on navigation.
+      DCHECK(delegate_->GetRenderViewType() == content::VIEW_TYPE_TAB_CONTENTS);
+
+      // Kill the process only if TabContents sets SuddenTerminationAllowed,
+      // which indicates that the timer has expired.
+      // This is not the case if we load data URLs or about:blank. The reason
+      // is that there is no network requests and this code is hit without
+      // setting the unresponsiveness timer. This allows a corner case where a
+      // navigation to a data URL will leave a process running, if the
+      // beforeunload handler completes fine, but the unload handler hangs.
+      // At this time, the complexity to solve this edge case is not worthwhile.
+      if (SuddenTerminationAllowed()) {
+        base::KillProcess(process_handle, content::RESULT_CODE_HUNG, false);
+      }
+    }
+  }
 
   // Inform the renderer that it can exit if no one else is using it.
   Send(new ViewMsg_WasSwappedOut(GetRoutingID()));
@@ -464,9 +499,9 @@ void RenderViewHostImpl::ClosePage() {
 }
 
 void RenderViewHostImpl::ClosePageIgnoringUnloadEvents() {
-  StopHangMonitorTimeout();
   is_waiting_for_beforeunload_ack_ = false;
   is_waiting_for_unload_ack_ = false;
+  StopHangMonitorTimeout();
 
   sudden_termination_allowed_ = true;
   delegate_->Close(this);
@@ -495,7 +530,7 @@ void RenderViewHostImpl::DragTargetDragEnter(
   // The URL could have been cobbled together from any highlighted text string,
   // and can't be interpreted as a capability.
   WebDropData filtered_data(drop_data);
-  FilterURL(policy, renderer_id, &filtered_data.url);
+  FilterURL(policy, renderer_id, true, &filtered_data.url);
 
   // The filenames vector, on the other hand, does represent a capability to
   // access the given files.
@@ -668,9 +703,10 @@ void RenderViewHostImpl::DragSourceSystemDragEnded() {
 }
 
 void RenderViewHostImpl::AllowBindings(int bindings_flags) {
-  // Ensure we aren't granting bindings to a process that has already
+  // Ensure we aren't granting WebUI bindings to a process that has already
   // been used for non-privileged views.
-  if (GetProcess()->HasConnection() &&
+  if (bindings_flags & content::BINDINGS_POLICY_WEB_UI &&
+      GetProcess()->HasConnection() &&
       !ChildProcessSecurityPolicyImpl::GetInstance()->HasWebUIBindings(
           GetProcess()->GetID())) {
     // This process has no bindings yet. Make sure it does not have more
@@ -903,6 +939,18 @@ bool RenderViewHostImpl::IsRenderView() const {
   return true;
 }
 
+// During cross-site navigation, we have hang monitors on beforeunload and
+// unload events. If we are asked to stop the hang monitors while waiting for
+// these events, we must not do it. Otherwise, we will never detect slow or
+// unresponsive beforeunload and unload events. (The hang monitor is most
+// frequently stopped by input events.)
+void RenderViewHostImpl::StopHangMonitorTimeout() {
+  if (is_waiting_for_beforeunload_ack_ || is_waiting_for_unload_ack_)
+    return;
+
+  RenderWidgetHostImpl::StopHangMonitorTimeout();
+}
+
 void RenderViewHostImpl::CreateNewWindow(
     int route_id,
     const ViewHostMsg_CreateWindow_Params& params) {
@@ -1039,15 +1087,15 @@ void RenderViewHostImpl::OnMsgNavigate(const IPC::Message& msg) {
   // renderer to load the URL and grant the renderer the privileges to request
   // the URL.  To prevent this attack, we block the renderer from inserting
   // banned URLs into the navigation controller in the first place.
-  FilterURL(policy, renderer_id, &validated_params.url);
-  FilterURL(policy, renderer_id, &validated_params.referrer.url);
+  FilterURL(policy, renderer_id, false, &validated_params.url);
+  FilterURL(policy, renderer_id, true, &validated_params.referrer.url);
   for (std::vector<GURL>::iterator it(validated_params.redirects.begin());
       it != validated_params.redirects.end(); ++it) {
-    FilterURL(policy, renderer_id, &(*it));
+    FilterURL(policy, renderer_id, false, &(*it));
   }
-  FilterURL(policy, renderer_id, &validated_params.searchable_form_url);
-  FilterURL(policy, renderer_id, &validated_params.password_form.origin);
-  FilterURL(policy, renderer_id, &validated_params.password_form.action);
+  FilterURL(policy, renderer_id, true, &validated_params.searchable_form_url);
+  FilterURL(policy, renderer_id, true, &validated_params.password_form.origin);
+  FilterURL(policy, renderer_id, true, &validated_params.password_form.action);
 
   delegate_->DidNavigate(this, validated_params);
 }
@@ -1139,10 +1187,10 @@ void RenderViewHostImpl::OnMsgContextMenu(
 
   // We don't validate |unfiltered_link_url| so that this field can be used
   // when users want to copy the original link URL.
-  FilterURL(policy, renderer_id, &validated_params.link_url);
-  FilterURL(policy, renderer_id, &validated_params.src_url);
-  FilterURL(policy, renderer_id, &validated_params.page_url);
-  FilterURL(policy, renderer_id, &validated_params.frame_url);
+  FilterURL(policy, renderer_id, true, &validated_params.link_url);
+  FilterURL(policy, renderer_id, true, &validated_params.src_url);
+  FilterURL(policy, renderer_id, false, &validated_params.page_url);
+  FilterURL(policy, renderer_id, true, &validated_params.frame_url);
 
   view->ShowContextMenu(validated_params);
 }
@@ -1159,7 +1207,7 @@ void RenderViewHostImpl::OnMsgOpenURL(const GURL& url,
                                       int64 source_frame_id) {
   GURL validated_url(url);
   FilterURL(ChildProcessSecurityPolicyImpl::GetInstance(),
-            GetProcess()->GetID(), &validated_url);
+            GetProcess()->GetID(), false, &validated_url);
 
   delegate_->RequestOpenURL(
       validated_url, referrer, disposition, source_frame_id);
@@ -1244,8 +1292,8 @@ void RenderViewHostImpl::OnMsgStartDragging(
 
   // Allow drag of Javascript URLs to enable bookmarklet drag to bookmark bar.
   if (!filtered_data.url.SchemeIs(chrome::kJavaScriptScheme))
-    FilterURL(policy, GetProcess()->GetID(), &filtered_data.url);
-  FilterURL(policy, GetProcess()->GetID(), &filtered_data.html_base_url);
+    FilterURL(policy, GetProcess()->GetID(), true, &filtered_data.url);
+  FilterURL(policy, GetProcess()->GetID(), false, &filtered_data.html_base_url);
   view->StartDragging(filtered_data, drag_operations_mask, image, image_offset);
 }
 
@@ -1315,14 +1363,16 @@ void RenderViewHostImpl::OnMsgShouldCloseACK(
     bool proceed,
     const base::TimeTicks& renderer_before_unload_start_time,
     const base::TimeTicks& renderer_before_unload_end_time) {
-  StopHangMonitorTimeout();
   // If this renderer navigated while the beforeunload request was in flight, we
   // may have cleared this state in OnMsgNavigate, in which case we can ignore
   // this message.
-  if (!is_waiting_for_beforeunload_ack_ || is_swapped_out_)
+  if (!is_waiting_for_beforeunload_ack_ || is_swapped_out_) {
+    StopHangMonitorTimeout();
     return;
+  }
 
   is_waiting_for_beforeunload_ack_ = false;
+  StopHangMonitorTimeout();
 
   RenderViewHostDelegate::RendererManagement* management_delegate =
       delegate_->GetRendererManagementDelegate();
@@ -1448,9 +1498,19 @@ void RenderViewHostImpl::ToggleSpeechInput() {
 
 void RenderViewHostImpl::FilterURL(ChildProcessSecurityPolicyImpl* policy,
                                    int renderer_id,
+                                   bool empty_allowed,
                                    GURL* url) {
-  if (!url->is_valid())
-    return;  // We don't need to block invalid URLs.
+  if (empty_allowed && url->is_empty())
+    return;
+
+  if (!url->is_valid()) {
+    // Have to use about:blank for the denied case, instead of an empty GURL.
+    // This is because the browser treats navigation to an empty GURL as a
+    // navigation to the home page. This is often a privileged page
+    // (chrome://newtab/) which is exactly what we don't want.
+    *url = GURL(chrome::kAboutBlankURL);
+    return;
+  }
 
   if (url->SchemeIs(chrome::kAboutScheme)) {
     // The renderer treats all URLs in the about: scheme as being about:blank.
@@ -1463,7 +1523,7 @@ void RenderViewHostImpl::FilterURL(ChildProcessSecurityPolicyImpl* policy,
     // URL.  This prevents us from storing the blocked URL and becoming confused
     // later.
     VLOG(1) << "Blocked URL " << url->spec();
-    *url = GURL();
+    *url = GURL(chrome::kAboutBlankURL);
   }
 }
 
@@ -1471,12 +1531,11 @@ void RenderViewHostImpl::SetAltErrorPageURL(const GURL& url) {
   Send(new ViewMsg_SetAltErrorPageURL(GetRoutingID(), url));
 }
 
-void RenderViewHostImpl::SetGuest(bool guest) {
-  guest_ = guest;
-}
-
 void RenderViewHostImpl::ExitFullscreen() {
   RejectMouseLockOrUnlockIfNecessary();
+  // We need to notify the tab that its fullscreen state has changed. This
+  // is done as part of the resize message.
+  WasResized();
 }
 
 void RenderViewHostImpl::UpdateWebkitPreferences(const WebPreferences& prefs) {

@@ -8,14 +8,18 @@
 #include "ash/desktop_background/desktop_background_controller.h"
 #include "ash/ash_switches.h"
 #include "ash/caps_lock_delegate.h"
+#include "ash/focus_cycler.h"
 #include "ash/ime_control_delegate.h"
 #include "ash/launcher/launcher.h"
 #include "ash/launcher/launcher_model.h"
+#include "ash/launcher/launcher_delegate.h"
+#include "ash/monitor/multi_monitor_manager.h"
 #include "ash/screenshot_delegate.h"
 #include "ash/shell.h"
 #include "ash/shell_delegate.h"
 #include "ash/shell_window_ids.h"
 #include "ash/system/brightness/brightness_control_delegate.h"
+#include "ash/system/tray/system_tray.h"
 #include "ash/volume_control_delegate.h"
 #include "ash/wm/window_cycle_controller.h"
 #include "ash/wm/window_util.h"
@@ -25,6 +29,7 @@
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/accelerators/accelerator_manager.h"
 #include "ui/gfx/compositor/debug_utils.h"
+#include "ui/gfx/compositor/layer.h"
 #include "ui/gfx/compositor/layer_animation_sequence.h"
 #include "ui/gfx/compositor/layer_animator.h"
 #include "ui/gfx/compositor/screen_rotation.h"
@@ -32,12 +37,75 @@
 
 namespace {
 
-bool HandleCycleWindow(ash::WindowCycleController::Direction direction,
-                       bool is_alt_down) {
+bool HandleCycleWindowMRU(ash::WindowCycleController::Direction direction,
+                          bool is_alt_down) {
+  // TODO(mukai): support Apps windows here.
   ash::Shell::GetInstance()->
       window_cycle_controller()->HandleCycleWindow(direction, is_alt_down);
   // Always report we handled the key, even if the window didn't change.
   return true;
+}
+
+void ActivateLauncherItem(int index) {
+  const ash::LauncherItems& items =
+      ash::Shell::GetInstance()->launcher()->model()->items();
+  ash::Shell::GetInstance()->launcher()->delegate()->ItemClicked(items[index]);
+}
+
+// Returns true if accelerator processing should skip the launcher item with
+// the specified type.
+bool ShouldSkip(ash::LauncherItemType type) {
+  return type == ash::TYPE_APP_LIST ||
+         type == ash::TYPE_BROWSER_SHORTCUT ||
+         type == ash::TYPE_APP_SHORTCUT;
+}
+
+void HandleCycleWindowLinear(ash::WindowCycleController::Direction direction) {
+  // TODO(mukai): move this function to somewhere else (probably a new
+  // file launcher_navigator.cc) and write test cases.
+  ash::LauncherModel* model = ash::Shell::GetInstance()->launcher()->model();
+  const ash::LauncherItems& items = model->items();
+  int item_count = model->item_count();
+  int current_index = -1;
+  int first_running = -1;
+
+  for (int i = 0; i < item_count; ++i) {
+    const ash::LauncherItem& item = items[i];
+    if (ShouldSkip(item.type))
+      continue;
+
+    if (item.status == ash::STATUS_RUNNING && first_running < 0)
+      first_running = i;
+
+    if (item.status == ash::STATUS_ACTIVE) {
+      current_index = i;
+      break;
+    }
+  }
+
+  // If nothing is active, try to active the first running item.
+  if (current_index < 0) {
+    if (first_running >= 0)
+      ActivateLauncherItem(first_running);
+    return;
+  }
+
+  int step = (direction == ash::WindowCycleController::FORWARD) ? 1 : -1;
+
+  // Find the next item and activate it.
+  for (int i = (current_index + step + item_count) % item_count;
+       i != current_index; i = (i + step + item_count) % item_count) {
+    const ash::LauncherItem& item = items[i];
+    if (ShouldSkip(item.type))
+      continue;
+
+    // Skip already active item.
+    if (item.status == ash::STATUS_ACTIVE)
+      continue;
+
+    ActivateLauncherItem(i);
+    return;
+  }
 }
 
 #if defined(OS_CHROMEOS)
@@ -55,6 +123,25 @@ bool HandleExit() {
   if (!delegate)
     return false;
   delegate->Exit();
+  return true;
+}
+
+bool HandleNewWindow(bool is_incognito) {
+  ash::ShellDelegate* delegate = ash::Shell::GetInstance()->delegate();
+  if (!delegate)
+    return false;
+  delegate->NewWindow(is_incognito);
+  return true;
+}
+
+// Rotates the default window container.
+bool HandleRotateWindows() {
+  aura::Window* target = ash::Shell::GetInstance()->GetContainer(
+        ash::internal::kShellWindowId_DefaultContainer);
+  scoped_ptr<ui::LayerAnimationSequence> screen_rotation(
+      new ui::LayerAnimationSequence(new ui::ScreenRotation(360)));
+  target->layer()->GetAnimator()->StartAnimation(
+      screen_rotation.release());
   return true;
 }
 
@@ -97,7 +184,7 @@ bool HandleToggleDesktopBackgroundMode() {
       ash::DesktopBackgroundController::BACKGROUND_IMAGE)
     desktop_background_controller->SetDesktopBackgroundSolidColorMode();
   else
-    desktop_background_controller->SetPreviousDesktopBackgroundImage();
+    desktop_background_controller->OnDesktopBackgroundChanged();
   return true;
 }
 
@@ -147,6 +234,11 @@ AcceleratorController::~AcceleratorController() {
 }
 
 void AcceleratorController::Init() {
+  for (size_t i = 0; i < kActionsAllowedAtLoginScreenLength; ++i) {
+    CHECK(actions_allowed_at_login_screen_.insert(
+        kActionsAllowedAtLoginScreen[i]).second);
+  }
+
   for (size_t i = 0; i < kAcceleratorDataLength; ++i) {
     ui::Accelerator accelerator(kAcceleratorData[i].keycode,
                                 kAcceleratorData[i].shift,
@@ -212,19 +304,45 @@ bool AcceleratorController::AcceleratorPressed(
   std::map<ui::Accelerator, int>::const_iterator it =
       accelerators_.find(accelerator);
   DCHECK(it != accelerators_.end());
-  switch (static_cast<AcceleratorAction>(it->second)) {
-    case CYCLE_BACKWARD:
-      return HandleCycleWindow(WindowCycleController::BACKWARD,
-                               accelerator.IsAltDown());
-    case CYCLE_FORWARD:
-      return HandleCycleWindow(WindowCycleController::FORWARD,
-                               accelerator.IsAltDown());
+  AcceleratorAction action = static_cast<AcceleratorAction>(it->second);
+
+  ash::Shell* shell = ash::Shell::GetInstance();
+#if defined(OS_CHROMEOS)
+  bool at_login_screen = shell->IsScreenLocked() ||
+      (shell->delegate() && !shell->delegate()->IsUserLoggedIn());
+#else
+  bool at_login_screen = shell->IsScreenLocked();
+#endif //  OS_CHROMEOS
+
+  if (at_login_screen &&
+      actions_allowed_at_login_screen_.find(action) ==
+      actions_allowed_at_login_screen_.end()) {
+    return false;
+  }
+
+  switch (action) {
+    case CYCLE_BACKWARD_MRU:
+      return HandleCycleWindowMRU(WindowCycleController::BACKWARD,
+                                  accelerator.IsAltDown());
+    case CYCLE_FORWARD_MRU:
+      return HandleCycleWindowMRU(WindowCycleController::FORWARD,
+                                  accelerator.IsAltDown());
+    case CYCLE_BACKWARD_LINEAR:
+      HandleCycleWindowLinear(WindowCycleController::BACKWARD);
+      return true;
+    case CYCLE_FORWARD_LINEAR:
+      HandleCycleWindowLinear(WindowCycleController::FORWARD);
+      return true;
 #if defined(OS_CHROMEOS)
     case LOCK_SCREEN:
       return HandleLock();
 #endif
     case EXIT:
       return HandleExit();
+    case NEW_INCOGNITO_WINDOW:
+      return HandleNewWindow(true /* is_incognito */);
+    case NEW_WINDOW:
+      return HandleNewWindow(false /* is_incognito */);
     case TAKE_SCREENSHOT:
       if (screenshot_delegate_.get()) {
         aura::RootWindow* root_window = Shell::GetRootWindow();
@@ -266,6 +384,10 @@ bool AcceleratorController::AcceleratorPressed(
       if (volume_control_delegate_.get())
         return volume_control_delegate_->HandleVolumeUp(accelerator);
       break;
+    case FOCUS_TRAY:
+      if (shell->tray())
+        return shell->focus_cycler()->FocusWidget(shell->tray()->GetWidget());
+      break;
     case SHOW_OAK:
       if (CommandLine::ForCurrentProcess()->HasSwitch(switches::kAshEnableOak))
         oak::ShowOakWindow();
@@ -282,6 +404,35 @@ bool AcceleratorController::AcceleratorPressed(
       if (ime_control_delegate_.get())
         return ime_control_delegate_->HandleSwitchIme(accelerator);
       break;
+    case SELECT_WIN_0:
+      SwitchToWindow(0);
+      break;
+    case SELECT_WIN_1:
+      SwitchToWindow(1);
+      break;
+    case SELECT_WIN_2:
+      SwitchToWindow(2);
+      break;
+    case SELECT_WIN_3:
+      SwitchToWindow(3);
+      break;
+    case SELECT_WIN_4:
+      SwitchToWindow(4);
+      break;
+    case SELECT_WIN_5:
+      SwitchToWindow(5);
+      break;
+    case SELECT_WIN_6:
+      SwitchToWindow(6);
+      break;
+    case SELECT_WIN_7:
+      SwitchToWindow(7);
+      break;
+    case SELECT_LAST_WIN:
+      SwitchToWindow(-1);
+      break;
+    case ROTATE_WINDOWS:
+      return HandleRotateWindows();
 #if !defined(NDEBUG)
     case ROTATE_SCREEN:
       return HandleRotateScreen();
@@ -293,11 +444,45 @@ bool AcceleratorController::AcceleratorPressed(
       return HandlePrintLayerHierarchy();
     case PRINT_WINDOW_HIERARCHY:
       return HandlePrintWindowHierarchy();
+    case ADD_REMOVE_MONITOR:
+      internal::MultiMonitorManager::AddRemoveMonitor();
+      return true;
+    case CYCLE_MONITOR:
+      internal::MultiMonitorManager::CycleMonitor();
+      return true;
 #endif
     default:
       NOTREACHED() << "Unhandled action " << it->second;
   }
   return false;
+}
+
+void AcceleratorController::SwitchToWindow(int window) {
+  const LauncherItems& items =
+      Shell::GetInstance()->launcher()->model()->items();
+  int item_count =
+      Shell::GetInstance()->launcher()->model()->item_count();
+  int indexes_left = window >= 0 ? window : item_count;
+  int found_index = -1;
+
+  // Iterating until we have hit the index we are interested in which
+  // is true once indexes_left becomes negative.
+  for (int i = 0; i < item_count && indexes_left >= 0; i++) {
+    if (items[i].type != TYPE_APP_LIST &&
+        items[i].type != TYPE_BROWSER_SHORTCUT) {
+      found_index = i;
+      indexes_left--;
+    }
+  }
+
+  // There are two ways how found_index can be valid: a.) the nth item was
+  // found (which is true when indexes_left is -1) or b.) the last item was
+  // requested (which is true when index was passed in as a negative number).
+  if (found_index >= 0 && (indexes_left == -1 || window < 0) &&
+      items[found_index].status == ash::STATUS_RUNNING) {
+    // Then set this one as active.
+    ActivateLauncherItem(found_index);
+  }
 }
 
 bool AcceleratorController::CanHandleAccelerators() const {

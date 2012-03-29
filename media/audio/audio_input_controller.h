@@ -55,12 +55,12 @@
 //                              kRecording
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 // Close() ==>                  DoClose()
+//                              state_ = kClosed
 //                    AudioInputStream::Stop()
 //                    AudioInputStream::Close()
 //                    SyncWriter::Close()
-//                    Closure::Run()
-// (closure-task) <----------------.
-//                              kClosed
+// Closure::Run() <--------------.
+// (closure-task)
 //
 // The audio thread itself is owned by the AudioManager that the
 // AudioInputController holds a reference to.  When performing tasks on the
@@ -97,7 +97,7 @@ class MEDIA_EXPORT AudioInputController
 
     // Write certain amount of data from |data|. This method returns
     // number of written bytes.
-    virtual uint32 Write(const void* data, uint32 size) = 0;
+    virtual uint32 Write(const void* data, uint32 size, double volume) = 0;
 
     // Close this synchronous writer.
     virtual void Close() = 0;
@@ -144,22 +144,31 @@ class MEDIA_EXPORT AudioInputController
       SyncWriter* sync_writer);
 
   // Starts recording using the created audio input stream.
-  // This method is called on the audio thread.
+  // This method is called on the creator thread.
   virtual void Record();
 
   // Closes the audio input stream. The state is changed and the resources
-  // are freed on the audio thread. |closed_task| is executed after that.
+  // are freed on the audio thread. |closed_task| is then executed on the thread
+  // that called Close().
   // Callbacks (EventHandler and SyncWriter) must exist until |closed_task|
   // is called.
   // It is safe to call this method more than once. Calls after the first one
   // will have no effect.
-  // This method is called on the audio thread.
+  // This method trampolines to the audio thread.
   virtual void Close(const base::Closure& closed_task);
+
+  // Sets the capture volume of the input stream. The value 0.0 corresponds
+  // to muted and 1.0 to maximum volume.
+  virtual void SetVolume(double volume);
+
+  // Sets the Automatic Gain Control (AGC) state of the input stream.
+  // Changing the AGC state is not supported while recording is active.
+  virtual void SetAutomaticGainControl(bool enabled);
 
   // AudioInputCallback implementation. Threading details depends on the
   // device-specific implementation.
   virtual void OnData(AudioInputStream* stream, const uint8* src, uint32 size,
-                      uint32 hardware_delay_bytes) OVERRIDE;
+                      uint32 hardware_delay_bytes, double volume) OVERRIDE;
   virtual void OnClose(AudioInputStream* stream) OVERRIDE;
   virtual void OnError(AudioInputStream* stream, int code) OVERRIDE;
 
@@ -184,8 +193,10 @@ class MEDIA_EXPORT AudioInputController
   void DoCreate(AudioManager* audio_manager, const AudioParameters& params,
                 const std::string& device_id);
   void DoRecord();
-  void DoClose(const base::Closure& closed_task);
+  void DoClose();
   void DoReportError(int code);
+  void DoSetVolume(double volume);
+  void DoSetAutomaticGainControl(bool enabled);
 
   // Methods which ensures that OnError() is triggered when data recording
   // times out. Both are called on the creating thread.
@@ -214,7 +225,7 @@ class MEDIA_EXPORT AudioInputController
   // when an audio input device is unplugged whilst recording on Windows.
   // See http://crbug.com/79936 for details.
   // This member is only touched by the creating thread.
-  base::DelayTimer<AudioInputController> no_data_timer_;
+  scoped_ptr<base::DelayTimer<AudioInputController> > no_data_timer_;
 
   // |state_| is written on the audio thread and is read on the hardware audio
   // thread. These operations need to be locked. But lock is not required for
@@ -227,6 +238,8 @@ class MEDIA_EXPORT AudioInputController
   SyncWriter* sync_writer_;
 
   static Factory* factory_;
+
+  double max_volume_;
 
   DISALLOW_COPY_AND_ASSIGN(AudioInputController);
 };

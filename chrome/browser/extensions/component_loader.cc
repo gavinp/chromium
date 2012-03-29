@@ -18,6 +18,7 @@
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_file_util.h"
+#include "chrome/common/extensions/extension_manifest_constants.h"
 #include "chrome/common/pref_names.h"
 #include "content/public/browser/notification_details.h"
 #include "content/public/browser/notification_source.h"
@@ -281,6 +282,9 @@ void ComponentLoader::AddDefaultComponentExtensions() {
     Add(IDR_MOBILE_MANIFEST,
         FilePath(FILE_PATH_LITERAL("/usr/share/chromeos-assets/mobile")));
 
+    Add(IDR_CROSH_BUILTIN_MANIFEST, FilePath(FILE_PATH_LITERAL(
+        "/usr/share/chromeos-assets/crosh_builtin")));
+
     const CommandLine* command_line = CommandLine::ForCurrentProcess();
     if (command_line->HasSwitch(switches::kAuthExtensionPath)) {
       FilePath auth_extension_path =
@@ -290,6 +294,15 @@ void ComponentLoader::AddDefaultComponentExtensions() {
       Add(IDR_GAIA_AUTH_MANIFEST,
           FilePath(FILE_PATH_LITERAL("/usr/share/chromeos-assets/gaia_auth")));
     }
+
+    // TODO(gauravsh): Only include offers extension on official builds.
+    FilePath offers_extension_path(FILE_PATH_LITERAL(
+        "/usr/share/chromeos-assets/offers"));
+    if (command_line->HasSwitch(switches::kOffersExtensionPath)) {
+      offers_extension_path =
+          command_line->GetSwitchValuePath(switches::kOffersExtensionPath);
+    }
+    Add(IDR_OFFERS_MANIFEST, offers_extension_path);
 
 #if defined(OFFICIAL_BUILD)
     if (browser_defaults::enable_help_app) {

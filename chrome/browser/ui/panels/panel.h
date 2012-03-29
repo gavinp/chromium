@@ -11,6 +11,7 @@
 #include "base/gtest_prod_util.h"
 #include "base/memory/scoped_ptr.h"
 #include "chrome/browser/tabs/tab_strip_model_observer.h"
+#include "chrome/browser/ui/panels/panel_constants.h"
 #include "content/public/browser/notification_observer.h"
 #include "content/public/browser/notification_registrar.h"
 #include "ui/gfx/rect.h"
@@ -149,6 +150,11 @@ class Panel : public BrowserWindow,
   virtual void ShowBookmarkBubble(
       const GURL& url, bool already_bookmarked) OVERRIDE;
   virtual void ShowChromeToMobileBubble() OVERRIDE;
+#if defined(ENABLE_ONE_CLICK_SIGNIN)
+  virtual void ShowOneClickSigninBubble(
+      const base::Closure& learn_more_callback,
+      const base::Closure& advanced_callback) OVERRIDE;
+#endif
   virtual bool IsDownloadShelfVisible() const OVERRIDE;
   virtual DownloadShelf* GetDownloadShelf() OVERRIDE;
   virtual void ConfirmBrowserCloseWithPendingDownloads() OVERRIDE;
@@ -221,6 +227,11 @@ class Panel : public BrowserWindow,
   // Returns NULL if it cannot be found.
   static const Extension* GetExtensionFromBrowser(Browser* browser);
 
+  // Invoked when the native panel has detected a mouse click on the
+  // panel's titlebar. Behavior of the click may be modified as
+  // indicated by |modifier|.
+  void OnTitlebarClicked(panel::ClickModifier modifier);
+
   // Used on platforms where the panel cannot determine its window size
   // until the window has been created. (e.g. GTK)
   void OnWindowSizeAvailable();
@@ -245,6 +256,8 @@ class Panel : public BrowserWindow,
   bool in_preview_mode() const { return in_preview_mode_; }
 
   bool draggable() const;
+
+  bool CanResizeByMouse() const;
 
   AttentionMode attention_mode() const { return attention_mode_; }
   void set_attention_mode(AttentionMode attention_mode) {
@@ -286,12 +299,19 @@ class Panel : public BrowserWindow,
   // being dragged, it is in preview mode.
   void SetPreviewMode(bool in_preview_mode);
 
+  // Sets up the panel for being resizable by the user - for example,
+  // enables the resize mouse cursors when mouse is hovering over the edges.
+  void EnableResizeByMouse(bool enable);
+
   // Newly created panels may be placed in a temporary layout until their
   // final position is determined.
   bool has_temporary_layout() const { return has_temporary_layout_; }
   void set_has_temporary_layout(bool temporary) {
     has_temporary_layout_ = temporary;
   }
+
+  // Changes the preferred size to acceptable based on min_size() and max_size()
+  void ClampSize(gfx::Size* size) const;
 
  protected:
   virtual void DestroyBrowser() OVERRIDE;

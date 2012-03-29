@@ -199,6 +199,7 @@
         <include name="IDR_PRODUCT_LOGO_26" file="google_chrome/product_logo_26.png" type="BINDATA" />
         <include name="IDR_PRODUCT_LOGO_32" file="google_chrome/product_logo_32.png" type="BINDATA" />
         <include name="IDR_PRODUCT_LOGO_64" file="google_chrome/product_logo_64.png" type="BINDATA" />
+        <include name="IDR_PRODUCT_LOGO_128" file="google_chrome/product_logo_128.png" type="BINDATA" />
         <include name="IDR_PRODUCT_LOGO_WHITE" file="google_chrome/product_logo_white.png" type="BINDATA" />
       </if>
       <if expr="not pp_ifdef('_google_chrome')">
@@ -208,6 +209,7 @@
         <include name="IDR_PRODUCT_LOGO_26" file="chromium/product_logo_26.png" type="BINDATA" />
         <include name="IDR_PRODUCT_LOGO_32" file="chromium/product_logo_32.png" type="BINDATA" />
         <include name="IDR_PRODUCT_LOGO_64" file="chromium/product_logo_64.png" type="BINDATA" />
+        <include name="IDR_PRODUCT_LOGO_128" file="chromium/product_logo_128.png" type="BINDATA" />
       </if>
       <!-- NOTE: product_logo_*.* files beyond what's listed above are
            referenced by installer code; don't remove them unless you know what
@@ -357,8 +359,6 @@
         <include name="IDR_WEBSTORE_ICON_32" file="google_chrome/webstore_icon_32.png" type="BINDATA" />
         <include name="IDR_WIZARD_ICON" file="google_chrome/wizard_icon.png" type="BINDATA" />
         <include name="IDR_WIZARD_ICON_RTL" file="google_chrome/wizard_icon_rtl.png" type="BINDATA" />
-        <include name="IRD_SYNC_PROMO_INFO_GRAPHIC" file="google_chrome/sync_promo_info_graphic.png" type="BINDATA" />
-        <include name="IRD_SYNC_PROMO_INFO_GRAPHIC_1" file="google_chrome/sync_promo_info_graphic_1.png" type="BINDATA" />
       </if>
       <if expr="not pp_ifdef('_google_chrome')">
         <include name="IDR_WEBSTORE_ICON" file="chromium/webstore_icon.png" type="BINDATA" />
@@ -367,8 +367,6 @@
         <include name="IDR_WEBSTORE_ICON_32" file="chromium/webstore_icon_32.png" type="BINDATA" />
         <include name="IDR_WIZARD_ICON" file="chromium/wizard_icon.png" type="BINDATA" />
         <include name="IDR_WIZARD_ICON_RTL" file="chromium/wizard_icon_rtl.png" type="BINDATA" />
-        <include name="IRD_SYNC_PROMO_INFO_GRAPHIC" file="chromium/sync_promo_info_graphic.png" type="BINDATA" />
-        <include name="IRD_SYNC_PROMO_INFO_GRAPHIC_1" file="chromium/sync_promo_info_graphic_1.png" type="BINDATA" />
       </if>
 
       <!-- Images only used by the Views toolkit. -->
@@ -433,8 +431,8 @@
         <include name="IDR_ENROLL_FAILURE" file="enroll_failure.png" type="BINDATA"/>
         <include name="IDR_GUEST_ICON" file="guest_icon.png" type="BINDATA" />
         <include name="IDR_HELP_MENU" file="help_16.png" type="BINDATA" />
-        <include name="IDR_ICON_ADD_USER20" file="icon_add_user20.png" type="BINDATA" />
-        <include name="IDR_ICON_POWER20" file="icon_power20.png" type="BINDATA" />
+        <include name="IDR_ICON_ADD_USER24" file="icon_add_user24.png" type="BINDATA" />
+        <include name="IDR_ICON_POWER24" file="icon_power24.png" type="BINDATA" />
         <include name="IDR_LOGIN_DEFAULT_USER" file="avatar_beaker.png" type="BINDATA" />
         <include name="IDR_LOGIN_DEFAULT_USER_1" file="avatar_bee.png" type="BINDATA" />
         <include name="IDR_LOGIN_DEFAULT_USER_2" file="avatar_briefcase.png" type="BINDATA" />
@@ -464,6 +462,7 @@
         <include name="IDR_NOTIFICATION_3G" file="notification_3g.png" type="BINDATA" />
         <include name="IDR_NOTIFICATION_BARS_EMPTY" file="notification_bars_empty.png" type="BINDATA" />
         <include name="IDR_NOTIFICATION_BARS_CRITICAL" file="notification_bars_critical.png" type="BINDATA" />
+        <include name="IDR_NOTIFICATION_GDATA" file="notification_gdata.png" type="BINDATA" />
         <include name="IDR_NOTIFICATION_LOCALE_CHANGE" file="notification_locale_change.png" type="BINDATA" />
         <include name="IDR_NOTIFICATION_LOW_BATTERY" file="notification_battery_low.png" type="BINDATA" />
         <include name="IDR_NOTIFICATION_MENU" file="notification_menu.png" type="BINDATA" />
@@ -483,6 +482,7 @@
         <include name="IDR_STATUSBAR_BATTERY_LARGE_ALL" file="statusbar_battery_large_all.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_BATTERY_SMALL_ALL" file="statusbar_battery_small_all.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_CAPS_LOCK" file="statusbar_caps_lock.png" type="BINDATA" />
+        <include name="IDR_STATUSBAR_EDIT" file="statusbar_edit.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_MENU" file="statusbar_menu.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_NETWORK_3G" file="statusbar_network_3g.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_NETWORK_3G_WARN" file="statusbar_network_3g_warn.png" type="BINDATA" />
@@ -493,8 +493,12 @@
         <include name="IDR_STATUSBAR_NETWORK_1X_ERROR" file="statusbar_network_1x_error.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_NETWORK_1X_UNKNOWN" file="statusbar_network_1x_unknown.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_NETWORK_ARCS" file="statusbar_network_arcs.png" type="BINDATA" />
+        <include name="IDR_STATUSBAR_NETWORK_ARCS_LIGHT" file="statusbar_network_arcs_light.png" type="BINDATA" />
+        <include name="IDR_STATUSBAR_NETWORK_ARCS_DARK" file="statusbar_network_arcs_dark.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_NETWORK_ARCS_LARGE" file="statusbar_network_arcs_large.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_NETWORK_BARS" file="statusbar_network_bars.png" type="BINDATA" />
+        <include name="IDR_STATUSBAR_NETWORK_BARS_LIGHT" file="statusbar_network_bars_light.png" type="BINDATA" />
+        <include name="IDR_STATUSBAR_NETWORK_BARS_DARK" file="statusbar_network_bars_dark.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_NETWORK_BARS_LARGE" file="statusbar_network_bars_large.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_NETWORK_DISCONNECTED" file="statusbar_network_disconnected.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_NETWORK_EDGE" file="statusbar_network_edge.png" type="BINDATA" />
@@ -513,6 +517,7 @@
         <include name="IDR_STATUSBAR_VOLUME_SLIDER_EMPTY" file="statusbar_volume_slider_empty.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_VOLUME_SLIDER_FULL" file="statusbar_volume_slider_full.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_VOLUME_SLIDER_THUMB" file="statusbar_volume_slider_thumb.png" type="BINDATA" />
+        <include name="IDR_STATUSBAR_VPN" file="statusbar_vpn_dark.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_WINDOW_MAXIMIZE" file="statusbar_window_maximize.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_WINDOW_RESTORE" file="statusbar_window_restore.png" type="BINDATA" />
         <include name="IDR_STATUSBAR_WIRED" file="statusbar_wired.png" type="BINDATA" />
@@ -530,7 +535,10 @@
 
       <!-- Images only used by Ash. -->
       <if expr="pp_ifdef('use_ash')">
-        <include name="IDR_APP_LIST_SETTINGS" file="app_list_settings.png" type="BINDATA" />
+        <include name="IDR_TOOLBAR_SHADE_BOTTOM" file="ash/toolbar_shade_bottom.png" type="BINDATA" />
+        <include name="IDR_TOOLBAR_SHADE_LEFT" file="ash/toolbar_shade_left.png" type="BINDATA" />
+        <include name="IDR_TOOLBAR_SHADE_RIGHT" file="ash/toolbar_shade_right.png" type="BINDATA" />
+        <include name="IDR_TOOLBAR_SHADE_TOP" file="ash/toolbar_shade_top.png" type="BINDATA" />
       </if>
     </includes>
   </release>

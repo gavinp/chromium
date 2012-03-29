@@ -127,7 +127,8 @@ class RenderWidgetHostViewAura::ResizeLock :
  public:
   ResizeLock(aura::RootWindow* root_window, const gfx::Size new_size)
       : root_window_(root_window),
-        new_size_(new_size) {
+        new_size_(new_size),
+        compositor_lock_(root_window_->GetCompositorLock()) {
     root_window_->HoldMouseMoves();
 
     BrowserThread::PostDelayedTask(
@@ -141,9 +142,15 @@ class RenderWidgetHostViewAura::ResizeLock :
     CancelLock();
   }
 
+  void UnlockCompositor() {
+    compositor_lock_ = NULL;
+  }
+
   void CancelLock() {
-    if (root_window_)
-      root_window_->ReleaseMouseMoves();
+    if (!root_window_)
+      return;
+    UnlockCompositor();
+    root_window_->ReleaseMouseMoves();
     root_window_ = NULL;
   }
 
@@ -154,6 +161,7 @@ class RenderWidgetHostViewAura::ResizeLock :
  private:
   aura::RootWindow* root_window_;
   gfx::Size new_size_;
+  scoped_refptr<aura::CompositorLock> compositor_lock_;
 
   DISALLOW_COPY_AND_ASSIGN(ResizeLock);
 };
@@ -202,7 +210,7 @@ RenderWidgetHostViewAura::~RenderWidgetHostViewAura() {
 
 void RenderWidgetHostViewAura::InitAsChild(
     gfx::NativeView parent_view) {
-  window_->Init(ui::Layer::LAYER_TEXTURED);
+  window_->Init(ui::LAYER_TEXTURED);
   window_->SetName("RenderWidgetHostViewAura");
 }
 
@@ -213,7 +221,7 @@ void RenderWidgetHostViewAura::InitAsPopup(
       static_cast<RenderWidgetHostViewAura*>(parent_host_view);
   popup_parent_host_view_->popup_child_host_view_ = this;
   window_->SetType(aura::client::WINDOW_TYPE_MENU);
-  window_->Init(ui::Layer::LAYER_TEXTURED);
+  window_->Init(ui::LAYER_TEXTURED);
   window_->SetName("RenderWidgetHostViewAura");
 
   window_->SetParent(NULL);
@@ -225,7 +233,7 @@ void RenderWidgetHostViewAura::InitAsFullscreen(
     RenderWidgetHostView* reference_host_view) {
   is_fullscreen_ = true;
   window_->SetType(aura::client::WINDOW_TYPE_NORMAL);
-  window_->Init(ui::Layer::LAYER_TEXTURED);
+  window_->Init(ui::LAYER_TEXTURED);
   window_->SetName("RenderWidgetHostViewAura");
   window_->SetProperty(aura::client::kShowStateKey, ui::SHOW_STATE_FULLSCREEN);
   window_->SetParent(NULL);
@@ -416,17 +424,36 @@ void RenderWidgetHostViewAura::UpdateExternalTexture() {
       container->Update();
     window_->SetExternalTexture(container);
 
-    if (!container)
+    if (!container) {
       resize_locks_.clear();
-    else {
-      std::vector<linked_ptr<ResizeLock> >::iterator it = resize_locks_.begin();
+    } else {
+      typedef std::vector<linked_ptr<ResizeLock> > ResizeLockList;
+      ResizeLockList::iterator it = resize_locks_.begin();
       while (it != resize_locks_.end()) {
         if ((*it)->expected_size() == container->size())
           break;
         ++it;
       }
-      if (it != resize_locks_.end())
-        resize_locks_.erase(resize_locks_.begin(), ++it);
+      if (it != resize_locks_.end()) {
+        ++it;
+        ui::Compositor* compositor = GetCompositor();
+        if (compositor) {
+          // Delay the release of the lock until we've kicked a frame with the
+          // new texture, to avoid resizing the UI before we have a chance to
+          // draw a "good" frame.
+          locks_pending_draw_.insert(
+              locks_pending_draw_.begin(), resize_locks_.begin(), it);
+          // However since we got the size we were looking for, unlock the
+          // compositor.
+          for (ResizeLockList::iterator it2 = resize_locks_.begin();
+              it2 !=it; ++it2) {
+            it2->get()->UnlockCompositor();
+          }
+          if (!compositor->HasObserver(this))
+            compositor->AddObserver(this);
+        }
+        resize_locks_.erase(resize_locks_.begin(), it);
+      }
     }
   } else {
     window_->SetExternalTexture(NULL);
@@ -450,12 +477,21 @@ void RenderWidgetHostViewAura::AcceleratedSurfaceBuffersSwapped(
         image_transport_clients_[params.surface_handle]->size();
     window_->SchedulePaintInRect(gfx::Rect(surface_size));
 
-    // Add sending an ACK to the list of things to do OnCompositingEnded
-    on_compositing_ended_callbacks_.push_back(
-        base::Bind(&RenderWidgetHostImpl::AcknowledgeSwapBuffers,
-                   params.route_id, gpu_host_id));
-    if (!compositor->HasObserver(this))
-      compositor->AddObserver(this);
+    if (!resize_locks_.empty() && !compositor->DrawPending()) {
+      // If we are waiting for the resize, fast-track the ACK.
+      // However only do so if we're not between the Draw() and the
+      // OnCompositingEnded(), because out-of-order execution in the GPU process
+      // might corrupt the "front buffer" for the currently issued frame.
+      RenderWidgetHostImpl::AcknowledgePostSubBuffer(
+          params.route_id, gpu_host_id);
+    } else {
+      // Add sending an ACK to the list of things to do OnCompositingEnded
+      on_compositing_ended_callbacks_.push_back(
+          base::Bind(&RenderWidgetHostImpl::AcknowledgeSwapBuffers,
+                     params.route_id, gpu_host_id));
+      if (!compositor->HasObserver(this))
+        compositor->AddObserver(this);
+    }
   }
 }
 
@@ -483,12 +519,21 @@ void RenderWidgetHostViewAura::AcceleratedSurfacePostSubBuffer(
         params.width,
         params.height));
 
-    // Add sending an ACK to the list of things to do OnCompositingEnded
-    on_compositing_ended_callbacks_.push_back(
-        base::Bind(&RenderWidgetHostImpl::AcknowledgePostSubBuffer,
-                   params.route_id, gpu_host_id));
-    if (!compositor->HasObserver(this))
-      compositor->AddObserver(this);
+    if (!resize_locks_.empty() && !compositor->DrawPending()) {
+      // If we are waiting for the resize, fast-track the ACK.
+      // However only do so if we're not between the Draw() and the
+      // OnCompositingEnded(), because out-of-order execution in the GPU process
+      // might corrupt the "front buffer" for the currently issued frame.
+      RenderWidgetHostImpl::AcknowledgePostSubBuffer(
+          params.route_id, gpu_host_id);
+    } else {
+      // Add sending an ACK to the list of things to do OnCompositingEnded
+      on_compositing_ended_callbacks_.push_back(
+          base::Bind(&RenderWidgetHostImpl::AcknowledgePostSubBuffer,
+                     params.route_id, gpu_host_id));
+      if (!compositor->HasObserver(this))
+        compositor->AddObserver(this);
+    }
   }
 }
 
@@ -562,16 +607,7 @@ void RenderWidgetHostViewAura::GetScreenInfo(WebKit::WebScreenInfo* results) {
 }
 
 gfx::Rect RenderWidgetHostViewAura::GetRootWindowBounds() {
-  // TODO(beng): this is actually wrong, we are supposed to return the bounds
-  //             of the container "top level" window, but we don't have a firm
-  //             concept of what constitutes a toplevel right now, so just do
-  //             this.
-  return window_->GetScreenBounds();
-}
-
-void RenderWidgetHostViewAura::UnhandledWheelEvent(
-    const WebKit::WebMouseWheelEvent& event) {
-  // Not needed. Mac-only.
+  return window_->GetToplevelWindow()->bounds();
 }
 
 void RenderWidgetHostViewAura::ProcessTouchAck(
@@ -825,6 +861,12 @@ void RenderWidgetHostViewAura::OnBoundsChanged(const gfx::Rect& old_bounds,
 }
 
 void RenderWidgetHostViewAura::OnFocus() {
+  // We need to honor input bypass if the associated tab is does not want input.
+  // This gives the current focused window a chance to be the text input
+  // client and handle events.
+  if (host_->ignore_input_events())
+    return;
+
   host_->GotFocus();
   host_->SetActive(true);
 
@@ -1040,6 +1082,11 @@ void RenderWidgetHostViewAura::OnLostActive() {
 ////////////////////////////////////////////////////////////////////////////////
 // RenderWidgetHostViewAura, ui::CompositorDelegate implementation:
 
+void RenderWidgetHostViewAura::OnCompositingStarted(
+    ui::Compositor* compositor) {
+  locks_pending_draw_.clear();
+}
+
 void RenderWidgetHostViewAura::OnCompositingEnded(ui::Compositor* compositor) {
   RunCompositingCallbacks();
   compositor->RemoveObserver(this);
@@ -1052,6 +1099,7 @@ void RenderWidgetHostViewAura::OnLostResources(ui::Compositor* compositor) {
   image_transport_clients_.clear();
   current_surface_ = 0;
   UpdateExternalTexture();
+  locks_pending_draw_.clear();
 
   DCHECK(!shared_surface_handle_.is_null());
   ImageTransportFactory* factory = ImageTransportFactory::GetInstance();
@@ -1061,6 +1109,9 @@ void RenderWidgetHostViewAura::OnLostResources(ui::Compositor* compositor) {
   host_->ScheduleComposite();
 
   if (gl_helper_.get()) {
+    // Detach the resources to avoid deleting them using the invalid context.
+    // They've been released anyway when the GPU process died.
+    gl_helper_->Detach();
     gl_helper_.reset(
         new content::GLHelper(factory->GetSharedContext(compositor)));
   }
@@ -1176,6 +1227,7 @@ void RenderWidgetHostViewAura::RemovingFromRootWindow() {
   // frame though, because we will reissue a new frame right away without that
   // composited data.
   RunCompositingCallbacks();
+  locks_pending_draw_.clear();
   ui::Compositor* compositor = GetCompositor();
   if (compositor && compositor->HasObserver(this))
     compositor->RemoveObserver(this);

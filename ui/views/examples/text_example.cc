@@ -100,23 +100,26 @@ class TextExample::TextExampleView : public View {
   }
 
   virtual void OnPaint(gfx::Canvas* canvas) OVERRIDE {
+    View::OnPaint(canvas);
+
+    const gfx::Rect bounds = GetContentsBounds();
+
 #if defined(OS_WIN)
     if (fade_) {
       size_t characters_to_truncate_from_head =
           gfx::Canvas::TruncateFadeHeadAndTail ? 10 : 0;
       canvas->DrawFadeTruncatingString(text_, fade_mode_,
-          characters_to_truncate_from_head, font_, SK_ColorDKGRAY,
-          GetLocalBounds());
+          characters_to_truncate_from_head, font_, SK_ColorDKGRAY, bounds);
       return;
     }
 #endif
 
     if (halo_) {
-      canvas->DrawStringWithHalo(text_, font_, SK_ColorDKGRAY, SK_ColorWHITE, 0,
-          0, width(), height(), text_flags_);
+      canvas->DrawStringWithHalo(text_, font_, SK_ColorDKGRAY, SK_ColorWHITE,
+          bounds.x(), bounds.y(), bounds.width(), bounds.height(), text_flags_);
     } else {
-      canvas->DrawStringInt(text_, font_, SK_ColorDKGRAY, 0, 0, width(),
-          height(), text_flags_);
+      canvas->DrawStringInt(text_, font_, SK_ColorDKGRAY, bounds.x(),
+          bounds.y(), bounds.width(), bounds.height(), text_flags_);
     }
   }
 
@@ -190,7 +193,7 @@ Combobox* TextExample::AddCombobox(GridLayout* layout,
   ExampleComboboxModel* new_model = new ExampleComboboxModel(strings, count);
   example_combobox_model_.push_back(new_model);
   Combobox* combo_box = new Combobox(new_model);
-  combo_box->SetSelectedItem(0);
+  combo_box->SetSelectedIndex(0);
   combo_box->set_listener(this);
   layout->AddView(combo_box, kNumColumns - 1, 1);
   return combo_box;
@@ -198,6 +201,7 @@ Combobox* TextExample::AddCombobox(GridLayout* layout,
 
 void TextExample::CreateExampleView(View* container) {
   text_view_ = new TextExampleView;
+  text_view_->set_border(views::Border::CreateSolidBorder(1, SK_ColorGRAY));
 
   GridLayout* layout = new GridLayout(container);
   container->SetLayoutManager(layout);

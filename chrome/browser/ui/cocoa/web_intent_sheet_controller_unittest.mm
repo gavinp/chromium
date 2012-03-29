@@ -12,7 +12,6 @@
 #include "chrome/browser/ui/cocoa/web_intent_picker_cocoa.h"
 #include "chrome/browser/ui/intents/web_intent_picker_delegate.h"
 #include "chrome/browser/ui/tab_contents/test_tab_contents_wrapper.h"
-#include "content/browser/tab_contents/test_tab_contents.h"
 #include "content/test/test_browser_thread.h"
 #include "testing/gmock/include/gmock/gmock.h"
 
@@ -25,6 +24,7 @@ class MockIntentPickerDelegate : public WebIntentPickerDelegate {
   MOCK_METHOD2(OnServiceChosen, void(const GURL& url, Disposition disposition));
   MOCK_METHOD1(OnInlineDispositionWebContentsCreated,
       void(content::WebContents* web_contents));
+  MOCK_METHOD1(OnExtensionInstallRequested, void(const std::string& id));
   MOCK_METHOD0(OnCancelled, void());
   MOCK_METHOD0(OnClosing, void());
 };
@@ -46,7 +46,7 @@ class WebIntentPickerSheetControllerTest
       EXPECT_CALL(delegate_, OnCancelled());
       EXPECT_CALL(delegate_, OnClosing());
 
-      [controller_ closeSheet];
+      [controller_ cancelOperation:controller_];
       // Closing |controller_| destroys |picker_|.
       ignore_result(picker_.release());
     }
@@ -98,7 +98,7 @@ class WebIntentPickerSheetControllerTest
 
     // Verify the close button
     NSButton* close_button = static_cast<NSButton*>([views objectAtIndex:2]);
-    CheckButton(close_button, @selector(cancelSelection:));
+    CheckButton(close_button, @selector(cancelOperation:));
 
     // Verify the Chrome Web Store button.
     NSButton* button = static_cast<NSButton*>([views lastObject]);
@@ -166,17 +166,20 @@ TEST_F(WebIntentPickerSheetControllerTest, OnCancelledWillSignalClose) {
   ignore_result(picker_.release());  // Closing |picker_| will destruct it.
 }
 
-TEST_F(WebIntentPickerSheetControllerTest, CloseWillClose) {
+// TODO(groby): Re-enable ASAP. Needs visible TabContentsWrapper to test sheet.
+TEST_F(WebIntentPickerSheetControllerTest, DISABLED_CloseWillClose) {
   CreateBubble();
 
-  EXPECT_CALL(delegate_, OnCancelled());
+  EXPECT_CALL(delegate_, OnCancelled()).Times(0);
   EXPECT_CALL(delegate_, OnClosing());
   picker_->Close();
 
   ignore_result(picker_.release());  // Closing |picker_| will destruct it.
 }
 
-TEST_F(WebIntentPickerSheetControllerTest, DontCancelAfterServiceInvokation) {
+// TODO(groby): Re-enable ASAP. Needs visible TabContentsWrapper to test sheet.
+TEST_F(WebIntentPickerSheetControllerTest,
+    DISABLED_DontCancelAfterServiceInvokation) {
   CreateBubble();
   GURL url;
   model_.AddInstalledService(string16(), url,
@@ -191,4 +194,43 @@ TEST_F(WebIntentPickerSheetControllerTest, DontCancelAfterServiceInvokation) {
   picker_->Close();
 
   ignore_result(picker_.release());  // Closing |picker_| will destruct it.
+}
+
+TEST_F(WebIntentPickerSheetControllerTest, SuggestionView) {
+  CreateBubble();
+
+  WebIntentPickerModel model;
+
+  model.AddSuggestedExtension(string16(), string16(), 2.5);
+  [controller_ performLayoutWithModel:&model];
+
+  // Get subviews.
+  NSArray* flip_views = [[window_ contentView] subviews];
+  NSArray* main_views = [[flip_views objectAtIndex:0] subviews];
+
+  // 4th object should be the suggestion view.
+  ASSERT_TRUE([main_views count] > 3);
+  ASSERT_TRUE([[main_views objectAtIndex:3] isKindOfClass:[NSView class]]);
+  NSView* suggest_view = [main_views objectAtIndex:3];
+
+  // There is exactly one subview, which contains the suggested item.
+  ASSERT_EQ(1U, [[suggest_view subviews] count]);
+  ASSERT_TRUE([[[suggest_view subviews] objectAtIndex:0]
+      isKindOfClass:[NSView class]]);
+  NSView* item_view = [[suggest_view subviews] objectAtIndex:0];
+
+  // 8 subobject - Icon, title, star rating (5 objects), add button.
+  ASSERT_EQ(8U, [[item_view subviews] count]);
+
+  // Verify title button is hooked up properly
+  ASSERT_TRUE([[[item_view subviews] objectAtIndex:1]
+      isKindOfClass:[NSButton class]]);
+  NSButton* title_button = [[item_view subviews] objectAtIndex:1];
+  CheckButton(title_button, @selector(openExtensionLink:));
+
+  // Verify "Add to Chromium" button is hooked up properly
+  ASSERT_TRUE([[[item_view subviews] objectAtIndex:7]
+      isKindOfClass:[NSButton class]]);
+  NSButton* add_button = [[item_view subviews] objectAtIndex:7];
+  CheckButton(add_button, @selector(installExtension:));
 }

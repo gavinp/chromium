@@ -47,6 +47,10 @@
 #include "ui/base/l10n/l10n_util_mac.h"
 #include "ui/gfx/rect.h"
 
+#if defined(ENABLE_ONE_CLICK_SIGNIN)
+#import "chrome/browser/ui/cocoa/one_click_signin_bubble_controller.h"
+#endif
+
 using content::SSLStatus;
 using content::WebContents;
 
@@ -446,8 +450,22 @@ void BrowserWindowCocoa::ShowBookmarkBubble(const GURL& url,
 }
 
 void BrowserWindowCocoa::ShowChromeToMobileBubble() {
-  NOTIMPLEMENTED();
+  [controller_ showChromeToMobileBubble];
 }
+
+#if defined(ENABLE_ONE_CLICK_SIGNIN)
+
+void BrowserWindowCocoa::ShowOneClickSigninBubble(
+      const base::Closure& learn_more_callback,
+      const base::Closure& advanced_callback) {
+  OneClickSigninBubbleController* bubble_controller =
+      [[OneClickSigninBubbleController alloc]
+        initWithBrowserWindowController:cocoa_controller()
+                      learnMoreCallback:learn_more_callback
+                       advancedCallback:advanced_callback];
+  [bubble_controller showWindow:nil];
+}
+#endif
 
 bool BrowserWindowCocoa::IsDownloadShelfVisible() const {
   return [controller_ isDownloadShelfVisible] != NO;

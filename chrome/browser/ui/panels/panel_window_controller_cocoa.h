@@ -43,6 +43,7 @@ class PanelBrowserWindowCocoa;
   BOOL playingMinimizeAnimation_;
   float animationStopToShowTitlebarOnly_;
   BOOL canBecomeKeyWindow_;
+  scoped_nsobject<NSView> overlayView_;
 }
 
 // Load the browser window nib and do any Cocoa-specific initialization.
@@ -100,7 +101,7 @@ class PanelBrowserWindowCocoa;
 
 // Invoked when user clicks on the titlebar. Attempts to flip the
 // Minimized/Restored states.
-- (void)onTitlebarMouseClicked;
+- (void)onTitlebarMouseClicked:(int)modifierFlags;
 
 // Executes the command in the context of the current browser.
 // |command| is an integer value containing one of the constants defined in the
@@ -140,6 +141,13 @@ class PanelBrowserWindowCocoa;
 
 - (void)updateWindowLevel;
 
+// Turns on user-resizable corners/sides indications and enables live resize.
+- (void)enableResizeByMouse:(BOOL)enable;
+
+// In certain cases (when in a Docked strip for example) we want
+// the standard behavior of activating the app when clicking on the titlebar
+// to be disabled. This way, user can minimize the panel w/o activating it.
+- (BOOL)isActivationByClickingTitlebarEnabled;
 @end  // @interface PanelWindowController
 
 #endif  // CHROME_BROWSER_UI_PANELS_PANEL_WINDOW_CONTROLLER_COCOA_H_

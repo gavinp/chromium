@@ -17,7 +17,6 @@ class Font;
 
 namespace views {
 
-class KeyEvent;
 class FocusableBorder;
 class MenuRunner;
 
@@ -27,7 +26,9 @@ class NativeComboboxViews : public views::View,
                             public NativeComboboxWrapper,
                             public views::MenuDelegate {
  public:
-  explicit NativeComboboxViews(Combobox* parent);
+  static const char kViewClassName[];
+
+  explicit NativeComboboxViews(Combobox* combo_box);
   virtual ~NativeComboboxViews();
 
   // views::View overrides:
@@ -41,9 +42,9 @@ class NativeComboboxViews : public views::View,
 
   // NativeComboboxWrapper overrides:
   virtual void UpdateFromModel() OVERRIDE;
-  virtual void UpdateSelectedItem() OVERRIDE;
+  virtual void UpdateSelectedIndex() OVERRIDE;
   virtual void UpdateEnabled() OVERRIDE;
-  virtual int GetSelectedItem() const OVERRIDE;
+  virtual int GetSelectedIndex() const OVERRIDE;
   virtual bool IsDropdownOpen() const OVERRIDE;
   virtual gfx::Size GetPreferredSize() OVERRIDE;
   virtual View* GetView() OVERRIDE;
@@ -60,13 +61,7 @@ class NativeComboboxViews : public views::View,
   virtual void ExecuteCommand(int id) OVERRIDE;
   virtual bool GetAccelerator(int id, ui::Accelerator* accelerator) OVERRIDE;
 
-  // class name of internal
-  static const char kViewClassName[];
-
  private:
-  // Returns the Combobox's font.
-  const gfx::Font& GetFont() const;
-
   // Given bounds within our View, this helper routine mirrors the bounds if
   // necessary.
   void AdjustBoundsForRTLUI(gfx::Rect* rect) const;
@@ -92,8 +87,9 @@ class NativeComboboxViews : public views::View,
   // Is the drop down list showing
   bool dropdown_open_;
 
-  // Index in the model of the selected item: -1 => none
-  int selected_item_;
+  // The selected index in the model. The default value is -1, which means no
+  // selection.
+  int selected_index_;
 
   // The maximum dimensions of the content in the dropdown
   int content_width_;

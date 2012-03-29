@@ -8,20 +8,6 @@
 
 namespace media {
 
-void ResetAndRunCB(PipelineStatusCB* cb, PipelineStatus status) {
-  DCHECK(!cb->is_null());
-  PipelineStatusCB tmp_cb(*cb);
-  cb->Reset();
-  tmp_cb.Run(status);
-}
-
-void ResetAndRunCB(base::Closure* cb) {
-  DCHECK(!cb->is_null());
-  base::Closure tmp_cb(*cb);
-  cb->Reset();
-  tmp_cb.Run();
-}
-
 Filter::Filter() : host_(NULL) {}
 
 Filter::~Filter() {}
@@ -74,6 +60,19 @@ void Filter::OnAudioRendererDisabled() {
 VideoDecoder::VideoDecoder() {}
 
 VideoDecoder::~VideoDecoder() {}
+
+void VideoDecoder::Play(const base::Closure& /* callback */) {
+  LOG(FATAL) << "VideoDecoder::Play is not supposed to be called.";
+}
+
+void VideoDecoder::Pause(const base::Closure& /* callback */) {
+  LOG(FATAL) << "VideoDecoder::Pause is not supposed to be called.";
+}
+
+void VideoDecoder::Seek(base::TimeDelta /* time */,
+                        const PipelineStatusCB& /* callback */) {
+  LOG(FATAL) << "VideoDecoder::Seek is not supposed to be called.";
+}
 
 bool VideoDecoder::HasAlpha() const {
   return false;

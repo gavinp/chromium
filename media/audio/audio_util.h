@@ -9,9 +9,8 @@
 #include <vector>
 
 #include "base/basictypes.h"
+#include "media/base/channel_layout.h"
 #include "media/base/media_export.h"
-
-struct AudioParameters;
 
 namespace base {
 class SharedMemory;
@@ -39,6 +38,15 @@ MEDIA_EXPORT bool AdjustVolume(void* buf,
                                int channels,
                                int bytes_per_sample,
                                float volume);
+
+// MixStreams() mixes 2 audio streams with same sample rate and number of
+// samples, adjusting volume on one of them.
+// Dst += Src * volume.
+MEDIA_EXPORT void MixStreams(void* dst,
+                             void* src,
+                             size_t buflen,
+                             int bytes_per_sample,
+                             float volume);
 
 // FoldChannels() does a software multichannel folding down to stereo.
 // Channel order is assumed to be 5.1 Dolby standard which is
@@ -83,10 +91,10 @@ MEDIA_EXPORT void InterleaveFloatToInt16(const std::vector<float*>& source,
                                          size_t number_of_frames);
 
 // Returns the default audio output hardware sample-rate.
-MEDIA_EXPORT double GetAudioHardwareSampleRate();
+MEDIA_EXPORT int GetAudioHardwareSampleRate();
 
 // Returns the audio input hardware sample-rate for the specified device.
-MEDIA_EXPORT double GetAudioInputHardwareSampleRate(
+MEDIA_EXPORT int GetAudioInputHardwareSampleRate(
     const std::string& device_id);
 
 // Returns the optimal low-latency buffer size for the audio hardware.
@@ -94,8 +102,8 @@ MEDIA_EXPORT double GetAudioInputHardwareSampleRate(
 // at without glitches.  The buffer size is in sample-frames.
 MEDIA_EXPORT size_t GetAudioHardwareBufferSize();
 
-// Returns the number of channels for the specified audio input device.
-MEDIA_EXPORT uint32 GetAudioInputHardwareChannelCount(
+// Returns the channel layout for the specified audio input device.
+MEDIA_EXPORT ChannelLayout GetAudioInputHardwareChannelLayout(
     const std::string& device_id);
 
 // Functions that handle data buffer passed between processes in the shared

@@ -4,10 +4,6 @@
 
 #include "chrome/browser/ui/views/frame/browser_view.h"
 
-#if defined(TOOLKIT_USES_GTK)
-#include <gtk/gtk.h>
-#endif
-
 #include <algorithm>
 
 #include "base/auto_reset.h"
@@ -25,7 +21,6 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/debugger/devtools_window.h"
 #include "chrome/browser/extensions/extension_tab_helper.h"
-#include "chrome/browser/extensions/extension_tts_api.h"
 #include "chrome/browser/instant/instant_controller.h"
 #include "chrome/browser/native_window_notification_source.h"
 #include "chrome/browser/ntp_background_util.h"
@@ -36,6 +31,7 @@
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/sessions/tab_restore_service.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
+#include "chrome/browser/speech/extension_api/tts_extension_api.h"
 #include "chrome/browser/tabs/tab_strip_model.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/ui/app_modal_dialogs/app_modal_dialog_queue.h"
@@ -57,6 +53,7 @@
 #include "chrome/browser/ui/views/fullscreen_exit_bubble_views.h"
 #include "chrome/browser/ui/views/infobars/infobar_container_view.h"
 #include "chrome/browser/ui/views/location_bar/location_icon_view.h"
+#include "chrome/browser/ui/views/password_generation_bubble_view.h"
 #include "chrome/browser/ui/views/status_bubble_views.h"
 #include "chrome/browser/ui/views/tab_contents/tab_contents_container.h"
 #include "chrome/browser/ui/views/tabs/browser_tab_strip_controller.h"
@@ -112,18 +109,21 @@
 #include "chrome/browser/ui/views/accelerator_table.h"
 #include "chrome/browser/ui/views/ash/chrome_shell_delegate.h"
 #include "chrome/browser/ui/views/ash/launcher/launcher_updater.h"
+#include "chrome/browser/ui/views/ash/window_positioner.h"
 #include "ui/gfx/screen.h"
 #elif defined(OS_WIN)
 #include "chrome/browser/aeropeek_manager.h"
 #include "chrome/browser/jumplist_win.h"
 #include "ui/views/widget/native_widget_win.h"
-#elif defined(TOOLKIT_USES_GTK)
-#include "chrome/browser/ui/views/accelerator_table.h"
 #endif
 
 #if defined(OS_CHROMEOS)
 #include "chrome/browser/ui/views/keyboard_overlay_dialog_view.h"
 #include "chrome/browser/ui/webui/chromeos/mobile_setup_dialog.h"
+#endif
+
+#if defined(ENABLE_ONE_CLICK_SIGNIN)
+#include "chrome/browser/ui/views/sync/one_click_signin_bubble_view.h"
 #endif
 
 #if !defined(OS_CHROMEOS) || defined(USE_AURA)
@@ -1119,6 +1119,16 @@ void BrowserView::ShowChromeToMobileBubble() {
   GetLocationBarView()->ShowChromeToMobileBubble();
 }
 
+#if defined(ENABLE_ONE_CLICK_SIGNIN)
+void BrowserView::ShowOneClickSigninBubble(
+    const base::Closure& learn_more_callback,
+    const base::Closure& advanced_callback) {
+  OneClickSigninBubbleView::ShowBubble(toolbar_->app_menu(),
+                                       learn_more_callback,
+                                       advanced_callback);
+}
+#endif
+
 void BrowserView::SetDownloadShelfVisible(bool visible) {
   // This can be called from the superclass destructor, when it destroys our
   // child views. At that point, browser_ is already gone.
@@ -1163,7 +1173,7 @@ DownloadShelf* BrowserView::GetDownloadShelf() {
 void BrowserView::ConfirmBrowserCloseWithPendingDownloads() {
   DownloadInProgressDialogView* view =
       new DownloadInProgressDialogView(browser_.get());
-  browser::CreateViewsWindow(GetNativeHandle(), view, STYLE_GENERIC)->Show();
+  views::Widget::CreateWindowWithParent(view, GetNativeHandle())->Show();
 }
 
 void BrowserView::ShowCreateWebAppShortcutsDialog(
@@ -1227,19 +1237,6 @@ bool BrowserView::PreHandleKeyboardEvent(const NativeWebKeyboardEvent& event,
   views::FocusManager* focus_manager = GetFocusManager();
   DCHECK(focus_manager);
 
-#if defined(TOOLKIT_USES_GTK)
-  // Views and WebKit use different tables for GdkEventKey -> views::KeyEvent
-  // conversion. We need to use View's conversion table here to keep consistent
-  // behavior with views::FocusManager::OnKeyEvent() method.
-  // TODO(suzhe): We need to check if Windows code also has this issue, and
-  // it'll be best if we can unify these conversion tables.
-  // See http://crbug.com/54315
-  views::KeyEvent views_event(reinterpret_cast<GdkEvent*>(event.os_event));
-  ui::Accelerator accelerator(views_event.key_code(),
-                              views_event.IsShiftDown(),
-                              views_event.IsControlDown(),
-                              views_event.IsAltDown());
-#else
   ui::Accelerator accelerator(
       static_cast<ui::KeyboardCode>(event.windowsKeyCode),
       (event.modifiers & NativeWebKeyboardEvent::ShiftKey) ==
@@ -1248,7 +1245,6 @@ bool BrowserView::PreHandleKeyboardEvent(const NativeWebKeyboardEvent& event,
           NativeWebKeyboardEvent::ControlKey,
       (event.modifiers & NativeWebKeyboardEvent::AltKey) ==
           NativeWebKeyboardEvent::AltKey);
-#endif
 
   // We first find out the browser command associated to the |event|.
   // Then if the command is a reserved one, and should be processed
@@ -1274,12 +1270,7 @@ bool BrowserView::PreHandleKeyboardEvent(const NativeWebKeyboardEvent& event,
     return false;
 
   // Executing the command may cause |this| object to be destroyed.
-#if defined(TOOLKIT_USES_GTK)
-  if (browser_->IsReservedCommandOrKey(id, event) &&
-      !event.match_edit_command) {
-#else
   if (browser_->IsReservedCommandOrKey(id, event)) {
-#endif
     UpdateAcceleratorMetrics(accelerator, id);
     return browser_->ExecuteCommandIfEnabled(id);
   }
@@ -1488,6 +1479,12 @@ views::View* BrowserView::GetInitiallyFocusedView() {
 }
 
 bool BrowserView::ShouldShowWindowTitle() const {
+#if defined(USE_ASH)
+  // For Ash only, app host windows do not show an icon, crbug.com/119411.
+  // Child windows (e.g. extension panels, popups) do show an icon.
+  if (browser_->is_app() && browser_->app_type() == Browser::APP_TYPE_HOST)
+    return false;
+#endif
   return browser_->SupportsWindowFeature(Browser::FEATURE_TITLEBAR);
 }
 
@@ -1508,6 +1505,12 @@ SkBitmap BrowserView::GetWindowIcon() {
 }
 
 bool BrowserView::ShouldShowWindowIcon() const {
+#if defined(USE_ASH)
+  // For Ash only, app host windows do not show an icon, crbug.com/119411.
+  // Child windows (e.g. extension panels, popups) do show an icon.
+  if (browser_->is_app() && browser_->app_type() == Browser::APP_TYPE_HOST)
+    return false;
+#endif
   return browser_->SupportsWindowFeature(Browser::FEATURE_TITLEBAR);
 }
 
@@ -1547,6 +1550,18 @@ bool BrowserView::GetSavedWindowPlacement(
     ui::WindowShowState* show_state) const {
   *bounds = browser_->GetSavedWindowBounds();
   *show_state = browser_->GetSavedWindowShowState();
+
+#if defined(USE_ASH)
+  if (browser_->is_type_popup() || browser_->is_type_panel()) {
+    // In case of a popup or panel with an 'unspecified' location we are looking
+    // for a good screen location. We are interpreting (0,0) as an unspecified
+    // location.
+    if (bounds->x() == 0 && bounds->y() == 0) {
+      *bounds = ChromeShellDelegate::instance()->window_positioner()->
+          GetPopupPosition(*bounds);
+    }
+  }
+#endif
 
   if ((browser_->is_type_popup() || browser_->is_type_panel())
       && !browser_->is_devtools() && !browser_->is_app()) {
@@ -2470,4 +2485,24 @@ void BrowserView::ShowAvatarBubbleFromAvatarButton() {
   AvatarMenuButton* button = frame_->GetAvatarMenuButton();
   if (button)
     button->ShowAvatarBubble();
+}
+
+void BrowserView::ShowPasswordGenerationBubble(const gfx::Rect& rect) {
+  // Create a rect in the content bounds that the bubble will point to.
+  gfx::Point origin(rect.origin());
+  views::View::ConvertPointToScreen(GetTabContentsContainerView(), &origin);
+  gfx::Rect bounds(origin, rect.size());
+
+  // Create the bubble.
+  WebContents* web_contents = GetSelectedWebContents();
+  if (!web_contents)
+    return;
+
+  PasswordGenerationBubbleView* bubble =
+      new PasswordGenerationBubbleView(bounds,
+                                       this,
+                                       web_contents->GetRenderViewHost());
+  browser::CreateViewsBubble(bubble);
+  bubble->SetAlignment(views::BubbleBorder::ALIGN_EDGE_TO_ANCHOR_EDGE);
+  bubble->Show();
 }

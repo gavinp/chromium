@@ -201,8 +201,8 @@ class RenderWidgetHostViewGtkWidget {
         host_view->is_fullscreen_;
     if (should_close_on_escape && GDK_Escape == event->keyval) {
       host_view->host_->Shutdown();
-    } if (host_view->host_ &&
-          host_view->host_->KeyPressListenersHandleEvent(event)) {
+    } else if (host_view->host_ &&
+               host_view->host_->KeyPressListenersHandleEvent(event)) {
       return TRUE;
     } else {
       // Send key event to input method.
@@ -252,6 +252,8 @@ class RenderWidgetHostViewGtkWidget {
     // Disable the GtkIMContext object.
     host_view->im_context_->OnFocusOut();
 
+    host_view->set_last_mouse_down(NULL);
+
     return TRUE;
   }
 
@@ -278,6 +280,7 @@ class RenderWidgetHostViewGtkWidget {
       GtkWidget* widget,
       GdkEventButton* event,
       RenderWidgetHostViewGtk* host_view) {
+
     if (event->type != GDK_BUTTON_RELEASE)
       host_view->set_last_mouse_down(event);
 
@@ -1139,10 +1142,6 @@ void RenderWidgetHostViewGtk::CreatePluginContainer(
 void RenderWidgetHostViewGtk::DestroyPluginContainer(
     gfx::PluginWindowHandle id) {
   plugin_container_manager_.DestroyPluginContainer(id);
-}
-
-void RenderWidgetHostViewGtk::UnhandledWheelEvent(
-    const WebKit::WebMouseWheelEvent& event) {
 }
 
 void RenderWidgetHostViewGtk::ProcessTouchAck(

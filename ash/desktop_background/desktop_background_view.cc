@@ -28,15 +28,19 @@ static int RoundPositive(double x) {
 ////////////////////////////////////////////////////////////////////////////////
 // DesktopBackgroundView, public:
 
-DesktopBackgroundView::DesktopBackgroundView(const SkBitmap& wallpaper) {
+DesktopBackgroundView::DesktopBackgroundView(const SkBitmap& wallpaper,
+                                             ImageLayout layout) {
   wallpaper_ = wallpaper;
+  image_layout_ = layout;
   wallpaper_.buildMipMap(false);
 }
 
 DesktopBackgroundView::~DesktopBackgroundView() {
 }
 
-void DesktopBackgroundView::SetWallpaper(const SkBitmap& wallpaper) {
+void DesktopBackgroundView::SetWallpaper(const SkBitmap& wallpaper,
+                                         ImageLayout layout) {
+  image_layout_ = layout;
   wallpaper_ = wallpaper;
   wallpaper_.buildMipMap(false);
   SchedulePaint();
@@ -52,7 +56,8 @@ void DesktopBackgroundView::OnPaint(gfx::Canvas* canvas) {
   // streching to avoid upsampling artifacts (Note that we could tile too, but
   // decided not to do this at the moment).
   gfx::Rect wallpaper_rect(0, 0, wallpaper_.width(), wallpaper_.height());
-  if (wallpaper_.width() > width() && wallpaper_.height() > height()) {
+  if (image_layout_ == ash::CENTER_CROPPED && wallpaper_.width() > width()
+      && wallpaper_.height() > height()) {
     // The dimension with the smallest ratio must be cropped, the other one
     // is preserved. Both are set in gfx::Size cropped_size.
     double horizontal_ratio = static_cast<double>(width()) /
@@ -72,13 +77,20 @@ void DesktopBackgroundView::OnPaint(gfx::Canvas* canvas) {
 
     gfx::Rect wallpaper_cropped_rect = wallpaper_rect.Center(cropped_size);
     canvas->DrawBitmapInt(wallpaper_,
-       wallpaper_cropped_rect.x(), wallpaper_cropped_rect.y(),
-       wallpaper_cropped_rect.width(), wallpaper_cropped_rect.height(),
-       0, 0, width(), height(),
-       true);
-  } else {
-    // Tiling.
+        wallpaper_cropped_rect.x(), wallpaper_cropped_rect.y(),
+        wallpaper_cropped_rect.width(), wallpaper_cropped_rect.height(),
+        0, 0, width(), height(),
+        true);
+  } else if (image_layout_ == ash::TILE) {
     canvas->TileImageInt(wallpaper_, 0, 0, width(), height());
+  } else if (image_layout_ == ash::STRETCH) {
+    // This is generally not recommended as it may show artifacts.
+    canvas->DrawBitmapInt(wallpaper_, 0, 0, wallpaper_.width(),
+        wallpaper_.height(), 0, 0, width(), height(), true);
+  } else {
+    // All other are simply centered, and not scaled (but may be clipped).
+     canvas->DrawBitmapInt(wallpaper_, (width() - wallpaper_.width()) / 2,
+         (height() - wallpaper_.height()) / 2);
   }
 }
 
@@ -91,11 +103,12 @@ void DesktopBackgroundView::OnMouseReleased(const views::MouseEvent& event) {
     Shell::GetInstance()->ShowBackgroundMenu(GetWidget(), event.location());
 }
 
-views::Widget* CreateDesktopBackground(const SkBitmap& wallpaper) {
+views::Widget* CreateDesktopBackground(const SkBitmap& wallpaper,
+                                       ImageLayout layout) {
   views::Widget* desktop_widget = new views::Widget;
   views::Widget::InitParams params(
       views::Widget::InitParams::TYPE_WINDOW_FRAMELESS);
-  DesktopBackgroundView* view = new DesktopBackgroundView(wallpaper);
+  DesktopBackgroundView* view = new DesktopBackgroundView(wallpaper, layout);
   params.delegate = view;
   params.parent =
       Shell::GetInstance()->GetContainer(

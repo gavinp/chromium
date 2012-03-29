@@ -282,6 +282,11 @@ class BrowserView : public BrowserWindow,
   virtual void ShowBookmarkBubble(const GURL& url,
                                   bool already_bookmarked) OVERRIDE;
   virtual void ShowChromeToMobileBubble() OVERRIDE;
+#if defined(ENABLE_ONE_CLICK_SIGNIN)
+  virtual void ShowOneClickSigninBubble(
+      const base::Closure& learn_more_callback,
+      const base::Closure& advanced_callback) OVERRIDE;
+#endif
   // TODO(beng): Not an override, move somewhere else.
   void SetDownloadShelfVisible(bool visible);
   virtual bool IsDownloadShelfVisible() const OVERRIDE;
@@ -324,6 +329,7 @@ class BrowserView : public BrowserWindow,
   virtual void ShowAvatarBubble(content::WebContents* web_contents,
                                 const gfx::Rect& rect) OVERRIDE;
   virtual void ShowAvatarBubbleFromAvatarButton() OVERRIDE;
+  virtual void ShowPasswordGenerationBubble(const gfx::Rect& rect) OVERRIDE;
 
   // Overridden from BrowserWindowTesting:
   virtual BookmarkBarView* GetBookmarkBarView() const OVERRIDE;

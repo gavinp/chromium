@@ -12,7 +12,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sync/profile_sync_service.h"
 #include "chrome/browser/sync/profile_sync_service_factory.h"
-#include "chrome/browser/sync/sync_setup_flow.h"
 #include "chrome/browser/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_list.h"
@@ -66,12 +65,9 @@ static bool IsValidUserFlowAction(int action) {
 
 }  // namespace
 
-SyncPromoHandler::SyncPromoHandler(const std::string& source,
-                                   ProfileManager* profile_manager)
+SyncPromoHandler::SyncPromoHandler(ProfileManager* profile_manager)
     : SyncSetupHandler(profile_manager),
       window_already_closed_(false) {
-  if (!source.empty())
-    histogram_name_ = "SyncPromo." + source + ".UserFlow";
 }
 
 SyncPromoHandler::~SyncPromoHandler() {
@@ -131,22 +127,19 @@ void SyncPromoHandler::RecordSignin() {
   sync_promo_trial::RecordUserSignedIn(web_ui());
 }
 
-void SyncPromoHandler::ShowConfigure(const base::DictionaryValue& args) {
-  bool usePassphrase = false;
-  args.GetBoolean("usePassphrase", &usePassphrase);
-
-  if (usePassphrase) {
+void SyncPromoHandler::DisplayConfigureSync(bool show_advanced) {
+  ProfileSyncService* service = GetSyncService();
+  DCHECK(service);
+  if (service->IsPassphraseRequired()) {
     // If a passphrase is required then we must show the configure pane.
-    SyncSetupHandler::ShowConfigure(args);
+    SyncSetupHandler::DisplayConfigureSync(true);
   } else {
     // If no passphrase is required then skip the configure pane and sync
     // everything by default. This makes the first run experience simpler.
     // Note, there's an advanced link in the sync promo that takes users
     // to Settings where the configure pane is not skipped.
-    SyncConfiguration configuration;
-    configuration.sync_everything = true;
-    DCHECK(flow());
-    flow()->OnUserConfigured(configuration);
+    service->OnUserChoseDatatypes(true, syncable::ModelTypeSet());
+    ConfigureSyncDone();
   }
 }
 
@@ -201,30 +194,7 @@ void SyncPromoHandler::HandleCloseSyncPromo(const base::ListValue* args) {
   }
 }
 
-int SyncPromoHandler::GetPromoVersion() {
-  switch (SyncPromoUI::GetSyncPromoVersion()) {
-    case SyncPromoUI::VERSION_DEFAULT:
-      return 0;
-    case SyncPromoUI::VERSION_DEVICES:
-      return 1;
-    case SyncPromoUI::VERSION_VERBOSE:
-      return 2;
-    case SyncPromoUI::VERSION_SIMPLE:
-      return 3;
-    case SyncPromoUI::VERSION_DIALOG:
-      // Use the simple sync promo layout for the dialog version.
-      return 3;
-    default:
-      NOTREACHED();
-      return 0;
-  }
-}
-
 void SyncPromoHandler::HandleInitializeSyncPromo(const base::ListValue* args) {
-  base::FundamentalValue version(GetPromoVersion());
-  web_ui()->CallJavascriptFunction("SyncSetupOverlay.showPromoVersion",
-                                   version);
-
   // Open the sync wizard to the login screen.
   OpenSyncSetup(true);
   // We don't need to compute anything for this, just do this every time.
@@ -296,14 +266,4 @@ void SyncPromoHandler::RecordUserFlowAction(int action) {
   // Send an enumeration to our single user flow histogram.
   UMA_HISTOGRAM_ENUMERATION("SyncPromo.UserFlow", action,
                             SYNC_PROMO_BUCKET_BOUNDARY);
-
-  // The following call does not use the standard UMA macro because the
-  // histogram name is only known at runtime.  The standard macros declare
-  // static variables that won't work if the name changes on differnt calls.
-  if (!histogram_name_.empty()) {
-    base::Histogram* histogram = base::LinearHistogram::FactoryGet(
-        histogram_name_, 1, SYNC_PROMO_BUCKET_BOUNDARY,
-        SYNC_PROMO_BUCKET_BOUNDARY + 1, base::Histogram::kNoFlags);
-    histogram->Add(action);
-  }
 }

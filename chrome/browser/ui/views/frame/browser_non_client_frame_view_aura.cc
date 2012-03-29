@@ -7,6 +7,7 @@
 #include "ash/wm/frame_painter.h"
 #include "ash/wm/workspace/frame_maximize_button.h"
 #include "chrome/browser/themes/theme_service.h"
+#include "chrome/browser/ui/views/avatar_menu_button.h"
 #include "chrome/browser/ui/views/frame/browser_frame.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "content/public/browser/web_contents.h"
@@ -14,7 +15,10 @@
 #include "grit/theme_resources.h"
 #include "grit/theme_resources_standard.h"
 #include "grit/ui_resources.h"
+#include "ui/aura/window.h"
+#include "ui/aura/client/aura_constants.h"
 #include "ui/base/accessibility/accessible_view_state.h"
+#include "ui/base/hit_test.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/theme_provider.h"
@@ -25,16 +29,29 @@
 
 namespace {
 
+// The avatar ends 2 px above the bottom of the tabstrip (which, given the
+// way the tabstrip draws its bottom edge, will appear like a 1 px gap to the
+// user).
+const int kAvatarBottomSpacing = 2;
+// There are 2 px on each side of the avatar (between the frame border and
+// it on the left, and between it and the tabstrip on the right).
+const int kAvatarSideSpacing = 2;
 // Space between left edge of window and tabstrip.
-const int kTabstripLeftSpacing = 4;
+const int kTabstripLeftSpacing = 0;
 // Space between right edge of tabstrip and maximize button.
 const int kTabstripRightSpacing = 10;
 // Space between top of window and top of tabstrip for restored windows.
-const int kTabstripTopSpacingRestored = 10;
+const int kTabstripTopSpacingRestored = 7;
 // Space between top of window and top of tabstrip for maximized windows.
 // Place them flush to the top to make them clickable when the cursor is at
 // the screen edge.
 const int kTabstripTopSpacingMaximized = 0;
+// Height of the shadow in the tab image, used to ensure clicks in the shadow
+// area still drag restored windows.  This keeps the clickable area large enough
+// to hit easily.
+const int kTabShadowHeight = 4;
+// Height of the shadow of the content area, at the top of the toolbar.
+const int kContentShadowHeight = 1;
 
 }  // namespace
 
@@ -47,7 +64,8 @@ BrowserNonClientFrameViewAura::BrowserNonClientFrameViewAura(
       maximize_button_(NULL),
       close_button_(NULL),
       window_icon_(NULL),
-      frame_painter_(new ash::FramePainter) {
+      frame_painter_(new ash::FramePainter),
+      allow_maximize_(true) {
 }
 
 BrowserNonClientFrameViewAura::~BrowserNonClientFrameViewAura() {
@@ -55,7 +73,16 @@ BrowserNonClientFrameViewAura::~BrowserNonClientFrameViewAura() {
 
 void BrowserNonClientFrameViewAura::Init() {
   // Caption buttons.
-  maximize_button_ = new ash::FrameMaximizeButton(this, this);
+  ash::FrameMaximizeButton* maximize_button =
+      new ash::FrameMaximizeButton(this, this);
+  maximize_button_ = maximize_button;
+  // Disable snap left/right and maximize for Panels.
+  if (browser_view()->browser()->is_type_panel() &&
+      browser_view()->browser()->app_type() == Browser::APP_TYPE_CHILD) {
+    allow_maximize_ = false;
+    maximize_button->SetIsLeftRightEnabled(false);
+    maximize_button->set_is_maximize_enabled(false);
+  }
   maximize_button_->SetAccessibleName(
       l10n_util::GetStringUTF16(IDS_ACCNAME_MAXIMIZE));
   AddChildView(maximize_button_);
@@ -72,6 +99,9 @@ void BrowserNonClientFrameViewAura::Init() {
     window_icon_->Update();
   }
 
+  // Create incognito icon if necessary.
+  UpdateAvatarInfo();
+
   // Frame painter handles layout of these buttons.
   frame_painter_->Init(frame(), window_icon_, maximize_button_, close_button_);
 }
@@ -83,9 +113,15 @@ gfx::Rect BrowserNonClientFrameViewAura::GetBoundsForTabStrip(
     views::View* tabstrip) const {
   if (!tabstrip)
     return gfx::Rect();
-  return gfx::Rect(kTabstripLeftSpacing,
+  int tabstrip_x =
+      avatar_button() ?
+      (avatar_button()->bounds().right() + kAvatarSideSpacing) :
+      kTabstripLeftSpacing;
+  int tabstrip_width =
+      maximize_button_->x() - kTabstripRightSpacing - tabstrip_x;
+  return gfx::Rect(tabstrip_x,
                    GetHorizontalTabStripVerticalOffset(false),
-                   std::max(0, maximize_button_->x() - kTabstripRightSpacing),
+                   std::max(0, tabstrip_width),
                    tabstrip->GetPreferredSize().height());
 }
 
@@ -115,7 +151,19 @@ gfx::Rect BrowserNonClientFrameViewAura::GetWindowBoundsForClientBounds(
 }
 
 int BrowserNonClientFrameViewAura::NonClientHitTest(const gfx::Point& point) {
-  return frame_painter_->NonClientHitTest(this, point);
+  int hit_test = frame_painter_->NonClientHitTest(this, point);
+  // When the window is restored we want a large click target above the tabs
+  // to drag the window, so redirect clicks in the tab's shadow to caption.
+  if (hit_test == HTCLIENT && !frame()->IsMaximized()) {
+    // Convert point to client coordinates.
+    gfx::Point client_point(point);
+    View::ConvertPointToView(this, frame()->client_view(), &client_point);
+    // Report hits in shadow at top of tabstrip as caption.
+    gfx::Rect tabstrip_bounds(browser_view()->tabstrip()->bounds());
+    if (client_point.y() < tabstrip_bounds.y() + kTabShadowHeight)
+      hit_test = HTCAPTION;
+  }
+  return hit_test;
 }
 
 void BrowserNonClientFrameViewAura::GetWindowMask(const gfx::Size& size,
@@ -141,13 +189,19 @@ void BrowserNonClientFrameViewAura::OnPaint(gfx::Canvas* canvas) {
     return;  // Nothing visible, don't paint.
   // The primary header image changes based on window activation state and
   // theme, so we look it up for each paint.
-  frame_painter_->PaintHeader(this,
-                              canvas,
-                              GetThemeFrameBitmap(),
-                              GetThemeFrameOverlayBitmap());
-  frame_painter_->PaintTitleBar(this, canvas, BrowserFrame::GetTitleFont());
+  frame_painter_->PaintHeader(
+      this,
+      canvas,
+      ShouldPaintAsActive() ?
+          ash::FramePainter::ACTIVE : ash::FramePainter::INACTIVE,
+      GetThemeFrameBitmap(),
+      GetThemeFrameOverlayBitmap());
+  if (browser_view()->ShouldShowWindowTitle())
+    frame_painter_->PaintTitleBar(this, canvas, BrowserFrame::GetTitleFont());
   if (browser_view()->IsToolbarVisible())
     PaintToolbarBackground(canvas);
+  else
+    PaintContentEdge(canvas);
 }
 
 void BrowserNonClientFrameViewAura::Layout() {
@@ -155,7 +209,8 @@ void BrowserNonClientFrameViewAura::Layout() {
   bool maximized_layout =
       frame()->IsMaximized() || !browser_view()->IsBrowserTypeNormal();
   frame_painter_->LayoutHeader(this, maximized_layout);
-
+  if (avatar_button())
+    LayoutAvatar();
   BrowserNonClientFrameView::Layout();
 }
 
@@ -199,6 +254,9 @@ void BrowserNonClientFrameViewAura::ButtonPressed(views::Button* sender,
   if (sender == maximize_button_) {
     // The maximize button may move out from under the cursor.
     ResetWindowControls();
+    // Don't maximize if this is a Panel.
+    if (!allow_maximize_)
+      return;
     if (frame()->IsMaximized())
       frame()->Restore();
     else
@@ -233,14 +291,36 @@ SkBitmap BrowserNonClientFrameViewAura::GetFaviconForTabIconView() {
 
 int BrowserNonClientFrameViewAura::NonClientTopBorderHeight(
     bool force_restored) const {
-  if (frame()->widget_delegate() &&
-      frame()->widget_delegate()->ShouldShowWindowTitle()) {
-    // For popups ensure we have enough space to see the full window buttons.
-    return close_button_->bounds().bottom();
-  }
-  if (!frame()->IsMaximized() || force_restored)
+  if (force_restored)
     return kTabstripTopSpacingRestored;
-  return kTabstripTopSpacingMaximized;
+  if (frame()->IsFullscreen())
+    return 0;
+  // Windows with tab strips need a smaller non-client area.
+  if (browser_view()->IsTabStripVisible()) {
+    if (frame()->IsMaximized())
+      return kTabstripTopSpacingMaximized;
+    return kTabstripTopSpacingRestored;
+  }
+  // For windows without a tab strip (popups, etc.) ensure we have enough space
+  // to see the window caption buttons and the content separator line.
+  return close_button_->bounds().bottom() + kClientEdgeThickness;
+}
+
+void BrowserNonClientFrameViewAura::LayoutAvatar() {
+  DCHECK(avatar_button());
+  SkBitmap incognito_icon = browser_view()->GetOTRAvatarIcon();
+
+  int avatar_bottom = GetHorizontalTabStripVerticalOffset(false) +
+      browser_view()->GetTabStripHeight() - kAvatarBottomSpacing;
+  int avatar_restored_y = avatar_bottom - incognito_icon.height();
+  int avatar_y = frame()->IsMaximized() ?
+      NonClientTopBorderHeight(false) + kContentShadowHeight:
+      avatar_restored_y;
+  gfx::Rect avatar_bounds(kAvatarSideSpacing,
+                          avatar_y,
+                          incognito_icon.width(),
+                          avatar_bottom - avatar_y);
+  avatar_button()->SetBoundsRect(avatar_bounds);
 }
 
 void BrowserNonClientFrameViewAura::PaintToolbarBackground(
@@ -264,8 +344,7 @@ void BrowserNonClientFrameViewAura::PaintToolbarBackground(
   int split_point = kFrameShadowThickness * 2;
   int bottom_y = y + split_point;
   ui::ThemeProvider* tp = GetThemeProvider();
-  SkBitmap* theme_toolbar = tp->GetBitmapNamed(IDR_THEME_TOOLBAR);
-  int bottom_edge_height = std::min(theme_toolbar->height(), h) - split_point;
+  int bottom_edge_height = h - split_point;
 
   canvas->FillRect(gfx::Rect(x, bottom_y, w, bottom_edge_height),
                    tp->GetColor(ThemeService::COLOR_TOOLBAR));
@@ -275,25 +354,48 @@ void BrowserNonClientFrameViewAura::PaintToolbarBackground(
   // source y position.  If you have to debug this code use an image editor
   // to paint a diagonal line through the toolbar image and ensure it lines up
   // across the tab and toolbar.
-  bool restored = !frame()->IsMaximized();
+  SkBitmap* theme_toolbar = tp->GetBitmapNamed(IDR_THEME_TOOLBAR);
   canvas->TileImageInt(
       *theme_toolbar,
-      x, bottom_y - GetHorizontalTabStripVerticalOffset(restored),
+      x, bottom_y - GetHorizontalTabStripVerticalOffset(false),
       x, bottom_y,
       w, theme_toolbar->height());
 
-  SkBitmap* toolbar_center =
-      tp->GetBitmapNamed(IDR_CONTENT_TOP_CENTER);
-  canvas->TileImageInt(*toolbar_center,
+  // The content area line has a shadow that extends a couple of pixels above
+  // the toolbar bounds.
+  const int kContentShadowHeight = 2;
+  SkBitmap* toolbar_top =
+      tp->GetBitmapNamed(IDR_TOOLBAR_SHADE_TOP);
+  canvas->TileImageInt(*toolbar_top,
                        0, 0,
-                       x, y,
-                       w, split_point);
+                       x, y - kContentShadowHeight,
+                       w, split_point + kContentShadowHeight + 1);
+
+  // Draw the "lightening" shade line around the edges of the toolbar.
+  SkBitmap* toolbar_left = tp->GetBitmapNamed(IDR_TOOLBAR_SHADE_LEFT);
+  canvas->TileImageInt(*toolbar_left,
+                       0, 0,
+                       x + kClientEdgeThickness,
+                       y + kClientEdgeThickness + kContentShadowHeight,
+                       toolbar_left->width(), theme_toolbar->height());
+  SkBitmap* toolbar_right = tp->GetBitmapNamed(IDR_TOOLBAR_SHADE_RIGHT);
+  canvas->TileImageInt(*toolbar_right,
+                       0, 0,
+                       w - toolbar_right->width() - 2 * kClientEdgeThickness,
+                       y + kClientEdgeThickness + kContentShadowHeight,
+                       toolbar_right->width(), theme_toolbar->height());
 
   // Draw the content/toolbar separator.
   canvas->FillRect(gfx::Rect(x + kClientEdgeThickness,
                              toolbar_bounds.bottom() - kClientEdgeThickness,
                              w - (2 * kClientEdgeThickness),
                              kClientEdgeThickness),
+      ThemeService::GetDefaultColor(ThemeService::COLOR_TOOLBAR_SEPARATOR));
+}
+
+void BrowserNonClientFrameViewAura::PaintContentEdge(gfx::Canvas* canvas) {
+  canvas->FillRect(gfx::Rect(0, close_button_->bounds().bottom(),
+                             width(), kClientEdgeThickness),
       ThemeService::GetDefaultColor(ThemeService::COLOR_TOOLBAR_SEPARATOR));
 }
 

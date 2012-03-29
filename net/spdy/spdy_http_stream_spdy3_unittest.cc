@@ -8,9 +8,10 @@
 #include "crypto/ec_signature_creator.h"
 #include "crypto/signature_creator.h"
 #include "net/base/asn1_util.h"
-#include "net/base/default_origin_bound_cert_store.h"
+#include "net/base/default_server_bound_cert_store.h"
 #include "net/http/http_response_headers.h"
 #include "net/http/http_response_info.h"
+#include "net/spdy/spdy_http_utils.h"
 #include "net/spdy/spdy_session.h"
 #include "net/spdy/spdy_test_util_spdy3.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -24,10 +25,6 @@ class SpdyHttpStreamSpdy3Test : public testing::Test {
   OrderedSocketData* data() { return data_.get(); }
  protected:
   SpdyHttpStreamSpdy3Test() {}
-
-  void EnableCompression(bool enabled) {
-    spdy::SpdyFramer::set_enable_compression_default(enabled);
-  }
 
   virtual void SetUp() {
     SpdySession::set_default_protocol(SSLClientSocket::kProtoSPDY3);
@@ -64,7 +61,7 @@ class SpdyHttpStreamSpdy3Test : public testing::Test {
   }
 
   void TestSendCredentials(
-    OriginBoundCertService* obc_service,
+    ServerBoundCertService* server_bound_cert_service,
     const std::string& cert,
     const std::string& proof,
     SSLClientCertType type);
@@ -74,16 +71,17 @@ class SpdyHttpStreamSpdy3Test : public testing::Test {
   scoped_refptr<HttpNetworkSession> http_session_;
   scoped_refptr<SpdySession> session_;
   scoped_refptr<TransportSocketParams> transport_params_;
+
+ private:
+  SpdyTestStateHelper spdy_state_;
 };
 
 TEST_F(SpdyHttpStreamSpdy3Test, SendRequest) {
-  EnableCompression(false);
-
-  scoped_ptr<spdy::SpdyFrame> req(ConstructSpdyGet(NULL, 0, false, 1, LOWEST));
+  scoped_ptr<SpdyFrame> req(ConstructSpdyGet(NULL, 0, false, 1, LOWEST));
   MockWrite writes[] = {
     CreateMockWrite(*req.get(), 1),
   };
-  scoped_ptr<spdy::SpdyFrame> resp(ConstructSpdyGetSynReply(NULL, 0, 1));
+  scoped_ptr<SpdyFrame> resp(ConstructSpdyGetSynReply(NULL, 0, 1));
   MockRead reads[] = {
     CreateMockRead(*resp, 2),
     MockRead(SYNCHRONOUS, 0, 3)  // EOF
@@ -125,18 +123,17 @@ TEST_F(SpdyHttpStreamSpdy3Test, SendRequest) {
 }
 
 TEST_F(SpdyHttpStreamSpdy3Test, SendChunkedPost) {
-  EnableCompression(false);
   UploadDataStream::set_merge_chunks(false);
 
-  scoped_ptr<spdy::SpdyFrame> req(ConstructChunkedSpdyPost(NULL, 0));
-  scoped_ptr<spdy::SpdyFrame> chunk1(ConstructSpdyBodyFrame(1, false));
-  scoped_ptr<spdy::SpdyFrame> chunk2(ConstructSpdyBodyFrame(1, true));
+  scoped_ptr<SpdyFrame> req(ConstructChunkedSpdyPost(NULL, 0));
+  scoped_ptr<SpdyFrame> chunk1(ConstructSpdyBodyFrame(1, false));
+  scoped_ptr<SpdyFrame> chunk2(ConstructSpdyBodyFrame(1, true));
   MockWrite writes[] = {
     CreateMockWrite(*req.get(), 1),
     CreateMockWrite(*chunk1, 2),  // POST upload frames
     CreateMockWrite(*chunk2, 3),
   };
-  scoped_ptr<spdy::SpdyFrame> resp(ConstructSpdyPostSynReply(NULL, 0));
+  scoped_ptr<SpdyFrame> resp(ConstructSpdyPostSynReply(NULL, 0));
   MockRead reads[] = {
     CreateMockRead(*resp, 4),
     CreateMockRead(*chunk1, 5),
@@ -188,15 +185,13 @@ TEST_F(SpdyHttpStreamSpdy3Test, SendChunkedPost) {
 
 // Test case for bug: http://code.google.com/p/chromium/issues/detail?id=50058
 TEST_F(SpdyHttpStreamSpdy3Test, SpdyURLTest) {
-  EnableCompression(false);
-
   const char * const full_url = "http://www.google.com/foo?query=what#anchor";
   const char * const base_url = "http://www.google.com/foo?query=what";
-  scoped_ptr<spdy::SpdyFrame> req(ConstructSpdyGet(base_url, false, 1, LOWEST));
+  scoped_ptr<SpdyFrame> req(ConstructSpdyGet(base_url, false, 1, LOWEST));
   MockWrite writes[] = {
     CreateMockWrite(*req.get(), 1),
   };
-  scoped_ptr<spdy::SpdyFrame> resp(ConstructSpdyGetSynReply(NULL, 0, 1));
+  scoped_ptr<SpdyFrame> resp(ConstructSpdyGetSynReply(NULL, 0, 1));
   MockRead reads[] = {
     CreateMockRead(*resp, 2),
     MockRead(SYNCHRONOUS, 0, 3)  // EOF
@@ -222,7 +217,7 @@ TEST_F(SpdyHttpStreamSpdy3Test, SpdyURLTest) {
   EXPECT_EQ(ERR_IO_PENDING, http_stream->SendRequest(headers, NULL, &response,
                                                      callback.callback()));
 
-  spdy::SpdyHeaderBlock* spdy_header =
+  SpdyHeaderBlock* spdy_header =
     http_stream->stream()->spdy_headers().get();
   EXPECT_TRUE(spdy_header != NULL);
   if (spdy_header->find(":path") != spdy_header->end())
@@ -245,20 +240,20 @@ TEST_F(SpdyHttpStreamSpdy3Test, SpdyURLTest) {
 
 namespace {
 
-void GetECOriginBoundCertAndProof(const std::string& origin,
-                                OriginBoundCertService* obc_service,
-                                std::string* cert,
-                                std::string* proof) {
+void GetECServerBoundCertAndProof(
+    const std::string& origin,
+    ServerBoundCertService* server_bound_cert_service,
+    std::string* cert,
+    std::string* proof) {
   TestCompletionCallback callback;
   std::vector<uint8> requested_cert_types;
   requested_cert_types.push_back(CLIENT_CERT_ECDSA_SIGN);
   SSLClientCertType cert_type;
   std::string key;
-  OriginBoundCertService::RequestHandle request_handle;
-  int rv = obc_service->GetOriginBoundCert(origin, requested_cert_types,
-                                           &cert_type, &key, cert,
-                                           callback.callback(),
-                                           &request_handle);
+  ServerBoundCertService::RequestHandle request_handle;
+  int rv = server_bound_cert_service->GetDomainBoundCert(
+      origin, requested_cert_types, &cert_type, &key, cert, callback.callback(),
+      &request_handle);
   EXPECT_EQ(ERR_IO_PENDING, rv);
   EXPECT_EQ(OK, callback.WaitForResult());
   EXPECT_EQ(CLIENT_CERT_ECDSA_SIGN, cert_type);
@@ -277,7 +272,7 @@ void GetECOriginBoundCertAndProof(const std::string& origin,
   std::vector<uint8> proof_data;
   scoped_ptr<crypto::ECPrivateKey> private_key(
       crypto::ECPrivateKey::CreateFromEncryptedPrivateKeyInfo(
-          OriginBoundCertService::kEPKIPassword, key_data, spki));
+          ServerBoundCertService::kEPKIPassword, key_data, spki));
   scoped_ptr<crypto::ECSignatureCreator> creator(
       crypto::ECSignatureCreator::Create(private_key.get()));
   creator->Sign(secret, arraysize(secret), &proof_data);
@@ -286,43 +281,97 @@ void GetECOriginBoundCertAndProof(const std::string& origin,
 
 }  // namespace
 
-// TODO(rch): When openssl supports origin bound certifictes, this
+// Constructs a standard SPDY SYN_STREAM frame for a GET request with
+// a credential set.
+SpdyFrame* ConstructCredentialRequestFrame(int slot, const GURL& url,
+                                                 int stream_id) {
+  const SpdyHeaderInfo syn_headers = {
+    SYN_STREAM,
+    stream_id,
+    0,
+    ConvertRequestPriorityToSpdyPriority(LOWEST),
+    slot,
+    CONTROL_FLAG_FIN,
+    false,
+    INVALID,
+    NULL,
+    0,
+    DATA_FLAG_NONE
+  };
+
+  // TODO(rch): this is ugly.  Clean up.
+  std::string str_path = url.PathForRequest();
+  std::string str_scheme = url.scheme();
+  std::string str_host = url.host();
+  if (url.has_port()) {
+    str_host += ":";
+    str_host += url.port();
+  }
+  scoped_array<char> req(new char[str_path.size() + 1]);
+  scoped_array<char> scheme(new char[str_scheme.size() + 1]);
+  scoped_array<char> host(new char[str_host.size() + 1]);
+  memcpy(req.get(), str_path.c_str(), str_path.size());
+  memcpy(scheme.get(), str_scheme.c_str(), str_scheme.size());
+  memcpy(host.get(), str_host.c_str(), str_host.size());
+  req.get()[str_path.size()] = '\0';
+  scheme.get()[str_scheme.size()] = '\0';
+  host.get()[str_host.size()] = '\0';
+
+  const char* const headers[] = {
+    ":method",
+    "GET",
+    ":path",
+    req.get(),
+    ":host",
+    host.get(),
+    ":scheme",
+    scheme.get(),
+    ":version",
+    "HTTP/1.1"
+  };
+  return ConstructSpdyPacket(
+      syn_headers, NULL, 0, headers, arraysize(headers)/2);
+}
+
+// TODO(rch): When openssl supports server bound certifictes, this
 // guard can be removed
 #if !defined(USE_OPENSSL)
 // Test that if we request a resource for a new origin on a session that
-// used origin bound certificates, that we send a CREDENTIAL frame for
-// the new origin before we send the new request.
+// used domain bound certificates, that we send a CREDENTIAL frame for
+// the new domain before we send the new request.
 void SpdyHttpStreamSpdy3Test::TestSendCredentials(
-    OriginBoundCertService* obc_service,
+    ServerBoundCertService* server_bound_cert_service,
     const std::string& cert,
     const std::string& proof,
     SSLClientCertType type) {
-  EnableCompression(false);
+  const char* kUrl1 = "https://www.google.com/";
+  const char* kUrl2 = "https://www.gmail.com/";
 
-  spdy::SpdyCredential cred;
-  cred.slot = 1;
+  SpdyCredential cred;
+  cred.slot = 2;
   cred.proof = proof;
   cred.certs.push_back(cert);
 
-  scoped_ptr<spdy::SpdyFrame> req(ConstructSpdyGet(NULL, 0, false, 1, LOWEST));
-  scoped_ptr<spdy::SpdyFrame> credential(ConstructSpdyCredential(cred));
-  scoped_ptr<spdy::SpdyFrame> req2(ConstructSpdyGet("http://www.gmail.com",
-                                                    false, 3, LOWEST));
+  scoped_ptr<SpdyFrame> req(ConstructCredentialRequestFrame(
+      1, GURL(kUrl1), 1));
+  scoped_ptr<SpdyFrame> credential(ConstructSpdyCredential(cred));
+  scoped_ptr<SpdyFrame> req2(ConstructCredentialRequestFrame(
+      2, GURL(kUrl2), 3));
   MockWrite writes[] = {
     CreateMockWrite(*req.get(), 0),
     CreateMockWrite(*credential.get(), 2),
     CreateMockWrite(*req2.get(), 3),
   };
 
-  scoped_ptr<spdy::SpdyFrame> resp(ConstructSpdyGetSynReply(NULL, 0, 1));
-  scoped_ptr<spdy::SpdyFrame> resp2(ConstructSpdyGetSynReply(NULL, 0, 3));
+  scoped_ptr<SpdyFrame> resp(ConstructSpdyGetSynReply(NULL, 0, 1));
+  scoped_ptr<SpdyFrame> resp2(ConstructSpdyGetSynReply(NULL, 0, 3));
   MockRead reads[] = {
     CreateMockRead(*resp, 1),
     CreateMockRead(*resp2, 4),
     MockRead(SYNCHRONOUS, 0, 5)  // EOF
   };
 
-  HostPortPair host_port_pair("www.google.com", 80);
+  HostPortPair host_port_pair(HostPortPair::FromURL(GURL(kUrl1)));
   HostPortProxyPair pair(host_port_pair, ProxyServer::Direct());
 
   DeterministicMockClientSocketFactory* socket_factory =
@@ -332,8 +381,8 @@ void SpdyHttpStreamSpdy3Test::TestSendCredentials(
                                   writes, arraysize(writes)));
   socket_factory->AddSocketDataProvider(data.get());
   SSLSocketDataProvider ssl(SYNCHRONOUS, OK);
-  ssl.origin_bound_cert_type = type;
-  ssl.origin_bound_cert_service = obc_service;
+  ssl.domain_bound_cert_type = type;
+  ssl.server_bound_cert_service = server_bound_cert_service;
   ssl.protocol_negotiated = SSLClientSocket::kProtoSPDY3;
   socket_factory->AddSSLSocketDataProvider(&ssl);
   http_session_ = SpdySessionDependencies::SpdyCreateSessionDeterministic(
@@ -370,7 +419,7 @@ void SpdyHttpStreamSpdy3Test::TestSendCredentials(
 
   HttpRequestInfo request;
   request.method = "GET";
-  request.url = GURL("http://www.google.com/");
+  request.url = GURL(kUrl1);
   HttpResponseInfo response;
   HttpRequestHeaders headers;
   BoundNetLog net_log;
@@ -380,9 +429,9 @@ void SpdyHttpStreamSpdy3Test::TestSendCredentials(
       OK,
       http_stream->InitializeStream(&request, net_log, CompletionCallback()));
 
-  EXPECT_FALSE(session_->NeedsCredentials(host_port_pair));
-  HostPortPair new_host_port_pair("www.gmail.com", 80);
-  EXPECT_TRUE(session_->NeedsCredentials(new_host_port_pair));
+  //  EXPECT_FALSE(session_->NeedsCredentials(request.url));
+  //  GURL new_origin(kUrl2);
+  //  EXPECT_TRUE(session_->NeedsCredentials(new_origin));
 
   EXPECT_EQ(ERR_IO_PENDING, http_stream->SendRequest(headers, NULL, &response,
                                                      callback.callback()));
@@ -394,7 +443,7 @@ void SpdyHttpStreamSpdy3Test::TestSendCredentials(
   // Start up second request for resource on a new origin.
   scoped_ptr<SpdyHttpStream> http_stream2(
       new SpdyHttpStream(session_.get(), true));
-  request.url = GURL("http://www.gmail.com/");
+  request.url = GURL(kUrl2);
   ASSERT_EQ(
       OK,
       http_stream2->InitializeStream(&request, net_log, CompletionCallback()));
@@ -457,14 +506,16 @@ TEST_F(SpdyHttpStreamSpdy3Test, SendCredentialsEC) {
   crypto::ECSignatureCreator::SetFactoryForTesting(
       ec_signature_creator_factory.get());
 
-  scoped_ptr<OriginBoundCertService> obc_service(
-      new OriginBoundCertService(new DefaultOriginBoundCertStore(NULL)));
+  scoped_ptr<ServerBoundCertService> server_bound_cert_service(
+      new ServerBoundCertService(new DefaultServerBoundCertStore(NULL)));
   std::string cert;
   std::string proof;
-  GetECOriginBoundCertAndProof("http://www.gmail.com/", obc_service.get(),
+  GetECServerBoundCertAndProof("http://www.gmail.com/",
+                               server_bound_cert_service.get(),
                                &cert, &proof);
 
-  TestSendCredentials(obc_service.get(), cert, proof, CLIENT_CERT_ECDSA_SIGN);
+  TestSendCredentials(server_bound_cert_service.get(), cert, proof,
+                      CLIENT_CERT_ECDSA_SIGN);
 }
 
 #endif  // !defined(USE_OPENSSL)

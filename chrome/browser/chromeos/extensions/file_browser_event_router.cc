@@ -11,6 +11,8 @@
 #include "base/values.h"
 #include "chrome/browser/chromeos/extensions/file_browser_notifications.h"
 #include "chrome/browser/chromeos/extensions/file_manager_util.h"
+#include "chrome/browser/chromeos/gdata/gdata_system_service.h"
+#include "chrome/browser/chromeos/gdata/gdata_util.h"
 #include "chrome/browser/chromeos/login/user_manager.h"
 #include "chrome/browser/extensions/extension_event_names.h"
 #include "chrome/browser/extensions/extension_event_router.h"
@@ -27,7 +29,8 @@ using chromeos::disks::DiskMountManager;
 using chromeos::disks::DiskMountManagerEventType;
 using content::BrowserThread;
 using gdata::GDataFileSystem;
-using gdata::GDataFileSystemFactory;
+using gdata::GDataSystemService;
+using gdata::GDataSystemServiceFactory;
 
 namespace {
   const char kDiskAddedEventType[] = "added";
@@ -97,10 +100,12 @@ void FileBrowserEventRouter::ShutdownOnUIThread() {
   }
   DiskMountManager::GetInstance()->RemoveObserver(this);
 
-  GDataFileSystem* file_system =
-      GDataFileSystemFactory::FindForProfile(profile_);
-  if (file_system)
-    file_system->RemoveOperationObserver(this);
+  GDataSystemService* system_service =
+      GDataSystemServiceFactory::FindForProfile(profile_);
+  if (system_service) {
+    system_service->file_system()->RemoveObserver(this);
+    system_service->file_system()->RemoveOperationObserver(this);
+  }
 
   profile_ = NULL;
 }
@@ -118,13 +123,14 @@ void FileBrowserEventRouter::ObserveFileSystemEvents() {
   disk_mount_manager->AddObserver(this);
   disk_mount_manager->RequestMountInfoRefresh();
 
-  GDataFileSystem* file_system =
-      GDataFileSystemFactory::GetForProfile(profile_);
-  if (!file_system) {
+  GDataSystemService* system_service =
+      GDataSystemServiceFactory::GetForProfile(profile_);
+  if (!system_service) {
     NOTREACHED();
     return;
   }
-  file_system->AddOperationObserver(this);
+  system_service->file_system()->AddOperationObserver(this);
+  system_service->file_system()->AddObserver(this);
 }
 
 // File watch setup routines.
@@ -133,13 +139,25 @@ bool FileBrowserEventRouter::AddFileWatch(
     const FilePath& virtual_path,
     const std::string& extension_id) {
   base::AutoLock lock(lock_);
-  WatcherMap::iterator iter = file_watchers_.find(local_path);
+  FilePath watch_path = local_path;
+  bool is_remote_watch = false;
+  // Tweak watch path for remote sources - we need to drop leading /special
+  // directory from there in order to be able to pair these events with
+  // their change notifications.
+  if (gdata::util::GetSpecialRemoteRootPath().IsParent(watch_path)) {
+    watch_path = gdata::util::ExtractGDataPath(watch_path);
+    is_remote_watch = true;
+  }
+
+  WatcherMap::iterator iter = file_watchers_.find(watch_path);
   if (iter == file_watchers_.end()) {
     scoped_ptr<FileWatcherExtensions>
-        watch(new FileWatcherExtensions(virtual_path, extension_id));
+        watch(new FileWatcherExtensions(virtual_path,
+                                        extension_id,
+                                        is_remote_watch));
 
-    if (watch->Watch(local_path, delegate_.get()))
-      file_watchers_[local_path] = watch.release();
+    if (watch->Watch(watch_path, delegate_.get()))
+      file_watchers_[watch_path] = watch.release();
     else
       return false;
   } else {
@@ -232,8 +250,11 @@ void FileBrowserEventRouter::OnProgressUpdate(
           file_manager_util::GetFileBrowserExtensionUrl().GetOrigin(),
           list));
 
+  ListValue args;
+  args.Append(event_list.release());
+
   std::string args_json;
-  base::JSONWriter::Write(event_list.get(),
+  base::JSONWriter::Write(&args,
                           &args_json);
 
   profile_->GetExtensionEventRouter()->DispatchEventToExtension(
@@ -242,13 +263,17 @@ void FileBrowserEventRouter::OnProgressUpdate(
       NULL, GURL());
 }
 
+void FileBrowserEventRouter::OnDirectoryChanged(
+    const FilePath& directory_path) {
+  DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
+  HandleFileWatchNotification(directory_path, false);
+}
 
 void FileBrowserEventRouter::HandleFileWatchNotification(
     const FilePath& local_path, bool got_error) {
   base::AutoLock lock(lock_);
   WatcherMap::const_iterator iter = file_watchers_.find(local_path);
   if (iter == file_watchers_.end()) {
-    NOTREACHED();
     return;
   }
   DispatchFolderChangeEvent(iter->second->GetVirtualPath(), got_error,
@@ -335,6 +360,12 @@ void FileBrowserEventRouter::DispatchMountCompletedEvent(
             file_manager_util::GetFileBrowserExtensionUrl().GetOrigin(),
             &source_url)) {
       mount_info_value->SetString("sourceUrl", source_url.spec());
+    } else {
+      // If mounting of gdata moutn point failed, we may not be able to convert
+      // source path to source url, so let just send empty string.
+      DCHECK(mount_info.mount_type == chromeos::MOUNT_TYPE_GDATA &&
+             error_code != chromeos::MOUNT_ERROR_NONE);
+      mount_info_value->SetString("sourceUrl", "");
     }
   } else {
     mount_info_value->SetString("sourceUrl", mount_info.source_path);
@@ -486,64 +517,71 @@ FileBrowserEventRouter::FileWatcherDelegate::HandleFileWatchOnUIThread(
 
 
 FileBrowserEventRouter::FileWatcherExtensions::FileWatcherExtensions(
-    const FilePath& path, const std::string& extension_id)
-    : ref_count(0) {
-  file_watcher.reset(new base::files::FilePathWatcher());
-  virtual_path = path;
+    const FilePath& path, const std::string& extension_id,
+    bool is_remote_file_system)
+    : ref_count_(0),
+      is_remote_file_system_(is_remote_file_system) {
+  if (!is_remote_file_system_)
+    file_watcher_.reset(new base::files::FilePathWatcher());
+
+  virtual_path_ = path;
   AddExtension(extension_id);
 }
 
 void FileBrowserEventRouter::FileWatcherExtensions::AddExtension(
     const std::string& extension_id) {
-  ExtensionUsageRegistry::iterator it = extensions.find(extension_id);
-  if (it != extensions.end()) {
+  ExtensionUsageRegistry::iterator it = extensions_.find(extension_id);
+  if (it != extensions_.end()) {
     it->second++;
   } else {
-    extensions.insert(ExtensionUsageRegistry::value_type(extension_id, 1));
+    extensions_.insert(ExtensionUsageRegistry::value_type(extension_id, 1));
   }
 
-  ref_count++;
+  ref_count_++;
 }
 
 void FileBrowserEventRouter::FileWatcherExtensions::RemoveExtension(
     const std::string& extension_id) {
-  ExtensionUsageRegistry::iterator it = extensions.find(extension_id);
+  ExtensionUsageRegistry::iterator it = extensions_.find(extension_id);
 
-  if (it != extensions.end()) {
+  if (it != extensions_.end()) {
     // If entry found - decrease it's count and remove if necessary
     if (0 == it->second--) {
-      extensions.erase(it);
+      extensions_.erase(it);
     }
 
-    ref_count--;
+    ref_count_--;
   } else {
     // Might be reference counting problem - e.g. if some component of
     // extension subscribes/unsubscribes correctly, but other component
     // only unsubscribes, developer of first one might receive this message
     LOG(FATAL) << " Extension [" << extension_id
-        << "] tries to unsubscribe from folder [" << local_path.value()
+        << "] tries to unsubscribe from folder [" << local_path_.value()
         << "] it isn't subscribed";
   }
 }
 
 const FileBrowserEventRouter::ExtensionUsageRegistry&
 FileBrowserEventRouter::FileWatcherExtensions::GetExtensions() const {
-  return extensions;
+  return extensions_;
 }
 
 unsigned int
 FileBrowserEventRouter::FileWatcherExtensions::GetRefCount() const {
-  return ref_count;
+  return ref_count_;
 }
 
 const FilePath&
 FileBrowserEventRouter::FileWatcherExtensions::GetVirtualPath() const {
-  return virtual_path;
+  return virtual_path_;
 }
 
 bool FileBrowserEventRouter::FileWatcherExtensions::Watch
     (const FilePath& path, FileWatcherDelegate* delegate) {
-  return file_watcher->Watch(path, delegate);
+  if (is_remote_file_system_)
+    return true;
+
+  return file_watcher_->Watch(path, delegate);
 }
 
 // static
@@ -562,7 +600,7 @@ FileBrowserEventRouterFactory::GetInstance() {
 FileBrowserEventRouterFactory::FileBrowserEventRouterFactory()
     : RefcountedProfileKeyedServiceFactory("FileBrowserEventRouter",
           ProfileDependencyManager::GetInstance()) {
-  DependsOn(GDataFileSystemFactory::GetInstance());
+  DependsOn(GDataSystemServiceFactory::GetInstance());
 }
 
 FileBrowserEventRouterFactory::~FileBrowserEventRouterFactory() {
@@ -572,4 +610,11 @@ scoped_refptr<RefcountedProfileKeyedService>
 FileBrowserEventRouterFactory::BuildServiceInstanceFor(Profile* profile) const {
   return scoped_refptr<RefcountedProfileKeyedService>(
       new FileBrowserEventRouter(profile));
+}
+
+bool FileBrowserEventRouterFactory::ServiceHasOwnInstanceInIncognito() {
+  // Explicitly and always allow this router in guest login mode.   see
+  // chrome/browser/profiles/profile_keyed_base_factory.h comment
+  // for the details.
+  return true;
 }

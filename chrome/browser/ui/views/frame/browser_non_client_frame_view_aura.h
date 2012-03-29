@@ -62,8 +62,15 @@ class BrowserNonClientFrameViewAura : public BrowserNonClientFrameView,
   // Distance between top of window and client area.
   int NonClientTopBorderHeight(bool force_restored) const;
 
+  // Layout the incognito icon.
+  void LayoutAvatar();
+
   void PaintTitleBar(gfx::Canvas* canvas);
   void PaintToolbarBackground(gfx::Canvas* canvas);
+
+  // Windows without a toolbar need to draw their own line under the header,
+  // above the content area.
+  void PaintContentEdge(gfx::Canvas* canvas);
 
   // Returns the correct bitmap for the frame header based on activation state
   // and incognito mode.
@@ -83,6 +90,10 @@ class BrowserNonClientFrameViewAura : public BrowserNonClientFrameView,
 
   // Painter for the frame header.
   scoped_ptr<ash::FramePainter> frame_painter_;
+
+  // Set to false for Panels where maximize is undesired. (maximize button is
+  // still used for minimizing).
+  bool allow_maximize_;
 
   DISALLOW_COPY_AND_ASSIGN(BrowserNonClientFrameViewAura);
 };

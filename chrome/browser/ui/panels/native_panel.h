@@ -91,6 +91,9 @@ class NativePanel {
 
   // Sets whether the panel window is always on top.
   virtual void SetPanelAlwaysOnTop(bool on_top) = 0;
+
+  // Enables resizing by dragging edges/corners.
+  virtual void EnableResizeByMouse(bool enable) = 0;
 };
 
 // A NativePanel utility interface used for accessing elements of the
@@ -100,10 +103,18 @@ class NativePanelTesting {
   static NativePanelTesting* Create(NativePanel* native_panel);
   virtual ~NativePanelTesting() {}
 
+  // Wrappers for the common cases when no modifier is needed.
+  void PressLeftMouseButtonTitlebar(const gfx::Point& mouse_location) {
+    PressLeftMouseButtonTitlebar(mouse_location, panel::NO_MODIFIER);
+  }
+  void ReleaseMouseButtonTitlebar() {
+    ReleaseMouseButtonTitlebar(panel::NO_MODIFIER);
+  }
+
   // |mouse_location| is in screen coordinates.
   virtual void PressLeftMouseButtonTitlebar(
-      const gfx::Point& mouse_location) = 0;
-  virtual void ReleaseMouseButtonTitlebar() = 0;
+      const gfx::Point& mouse_location, panel::ClickModifier modifier) = 0;
+  virtual void ReleaseMouseButtonTitlebar(panel::ClickModifier modifier) = 0;
   virtual void DragTitlebar(const gfx::Point& mouse_location) = 0;
   virtual void CancelDragTitlebar() = 0;
   virtual void FinishDragTitlebar() = 0;

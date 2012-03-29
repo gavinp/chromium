@@ -21,10 +21,6 @@
 #include "ui/views/widget/root_view.h"
 #include "ui/views/widget/widget.h"
 
-#if defined(TOOLKIT_USES_GTK)
-#include "ui/views/widget/native_widget_gtk.h"
-#endif
-
 #if defined(USE_AURA)
 #include "ui/aura/event.h"
 #include "ui/views/widget/native_widget_aura.h"
@@ -42,7 +38,7 @@ gfx::NativeWindow ShowHtmlDialog(gfx::NativeWindow parent,
                                  HtmlDialogUIDelegate* delegate,
                                  DialogStyle style) {
   HtmlDialogView* html_view = new HtmlDialogView(profile, browser, delegate);
-  browser::CreateViewsWindow(parent, html_view, style);
+  views::Widget::CreateWindowWithParent(html_view, parent);
   html_view->InitDialog();
   html_view->GetWidget()->Show();
   return html_view->GetWidget()->GetNativeWindow();
@@ -76,7 +72,7 @@ HtmlDialogView::~HtmlDialogView() {
 gfx::Size HtmlDialogView::GetPreferredSize() {
   gfx::Size out;
   if (delegate_)
-    delegate_->GetDialogSize(&out);
+    delegate_->GetMinimumDialogSize(&out);
   return out;
 }
 
@@ -92,11 +88,6 @@ void HtmlDialogView::ViewHierarchyChanged(
   DOMView::ViewHierarchyChanged(is_add, parent, child);
   if (is_add && GetWidget() && !initialized_) {
     initialized_ = true;
-#if defined(OS_CHROMEOS) && defined(TOOLKIT_USES_GTK)
-    CHECK(
-        static_cast<views::NativeWidgetGtk*>(
-            GetWidget()->native_widget())->SuppressFreezeUpdates());
-#endif
     RegisterDialogAccelerators();
   }
 }
@@ -116,6 +107,12 @@ string16 HtmlDialogView::GetWindowTitle() const {
   if (delegate_)
     return delegate_->GetDialogTitle();
   return string16();
+}
+
+std::string HtmlDialogView::GetWindowName() const {
+  if (delegate_)
+    return delegate_->GetDialogName();
+  return std::string();
 }
 
 void HtmlDialogView::WindowClosing() {
@@ -176,6 +173,11 @@ void HtmlDialogView::GetDialogSize(gfx::Size* size) const {
     delegate_->GetDialogSize(size);
 }
 
+void HtmlDialogView::GetMinimumDialogSize(gfx::Size* size) const {
+  if (delegate_)
+    delegate_->GetMinimumDialogSize(size);
+}
+
 std::string HtmlDialogView::GetDialogArgs() const {
   if (delegate_)
     return delegate_->GetDialogArgs();
@@ -185,15 +187,17 @@ std::string HtmlDialogView::GetDialogArgs() const {
 void HtmlDialogView::OnDialogClosed(const std::string& json_retval) {
   HtmlDialogTabContentsDelegate::Detach();
   if (delegate_) {
-    HtmlDialogUIDelegate* dialog_delegate = delegate_;
-    delegate_ = NULL;  // We will not communicate further with the delegate.
-
     // Store the dialog content area size.
-    dialog_delegate->StoreDialogSize(GetContentsBounds().size());
-
-    dialog_delegate->OnDialogClosed(json_retval);
+    delegate_->StoreDialogSize(GetContentsBounds().size());
   }
-  GetWidget()->Close();
+
+  if (GetWidget())
+    GetWidget()->Close();
+
+  if (delegate_) {
+    delegate_->OnDialogClosed(json_retval);
+    delegate_ = NULL;  // We will not communicate further with the delegate.
+  }
 }
 
 void HtmlDialogView::OnCloseContents(WebContents* source,
@@ -238,13 +242,6 @@ void HtmlDialogView::HandleKeyboardEvent(const NativeWebKeyboardEvent& event) {
   // This allows stuff like F10, etc to work correctly.
   DefWindowProc(event.os_event.hwnd, event.os_event.message,
                   event.os_event.wParam, event.os_event.lParam);
-#elif defined(TOOLKIT_USES_GTK)
-  views::NativeWidgetGtk* window_gtk =
-      static_cast<views::NativeWidgetGtk*>(GetWidget()->native_widget());
-  if (event.os_event && !event.skip_in_browser) {
-    views::KeyEvent views_event(reinterpret_cast<GdkEvent*>(event.os_event));
-    window_gtk->HandleKeyboardEvent(views_event);
-  }
 #endif
 }
 
@@ -300,6 +297,13 @@ void HtmlDialogView::InitDialog() {
       web_contents->GetPropertyBag(), this);
   tab_watcher_.reset(new TabRenderWatcher(web_contents, this));
 
+  if (delegate_) {
+    gfx::Size out;
+    delegate_->GetDialogSize(&out);
+    if (!out.IsEmpty() && GetWidget())
+      GetWidget()->CenterWindow(out);
+  }
+
   DOMView::LoadURL(GetDialogContentURL());
 }
 
@@ -316,10 +320,4 @@ void HtmlDialogView::OnTabMainFrameLoaded() {
 
 void HtmlDialogView::OnTabMainFrameRender() {
   tab_watcher_.reset();
-#if defined(OS_CHROMEOS) && defined(TOOLKIT_USES_GTK)
-  if (initialized_) {
-    views::NativeWidgetGtk::UpdateFreezeUpdatesProperty(
-        GTK_WINDOW(GetWidget()->GetNativeView()), false);
-  }
-#endif
 }

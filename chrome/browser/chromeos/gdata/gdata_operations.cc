@@ -7,6 +7,7 @@
 #include "base/bind.h"
 #include "base/json/json_reader.h"
 #include "base/string_number_conversions.h"
+#include "base/values.h"
 #include "chrome/browser/chromeos/gdata/gdata_util.h"
 #include "chrome/browser/net/browser_url_util.h"
 #include "chrome/common/libxml_utils.h"
@@ -155,7 +156,8 @@ UrlFetchOperationBase::UrlFetchOperationBase(GDataOperationRegistry* registry,
       // MessageLoopProxy is used to run |callback| on the origin thread.
       relay_proxy_(base::MessageLoopProxy::current()),
       re_authenticate_count_(0),
-      save_temp_file_(false) {
+      save_temp_file_(false),
+      started_(false) {
 }
 
 UrlFetchOperationBase::UrlFetchOperationBase(
@@ -183,9 +185,13 @@ void UrlFetchOperationBase::Start(const std::string& auth_token) {
   url_fetcher_->SetRequestContext(profile_->GetRequestContext());
   // Always set flags to neither send nor save cookies.
   url_fetcher_->SetLoadFlags(
-      net::LOAD_DO_NOT_SEND_COOKIES | net::LOAD_DO_NOT_SAVE_COOKIES);
+      net::LOAD_DO_NOT_SEND_COOKIES | net::LOAD_DO_NOT_SAVE_COOKIES |
+      net::LOAD_DISABLE_CACHE);
   if (save_temp_file_) {
     url_fetcher_->SaveResponseToTemporaryFile(
+        BrowserThread::GetMessageLoopProxyForThread(BrowserThread::FILE));
+  } else if (!output_file_path_.empty()) {
+    url_fetcher_->SaveResponseToFileAtPath(output_file_path_,
         BrowserThread::GetMessageLoopProxyForThread(BrowserThread::FILE));
   }
 
@@ -210,9 +216,10 @@ void UrlFetchOperationBase::Start(const std::string& auth_token) {
   }
 
   // Register to operation registry.
-  NotifyStart();
+  NotifyStartToOperationRegistry();
 
   url_fetcher_->Start();
+  started_ = true;
 }
 
 void UrlFetchOperationBase::SetReAuthenticateCallback(
@@ -258,12 +265,27 @@ void UrlFetchOperationBase::OnURLFetchComplete(const URLFetcher* source) {
 
   // Overridden by each specialization
   bool success = ProcessURLFetchResults(source);
-  NotifyFinish(success ? GDataOperationRegistry::OPERATION_COMPLETED
-                       : GDataOperationRegistry::OPERATION_FAILED);
+  if (success)
+    NotifySuccessToOperationRegistry();
+  else
+    NotifyFinish(GDataOperationRegistry::OPERATION_FAILED);
+}
+
+void UrlFetchOperationBase::NotifySuccessToOperationRegistry() {
+  NotifyFinish(GDataOperationRegistry::OPERATION_COMPLETED);
+}
+
+void UrlFetchOperationBase::NotifyStartToOperationRegistry() {
+  NotifyStart();
 }
 
 void UrlFetchOperationBase::OnAuthFailed(GDataErrorCode code) {
   RunCallbackOnPrematureFailure(code);
+  // Check if this failed before we even started fetching. If so, register
+  // for start so we can properly unregister with finish.
+  if (!started_)
+    NotifyStart();
+
   NotifyFinish(GDataOperationRegistry::OPERATION_FAILED);
 }
 
@@ -427,7 +449,8 @@ DownloadFileOperation::DownloadFileOperation(
     Profile* profile,
     const DownloadActionCallback& callback,
     const GURL& document_url,
-    const FilePath& virtual_path)
+    const FilePath& virtual_path,
+    const FilePath& output_file_path)
     : UrlFetchOperationBase(registry,
                             GDataOperationRegistry::OPERATION_DOWNLOAD,
                             virtual_path,
@@ -435,7 +458,10 @@ DownloadFileOperation::DownloadFileOperation(
       callback_(callback),
       document_url_(document_url) {
   // Make sure we download the content into a temp file.
-  save_temp_file_ = true;
+  if (output_file_path.empty())
+    save_temp_file_ = true;
+  else
+    output_file_path_ = output_file_path;
 }
 
 DownloadFileOperation::~DownloadFileOperation() {}
@@ -559,10 +585,10 @@ CopyDocumentOperation::CopyDocumentOperation(
     GDataOperationRegistry* registry,
     Profile* profile,
     const GetDataCallback& callback,
-    const GURL& document_url,
+    const std::string& resource_id,
     const FilePath::StringType& new_name)
     : GetDataOperation(registry, profile, callback),
-      document_url_(document_url),
+      resource_id_(resource_id),
       new_name_(new_name) {
 }
 
@@ -584,7 +610,7 @@ bool CopyDocumentOperation::GetContentData(std::string* upload_content_type,
   xml_writer.StartElement("entry");
   xml_writer.AddAttribute("xmlns", "http://www.w3.org/2005/Atom");
 
-  xml_writer.WriteElement("id", document_url_.spec());
+  xml_writer.WriteElement("id", resource_id_);
   xml_writer.WriteElement("title", new_name_);
 
   xml_writer.EndElement();  // Ends "entry" element.
@@ -766,6 +792,10 @@ bool InitiateUploadOperation::ProcessURLFetchResults(const URLFetcher* source) {
   return code == HTTP_SUCCESS;
 }
 
+void InitiateUploadOperation::NotifySuccessToOperationRegistry() {
+  NotifySuspend();
+}
+
 void InitiateUploadOperation::RunCallbackOnPrematureFailure(
     GDataErrorCode code) {
   if (!callback_.is_null()) {
@@ -781,7 +811,9 @@ URLFetcher::RequestType InitiateUploadOperation::GetRequestType() const {
 std::vector<std::string>
 InitiateUploadOperation::GetExtraRequestHeaders() const {
   std::vector<std::string> headers;
-  headers.push_back(kUploadContentType + params_.content_type);
+  if (!params_.content_type.empty())
+    headers.push_back(kUploadContentType + params_.content_type);
+
   headers.push_back(
       kUploadContentLength + base::Int64ToString(params_.content_length));
   return headers;
@@ -817,7 +849,8 @@ ResumeUploadOperation::ResumeUploadOperation(
                           params.virtual_path,
                           profile),
       callback_(callback),
-      params_(params) {
+      params_(params),
+      last_chunk_completed_(false) {
 }
 
 ResumeUploadOperation::~ResumeUploadOperation() {}
@@ -831,8 +864,7 @@ bool ResumeUploadOperation::ProcessURLFetchResults(const URLFetcher* source) {
   net::HttpResponseHeaders* hdrs = source->GetResponseHeaders();
   int64 start_range_received = -1;
   int64 end_range_received = -1;
-  std::string resource_id;
-  std::string md5_checksum;
+  scoped_ptr<DocumentEntry> entry;
 
   if (code == HTTP_RESUME_INCOMPLETE) {
     // Retrieve value of the first "Range" header.
@@ -859,25 +891,55 @@ bool ResumeUploadOperation::ProcessURLFetchResults(const URLFetcher* source) {
     DVLOG(1) << "Got response for [" << params_.title
             << "]: code=" << code
             << ", content=[\n" << response_content << "\n]";
-    util::ParseCreatedResponseContent(response_content, &resource_id,
-                                      &md5_checksum);
-    DCHECK(!resource_id.empty());
-    DCHECK(!md5_checksum.empty());
+
+    // Parse entry XML.
+    XmlReader xml_reader;
+    if (xml_reader.Load(response_content)) {
+      while (xml_reader.Read()) {
+        if (xml_reader.NodeName() == DocumentEntry::kEntryNode) {
+          entry.reset(DocumentEntry::CreateFromXml(&xml_reader));
+          break;
+        }
+      }
+    }
+    if (!entry.get())
+      LOG(WARNING) << "Invalid entry received on upload:\n" << response_content;
   }
 
   if (!callback_.is_null()) {
     relay_proxy_->PostTask(
         FROM_HERE,
-        base::Bind(callback_, ResumeUploadResponse(code, start_range_received,
-                   end_range_received, resource_id, md5_checksum)));
+        base::Bind(callback_,
+                   ResumeUploadResponse(code,
+                                        start_range_received,
+                                        end_range_received),
+                   base::Passed(&entry)));
   }
+
+  if (code == HTTP_CREATED)
+    last_chunk_completed_ = true;
+
   return code == HTTP_CREATED || code == HTTP_RESUME_INCOMPLETE;
 }
 
+void ResumeUploadOperation::NotifyStartToOperationRegistry() {
+  NotifyResume();
+}
+
+void ResumeUploadOperation::NotifySuccessToOperationRegistry() {
+  if (last_chunk_completed_)
+    NotifyFinish(GDataOperationRegistry::OPERATION_COMPLETED);
+  else
+    NotifySuspend();
+}
+
 void ResumeUploadOperation::RunCallbackOnPrematureFailure(GDataErrorCode code) {
+  scoped_ptr<DocumentEntry> entry;
   if (!callback_.is_null()) {
-    relay_proxy_->PostTask(FROM_HERE, base::Bind(callback_,
-        ResumeUploadResponse(code, 0, 0, "", "")));
+    relay_proxy_->PostTask(FROM_HERE,
+                           base::Bind(callback_,
+                                      ResumeUploadResponse(code, 0, 0),
+                                      base::Passed(&entry)));
   }
 }
 
@@ -918,6 +980,5 @@ void ResumeUploadOperation::OnURLFetchUploadProgress(
   // Adjust the progress values according to the range currently uploaded.
   NotifyProgress(params_.start_range + current, params_.content_length);
 }
-
 
 }  // namespace gdata

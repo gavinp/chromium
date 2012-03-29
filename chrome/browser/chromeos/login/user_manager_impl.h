@@ -40,6 +40,8 @@ class UserManagerImpl : public UserManager,
                         public content::NotificationObserver {
  public:
   // UserManager implementation:
+  virtual ~UserManagerImpl();
+
   virtual const UserList& GetUsers() const OVERRIDE;
   virtual void UserLoggedIn(const std::string& email) OVERRIDE;
   virtual void DemoUserLoggedIn() OVERRIDE;
@@ -61,9 +63,8 @@ class UserManagerImpl : public UserManager,
                                     const std::string& display_email) OVERRIDE;
   virtual std::string GetUserDisplayEmail(
       const std::string& username) const OVERRIDE;
-  virtual int GetUserWallpaper(const std::string& username) OVERRIDE;
-  virtual void SaveWallpaperDefaultIndex(const std::string& username,
-                                         int wallpaper_index) OVERRIDE;
+  virtual int GetUserWallpaperIndex() OVERRIDE;
+  virtual void SaveUserWallpaperIndex(int wallpaper_index) OVERRIDE;
   virtual void SaveUserDefaultImageIndex(const std::string& username,
                                          int image_index) OVERRIDE;
   virtual void SaveUserImage(const std::string& username,
@@ -73,12 +74,14 @@ class UserManagerImpl : public UserManager,
   virtual void SaveUserImageFromProfileImage(
       const std::string& username) OVERRIDE;
   virtual void DownloadProfileImage(const std::string& reason) OVERRIDE;
+  virtual void LoadKeyStore() OVERRIDE;
   virtual bool IsCurrentUserOwner() const OVERRIDE;
   virtual bool IsCurrentUserNew() const OVERRIDE;
   virtual bool IsCurrentUserEphemeral() const OVERRIDE;
   virtual bool IsUserLoggedIn() const OVERRIDE;
   virtual bool IsLoggedInAsDemoUser() const OVERRIDE;
   virtual bool IsLoggedInAsGuest() const OVERRIDE;
+  virtual bool IsLoggedInAsStub() const OVERRIDE;
   virtual void AddObserver(Observer* obs) OVERRIDE;
   virtual void RemoveObserver(Observer* obs) OVERRIDE;
   virtual void NotifyLocalStateChanged() OVERRIDE;
@@ -94,7 +97,6 @@ class UserManagerImpl : public UserManager,
 
  protected:
   UserManagerImpl();
-  virtual ~UserManagerImpl();
 
   // Returns image filepath for the given user.
   FilePath GetImagePathForUser(const std::string& username);
@@ -207,15 +209,6 @@ class UserManagerImpl : public UserManager,
   // display names.
   mutable base::hash_map<std::string, size_t> display_name_count_;
 
-  // User instance used to represent the demo user.
-  User demo_user_;
-
-  // User instance used to represent the off-the-record (guest) user.
-  User guest_user_;
-
-  // A stub User instance for test paths (running without a logged-in user).
-  User stub_user_;
-
   // The logged-in user. NULL until a user has logged in, then points to one
   // of the User instances in |users_|, the |guest_user_| instance or an
   // ephemeral user instance. In test paths without login points to the
@@ -237,9 +230,13 @@ class UserManagerImpl : public UserManager,
   // mounting their cryptohomes using tmpfs.
   bool is_current_user_ephemeral_;
 
-  // Cached flag of whether any user is logged in at the moment.
-  bool is_user_logged_in_;
+  // Cache current user selected index in memory.
+  int current_user_wallpaper_index_;
 
+  // The key store for the current user has been loaded. This flag is needed to
+  // ensure that the key store will not be loaded twice in the policy recovery
+  // "safe-mode".
+  bool key_store_loaded_;
   // Cached flag indicating whether ephemeral users are enabled. Defaults to
   // |false| if the value has not been read from trusted device policy yet.
   bool ephemeral_users_enabled_;

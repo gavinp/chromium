@@ -15,7 +15,7 @@
 namespace ash {
 namespace test {
 
-TestShellDelegate::TestShellDelegate() {
+TestShellDelegate::TestShellDelegate() : locked_(false) {
 }
 
 TestShellDelegate::~TestShellDelegate() {
@@ -25,12 +25,26 @@ views::Widget* TestShellDelegate::CreateStatusArea() {
   return NULL;
 }
 
-#if defined(OS_CHROMEOS)
-void TestShellDelegate::LockScreen() {
+bool TestShellDelegate::IsUserLoggedIn() {
+  return true;
 }
-#endif
+
+void TestShellDelegate::LockScreen() {
+  locked_ = true;
+}
+
+void TestShellDelegate::UnlockScreen() {
+  locked_ = false;
+}
+
+bool TestShellDelegate::IsScreenLocked() const {
+  return locked_;
+}
 
 void TestShellDelegate::Exit() {
+}
+
+void TestShellDelegate::NewWindow(bool incognito) {
 }
 
 AppListViewDelegate* TestShellDelegate::CreateAppListViewDelegate() {
@@ -62,6 +76,10 @@ LauncherDelegate* TestShellDelegate::CreateLauncherDelegate(
 
 SystemTrayDelegate* TestShellDelegate::CreateSystemTrayDelegate(
     SystemTray* tray) {
+  return NULL;
+}
+
+UserWallpaperDelegate* TestShellDelegate::CreateUserWallpaperDelegate() {
   return NULL;
 }
 

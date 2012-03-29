@@ -6,6 +6,9 @@
 #define CHROME_BROWSER_CHROMEOS_BLUETOOTH_BLUETOOTH_DEVICE_H_
 #pragma once
 
+#include <string>
+#include <vector>
+
 #include "base/basictypes.h"
 #include "base/callback.h"
 #include "base/memory/scoped_ptr.h"
@@ -151,19 +154,22 @@ class BluetoothDevice : private BluetoothDeviceClient::Observer,
   // Indicates whether the class of this device is supported by Chrome OS.
   bool IsSupported() const;
 
-  // Indicates if the device was one discovered by the adapter, and not yet
-  // paired with or connected to.
-  bool WasDiscovered() const;
+  // Indicates whether the device is paired to the adapter, whether or not
+  // that pairing is permanent or temporary.
+  bool IsPaired() const { return !object_path_.value().empty(); }
 
-  // Indicates whether the device is paired to the adapter, note that some
-  // devices can be connected to and used without pairing so use
-  // WasDiscovered() rather than this method to determine whether or not
-  // to display in a list of devices.
-  bool IsPaired() const { return paired_; }
+  // Indicates whether the device is bonded to the adapter, bonding is
+  // formed by pairing and exchanging high-security link keys so that
+  // connections may be encrypted.
+  bool IsBonded() const { return bonded_; }
 
   // Indicates whether the device is currently connected to the adapter
   // and at least one service available for use.
   bool IsConnected() const;
+
+  // Returns the services (as UUID strings) that this device provides.
+  typedef std::vector<std::string> ServiceList;
+  const ServiceList& GetServices() const { return service_uuids_; }
 
   // Indicates whether the device is currently pairing and expecting a
   // PIN Code to be returned.
@@ -187,11 +193,10 @@ class BluetoothDevice : private BluetoothDeviceClient::Observer,
   //
   // Method calls will be made on the supplied object |pairing_delegate|
   // to indicate what display, and in response should make method calls
-  // back to the device object. Not all devices require pairing, and not
-  // all those that do will require user responses, so it is normal for
-  // |pairing_delegate| to receive no calls. To explicitly force a
-  // low-security connection without pairing, pass NULL, though this is
-  // ignored if the device is already paired.
+  // back to the device object. Not all devices require user responses
+  // during pairing, so it is normal for |pairing_delegate| to receive no
+  // calls. To explicitly force a low-security connection without bonding,
+  // pass NULL, though this is ignored if the device is already paired.
   //
   // If the request fails, |error_callback| will be called.
   void Connect(PairingDelegate* pairing_delegate,
@@ -217,7 +222,7 @@ class BluetoothDevice : private BluetoothDeviceClient::Observer,
   // Rejects a pairing or connection request from a remote device.
   void RejectPairing();
 
-  // Cancels a pairing or connection attempt to a rmeote device.
+  // Cancels a pairing or connection attempt to a remote device.
   void CancelPairing();
 
   // Disconnects the device, terminating the low-level ACL connection
@@ -239,7 +244,7 @@ class BluetoothDevice : private BluetoothDeviceClient::Observer,
   explicit BluetoothDevice(BluetoothAdapter* adapter);
 
   // Sets the dbus object path for the device to |object_path|, indicating
-  // that the device has gone from being discovered to paired or connected.
+  // that the device has gone from being discovered to paired or bonded.
   void SetObjectPath(const dbus::ObjectPath& object_path);
 
   // Updates device information from the properties in |properties|, device
@@ -415,17 +420,15 @@ class BluetoothDevice : private BluetoothDeviceClient::Observer,
 
   // Creates a new BluetoothDevice object bound to the information of the
   // dbus object path |object_path| and the adapter |adapter|, representing
-  // a paired device or one that is currently or previously connected, with
-  // initial properties set from |properties|.
+  // a paired device, with initial properties set from |properties|.
   static BluetoothDevice* CreateBound(
       BluetoothAdapter* adapter,
       const dbus::ObjectPath& object_path,
       const BluetoothDeviceClient::Properties* properties);
 
   // Creates a new BluetoothDevice object not bound to a dbus object path,
-  // but bound to the adapter |adapter|, representing a discovered device that
-  // has not yet been connected to, with initial properties set
-  // from |properties|.
+  // but bound to the adapter |adapter|, representing a discovered or unpaired
+  // device, with initial properties set from |properties|.
   static BluetoothDevice* CreateUnbound(
       BluetoothAdapter* adapter,
       const BluetoothDeviceClient::Properties* properties);
@@ -438,7 +441,7 @@ class BluetoothDevice : private BluetoothDeviceClient::Observer,
   BluetoothAdapter* adapter_;
 
   // The dbus object path of the device, will be empty if the device has only
-  // been discovered and not yet paired with or connected to.
+  // been discovered and not yet paired with.
   dbus::ObjectPath object_path_;
 
   // The Bluetooth address of the device.
@@ -453,8 +456,11 @@ class BluetoothDevice : private BluetoothDeviceClient::Observer,
 
   // Tracked device state, updated by the adapter managing the lifecyle of
   // the device.
-  bool paired_;
+  bool bonded_;
   bool connected_;
+
+  // The services (identified by UUIDs) that this device provides.
+  std::vector<std::string> service_uuids_;
 
   // During pairing this is set to an object that we don't own, but on which
   // we can make method calls to request, display or confirm PIN Codes and

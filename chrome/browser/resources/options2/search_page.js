@@ -213,8 +213,15 @@ cr.define('options', function() {
 
       if (active) {
         var hash = location.hash;
-        if (hash)
-          this.searchField.value = unescape(hash.slice(1));
+        if (hash) {
+          this.searchField.value =
+              decodeURIComponent(hash.slice(1).replace(/\+/g, ' '));
+        } else if (!this.searchField.value) {
+          // This should only happen if the user goes directly to
+          // chrome://settings-frame/search
+          OptionsPage.showDefaultPage();
+          return;
+        }
 
         // Move 'advanced' sections into the main settings page to allow
         // searching.

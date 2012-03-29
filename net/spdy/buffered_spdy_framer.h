@@ -16,7 +16,7 @@
 #include "net/spdy/spdy_framer.h"
 #include "net/spdy/spdy_protocol.h"
 
-namespace spdy {
+namespace net {
 
 class NET_EXPORT_PRIVATE BufferedSpdyFramerVisitorInterface {
  public:
@@ -27,7 +27,7 @@ class NET_EXPORT_PRIVATE BufferedSpdyFramerVisitorInterface {
   virtual void OnError(int error_code) = 0;
 
   // Called if an error is detected in a SPDY stream.
-  virtual void OnStreamError(spdy::SpdyStreamId stream_id,
+  virtual void OnStreamError(SpdyStreamId stream_id,
                              const std::string& description) = 0;
 
   // Called after all the header data for SYN_STREAM control frame is received.
@@ -43,17 +43,17 @@ class NET_EXPORT_PRIVATE BufferedSpdyFramerVisitorInterface {
                          const linked_ptr<SpdyHeaderBlock>& headers) = 0;
 
   // Called after a RST_STREAM frame is received.
-  virtual void OnRstStream(const spdy::SpdyRstStreamControlFrame& frame) = 0;
+  virtual void OnRstStream(const SpdyRstStreamControlFrame& frame) = 0;
 
   // Called after a GOAWAY frame is received.
-  virtual void OnGoAway(const spdy::SpdyGoAwayControlFrame& frame) = 0;
+  virtual void OnGoAway(const SpdyGoAwayControlFrame& frame) = 0;
 
   // Called after a PING frame is received.
-  virtual void OnPing(const spdy::SpdyPingControlFrame& frame) = 0;
+  virtual void OnPing(const SpdyPingControlFrame& frame) = 0;
 
   // Called after a WINDOW_UPDATE frame is received.
   virtual void OnWindowUpdate(
-      const spdy::SpdyWindowUpdateControlFrame& frame) = 0;
+      const SpdyWindowUpdateControlFrame& frame) = 0;
 
   // Called when data is received.
   // |stream_id| The stream receiving data.
@@ -86,7 +86,7 @@ class NET_EXPORT_PRIVATE BufferedSpdyFramer
   void set_visitor(BufferedSpdyFramerVisitorInterface* visitor);
 
   // SpdyFramerVisitorInterface
-  virtual void OnError(spdy::SpdyFramer* spdy_framer) OVERRIDE;
+  virtual void OnError(SpdyFramer* spdy_framer) OVERRIDE;
   virtual void OnControl(const SpdyControlFrame* frame) OVERRIDE;
   virtual bool OnCredentialFrameData(const char* frame_data,
                                      size_t len) OVERRIDE;
@@ -111,6 +111,7 @@ class NET_EXPORT_PRIVATE BufferedSpdyFramer
   SpdySynStreamControlFrame* CreateSynStream(SpdyStreamId stream_id,
                                              SpdyStreamId associated_stream_id,
                                              int priority,
+                                             uint8 credential_slot,
                                              SpdyControlFlags flags,
                                              bool compressed,
                                              const SpdyHeaderBlock* headers);
@@ -123,7 +124,8 @@ class NET_EXPORT_PRIVATE BufferedSpdyFramer
   SpdySettingsControlFrame* CreateSettings(const SpdySettings& values) const;
   SpdyPingControlFrame* CreatePingFrame(uint32 unique_id) const;
   SpdyGoAwayControlFrame* CreateGoAway(
-      SpdyStreamId last_accepted_stream_id) const;
+      SpdyStreamId last_accepted_stream_id,
+      SpdyGoAwayStatus status) const;
   SpdyHeadersControlFrame* CreateHeaders(SpdyStreamId stream_id,
                                          SpdyControlFlags flags,
                                          bool compressed,
@@ -132,7 +134,7 @@ class NET_EXPORT_PRIVATE BufferedSpdyFramer
       SpdyStreamId stream_id,
       uint32 delta_window_size) const;
   SpdyCredentialControlFrame* CreateCredentialFrame(
-      const spdy::SpdyCredential& credential) const;
+      const SpdyCredential& credential) const;
   SpdyDataFrame* CreateDataFrame(SpdyStreamId stream_id,
                                  const char* data,
                                  uint32 len,
@@ -163,6 +165,6 @@ class NET_EXPORT_PRIVATE BufferedSpdyFramer
   DISALLOW_COPY_AND_ASSIGN(BufferedSpdyFramer);
 };
 
-}  // namespace spdy
+}  // namespace net
 
 #endif  // NET_SPDY_BUFFERED_SPDY_FRAMER_H_

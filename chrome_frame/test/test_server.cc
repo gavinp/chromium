@@ -246,10 +246,18 @@ HTTPTestServer::~HTTPTestServer() {
 std::list<scoped_refptr<ConfigurableConnection>>::iterator
 HTTPTestServer::FindConnection(const net::ListenSocket* socket) {
   ConnectionList::iterator it;
-  for (it = connection_list_.begin(); it != connection_list_.end(); ++it) {
-    if ((*it)->socket_ == socket) {
-      break;
+  // Scan through the list searching for the desired socket. Along the way,
+  // erase any connections for which the corresponding socket has already been
+  // forgotten about as a result of all data having been sent.
+  for (it = connection_list_.begin(); it != connection_list_.end(); ) {
+    ConfigurableConnection* connection = it->get();
+    if (connection->socket_ == NULL) {
+      connection_list_.erase(it++);
+      continue;
     }
+    if (connection->socket_ == socket)
+      break;
+    ++it;
   }
 
   return it;
@@ -290,8 +298,8 @@ void HTTPTestServer::DidRead(net::ListenSocket* socket,
 
 void HTTPTestServer::DidClose(net::ListenSocket* socket) {
   ConnectionList::iterator it = FindConnection(socket);
-  DCHECK(it != connection_list_.end());
-  connection_list_.erase(it);
+  if (it != connection_list_.end())
+    connection_list_.erase(it);
 }
 
 std::wstring HTTPTestServer::Resolve(const std::wstring& path) {
@@ -323,8 +331,8 @@ void ConfigurableConnection::SendChunk() {
   int bytes_to_send = std::min(options_.chunk_size_, size - cur_pos_);
 
   socket_->Send(chunk_ptr, bytes_to_send);
-  DVLOG(1) << "Sent(" << cur_pos_ << "," << bytes_to_send << "): "
-           << base::StringPiece(chunk_ptr, bytes_to_send);
+  VLOG(1) << "Sent(" << cur_pos_ << "," << bytes_to_send << "): "
+          << base::StringPiece(chunk_ptr, bytes_to_send);
 
   cur_pos_ += bytes_to_send;
   if (cur_pos_ < size) {
@@ -334,6 +342,10 @@ void ConfigurableConnection::SendChunk() {
   } else {
     socket_ = 0;  // close the connection.
   }
+}
+
+void ConfigurableConnection::Close() {
+  socket_ = NULL;
 }
 
 void ConfigurableConnection::Send(const std::string& headers,
@@ -359,14 +371,18 @@ void ConfigurableConnection::SendWithOptions(const std::string& headers,
     socket_->Send(headers);
     socket_->Send(content_length_header, true);
     socket_->Send(content);
-    socket_ = 0;  // close the connection.
+    // Post a task to close the socket since ListenSocket doesn't like instances
+    // to go away from within its callbacks.
+    MessageLoop::current()->PostTask(
+        FROM_HERE, base::Bind(&ConfigurableConnection::Close, this));
+
     return;
   }
 
   if (options_.speed_ == SendOptions::IMMEDIATE_HEADERS_DELAYED_CONTENT) {
     socket_->Send(headers);
     socket_->Send(content_length_header, true);
-    DVLOG(1) << "Headers sent: " << headers << content_length_header;
+    VLOG(1) << "Headers sent: " << headers << content_length_header;
     data_.append(content);
   }
 

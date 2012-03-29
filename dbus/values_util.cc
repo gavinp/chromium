@@ -57,9 +57,30 @@ bool PopDictionaryEntries(MessageReader* reader,
     Value* value = PopDataAsValue(&entry_reader);
     if (!value)
       return false;
-    dictionary_value->Set(key_string, value);
+    dictionary_value->SetWithoutPathExpansion(key_string, value);
   }
   return true;
+}
+
+// Gets the D-Bus type signature for the value.
+std::string GetTypeSignature(const base::Value& value) {
+  switch (value.GetType()) {
+    case base::Value::TYPE_BOOLEAN:
+      return "b";
+    case base::Value::TYPE_INTEGER:
+      return "i";
+    case base::Value::TYPE_DOUBLE:
+      return "d";
+    case base::Value::TYPE_STRING:
+      return "s";
+    case base::Value::TYPE_BINARY:
+      return "ay";
+    case base::Value::TYPE_DICTIONARY:
+      return "a{sv}";
+    default:
+      DLOG(ERROR) << "Unexpected type " << value.GetType();
+      return "";
+  }
 }
 
 }  // namespace
@@ -180,6 +201,50 @@ Value* PopDataAsValue(MessageReader* reader) {
     }
   }
   return result;
+}
+
+void AppendBasicTypeValueData(MessageWriter* writer, const base::Value& value) {
+  switch (value.GetType()) {
+    case base::Value::TYPE_BOOLEAN: {
+      bool bool_value = false;
+      bool success = value.GetAsBoolean(&bool_value);
+      DCHECK(success);
+      writer->AppendBool(bool_value);
+      break;
+    }
+    case base::Value::TYPE_INTEGER: {
+      int int_value = 0;
+      bool success = value.GetAsInteger(&int_value);
+      DCHECK(success);
+      writer->AppendInt32(int_value);
+      break;
+    }
+    case base::Value::TYPE_DOUBLE: {
+      double double_value = 0;
+      bool success = value.GetAsDouble(&double_value);
+      DCHECK(success);
+      writer->AppendDouble(double_value);
+      break;
+    }
+    case base::Value::TYPE_STRING: {
+      std::string string_value;
+      bool success = value.GetAsString(&string_value);
+      DCHECK(success);
+      writer->AppendString(string_value);
+      break;
+    }
+    default:
+      DLOG(ERROR) << "Unexpected type " << value.GetType();
+      break;
+  }
+}
+
+void AppendBasicTypeValueDataAsVariant(MessageWriter* writer,
+                                       const base::Value& value) {
+  MessageWriter sub_writer(NULL);
+  writer->OpenVariant(GetTypeSignature(value), &sub_writer);
+  AppendBasicTypeValueData(&sub_writer, value);
+  writer->CloseContainer(&sub_writer);
 }
 
 }  // namespace dbus

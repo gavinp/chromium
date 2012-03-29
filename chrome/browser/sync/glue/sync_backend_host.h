@@ -144,7 +144,6 @@ class SyncFrontend {
 // that the SyncFrontend is only accessed on the UI loop.
 class SyncBackendHost : public BackendDataTypeConfigurer {
  public:
-  typedef sync_api::SyncManager::Status::Summary StatusSummary;
   typedef sync_api::SyncManager::Status Status;
 
   // Create a SyncBackendHost with a reference to the |frontend| that
@@ -203,7 +202,8 @@ class SyncBackendHost : public BackendDataTypeConfigurer {
   // otherwise. If new encrypted keys arrive during the asynchronous call,
   // OnPassphraseRequired may be triggered at a later time. It is an error to
   // call this when there are no pending keys.
-  bool SetDecryptionPassphrase(const std::string& passphrase);
+  bool SetDecryptionPassphrase(const std::string& passphrase)
+      WARN_UNUSED_RESULT;
 
   // Called on |frontend_loop_| to kick off shutdown procedure. After this,
   // no further sync activity will occur with the sync server and no further
@@ -256,7 +256,6 @@ class SyncBackendHost : public BackendDataTypeConfigurer {
   // Called from any thread to obtain current status information in detailed or
   // summarized form.
   Status GetDetailedStatus();
-  StatusSummary GetStatusSummary();
   const sessions::SyncSessionSnapshot* GetLastSessionSnapshot() const;
 
   // Determines if the underlying sync engine has made any local changes to

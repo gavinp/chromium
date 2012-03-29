@@ -50,7 +50,7 @@
     "description": "Label for the connect button. Clicking this button will start the Chromoting session if the access code is correct."
   },
   "CONFIRM_HOST_DELETE": {
-    "message": "You are about to disable remote connections to $hostname$. If you change your mind, you will need to visit that computer to re-enable this feature. Are you sure you want to disable remote connections?",
+    "message": "Are you sure you want to disable remote connections to $hostname$? If you change your mind, you'll need to visit that computer to re-enable connections.",
     "description": "Confirmation prompt shown when a user attempts to delete a Me2Me host from their host list.",
     "placeholders": {
       "hostname": {
@@ -102,6 +102,10 @@
       }
     }
   },
+  "DISABLE_HOST": {
+    "message": "Disable",
+    "description": "Label for the 'yes' response to the dialog asking the user to confirm whether or not they want to disable remote access to a host."
+  },
   "DISCONNECT_BUTTON_PLUS_SHORTCUT_LINUX": {
     "message": "Disconnect (Ctrl+Alt+Esc)",
     "description": "Label for the disconnect button including the Linux keyboard shortcut. Clicking this button disconnects the remote user."
@@ -138,6 +142,10 @@
     "message": "An unknown error occurred. Please sign out of Chromoting and try again.",
     "description": "Generic error message, displayed if something went wrong, but we aren't able to determine what, or the cause is too technical to be of use to a typical user."
   },
+  "ERROR_HOST_OVERLOAD": {
+    "message": "Connections to the remote computer are temporarily blocked because somebody was trying to connect to it with invalid PIN. Please try again later.",
+    "description": "Error that is shown on the client side when the host is blocking all connections due to failed authentication attempts."
+  },
   "ERROR_HOST_IS_OFFLINE": {
     "message": "The remote computer is not responding to connection requests. Please verify that it is online and try again.",
     "description": "Error that is shown on the client side when we don't get a response from the host."
@@ -173,6 +181,10 @@
   "FOOTER_WAITING": {
     "message": "waiting for connection\u2026",
     "description": "Footer text displayed at the host after an access code has been generated, but before a client connects."
+  },
+  "FULL_SCREEN": {
+    "message": "Full screen",
+    "description": "Menu option for toggle full-screen mode. Equivalent to using the Wrench menu to do the same thing."
   },
   "HELP": {
     "message": "Help",
@@ -264,10 +276,6 @@
     "message": "My Computers",
     "description": "Sub-title for the remote access section of the UI, which contains a list of currently-shared hosts and a button to enable this computer for long-term sharing."
   },
-  "NO": {
-    "message": "No",
-    "description": "Label for general-purpose 'No' buttons."
-  },
   "OK": {
     "message": "OK",
     "description": "Label for general-purpose OK buttons."
@@ -281,6 +289,10 @@
         "example": "My Linux desktop"
       }
     }
+  },
+  "ORIGINAL_SIZE": {
+    "message": "Original size",
+    "description": "Menu option for disabling shrink-to-fit. When clicked, the remote desktop will be displayed at 1:1 scale."
   },
   "OUTGOING_CONNECTIONS": {
     "message": "From this computer",
@@ -312,6 +324,18 @@
     "message": "Reconnect",
     "description": "Label for button to reconnect to the previous Me2Me host. This button appears on the 'session-finished' page."
   },
+  "RETRY": {
+    "message": "Retry",
+    "description": "Label for button to retry connecting to a Me2Me host, after failing to connect to that host. This button appears on the 'session-finished' page."
+  },
+  "SCREEN_OPTIONS": {
+    "message": "Screen options",
+    "description": "Tool-bar button used to access the Full-screen and shrink-to-fit features ('screen' in this context refers to the fact that the options are related to how the remote screen is displayed)."
+  },
+  "SHRINK_TO_FIT": {
+    "message": "Shrink to fit",
+    "description": "Menu option for enabling shrink-to-fit. When clicked, the remote desktop will be scaled down so that it fits in the browser window."
+  },
   "SIGN_OUT_BUTTON": {
     "message": "Sign out",
     "description": "Sign out button, visible if the user has authenticated. Clicking this clears authentication credentials and returns the web-app to the initial 'unauthenticated' state."
@@ -338,10 +362,6 @@
     "message": "Disable remote connections to this computer",
     "description": "The tool-tip shown when the user hovers over the 'delete host' button. Clicking this button removes the host from the list and disables connections to it."
   },
-  "TOOLTIP_SCALING": {
-    "message": "Scale to fit",
-    "description": "The tool-tip shown when the user hovers over the scale to fit button. Clicking this button toggles between scaling down the remote desktop to fit it inside the Chromium browser window and displaying it at 1:1 scale."
-  },
   "TOOLTIP_RENAME": {
     "message": "Edit computer name",
     "description": "The tool-tip shown when the user hovers over the 'rename host' button. Clicking this button allows the host name to be edited in-place."
@@ -349,9 +369,5 @@
   "WARNING_NAT_DISABLED": {
     "message": "NOTE: Policy settings permit connections only between computers within your network.",
     "description": "Message displayed at the bottom of the host screen if local policy dictates that NAT traversal is disabled, meaning that connections outside the local network will not work."
-  },
-  "YES": {
-    "message": "Yes",
-    "description": "Label for general-purpose 'Yes' buttons."
   }
 }

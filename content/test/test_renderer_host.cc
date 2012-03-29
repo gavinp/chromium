@@ -8,11 +8,13 @@
 #include "content/browser/renderer_host/test_render_view_host.h"
 #include "content/browser/site_instance_impl.h"
 #include "content/browser/tab_contents/navigation_entry_impl.h"
-#include "content/browser/tab_contents/test_tab_contents.h"
+#include "content/browser/tab_contents/test_web_contents.h"
+#include "content/public/browser/web_contents.h"
 #include "content/test/mock_render_process_host.h"
 #include "content/test/test_browser_context.h"
 
 #if defined(USE_AURA)
+#include "ui/aura/monitor_manager.h"
 #include "ui/aura/root_window.h"
 #include "ui/aura/test/test_screen.h"
 #include "ui/aura/test/test_stacking_client.h"
@@ -105,6 +107,12 @@ bool RenderViewHostTester::IsRenderViewHostSwappedOut(RenderViewHost* rvh) {
   return static_cast<RenderViewHostImpl*>(rvh)->is_swapped_out();
 }
 
+// static
+bool RenderViewHostTester::TestOnMessageReceived(RenderViewHost* rvh,
+                                                 const IPC::Message& msg) {
+  return static_cast<RenderViewHostImpl*>(rvh)->OnMessageReceived(msg);
+}
+
 RenderViewHostTestEnabler::RenderViewHostTestEnabler()
     : rph_factory_(new MockRenderProcessHostFactory()),
       rvh_factory_(new TestRenderViewHostFactory(rph_factory_.get())) {
@@ -121,19 +129,20 @@ RenderViewHostTestHarness::~RenderViewHostTestHarness() {
 }
 
 NavigationController& RenderViewHostTestHarness::controller() {
-  return contents()->GetController();
+  return web_contents()->GetController();
 }
 
-TestTabContents* RenderViewHostTestHarness::contents() {
+WebContents* RenderViewHostTestHarness::web_contents() {
   return contents_.get();
 }
 
 RenderViewHost* RenderViewHostTestHarness::rvh() {
-  return contents()->GetRenderViewHost();
+  return web_contents()->GetRenderViewHost();
 }
 
 RenderViewHost* RenderViewHostTestHarness::pending_rvh() {
-  return contents()->GetRenderManagerForTesting()->pending_render_view_host();
+  return static_cast<TestWebContents*>(web_contents())->
+      GetRenderManagerForTesting()->pending_render_view_host();
 }
 
 RenderViewHost* RenderViewHostTestHarness::active_rvh() {
@@ -152,11 +161,11 @@ void RenderViewHostTestHarness::DeleteContents() {
   SetContents(NULL);
 }
 
-void RenderViewHostTestHarness::SetContents(TestTabContents* contents) {
+void RenderViewHostTestHarness::SetContents(WebContents* contents) {
   contents_.reset(contents);
 }
 
-TestTabContents* RenderViewHostTestHarness::CreateTestTabContents() {
+WebContents* RenderViewHostTestHarness::CreateTestWebContents() {
   // See comment above browser_context_ decl for why we check for NULL here.
   if (!browser_context_.get())
     browser_context_.reset(new TestBrowserContext());
@@ -164,11 +173,11 @@ TestTabContents* RenderViewHostTestHarness::CreateTestTabContents() {
   // This will be deleted when the TabContents goes away.
   SiteInstance* instance = SiteInstance::Create(browser_context_.get());
 
-  return new TestTabContents(browser_context_.get(), instance);
+  return new TestWebContents(browser_context_.get(), instance);
 }
 
 void RenderViewHostTestHarness::NavigateAndCommit(const GURL& url) {
-  contents()->NavigateAndCommit(url);
+  static_cast<TestWebContents*>(web_contents())->NavigateAndCommit(url);
 }
 
 void RenderViewHostTestHarness::Reload() {
@@ -181,12 +190,12 @@ void RenderViewHostTestHarness::Reload() {
 
 void RenderViewHostTestHarness::SetUp() {
 #if defined(USE_AURA)
-  root_window_.reset(new aura::RootWindow);
+  root_window_.reset(aura::MonitorManager::CreateRootWindowForPrimaryMonitor());
   gfx::Screen::SetInstance(new aura::TestScreen(root_window_.get()));
   test_stacking_client_.reset(
       new aura::test::TestStackingClient(root_window_.get()));
 #endif
-  SetContents(CreateTestTabContents());
+  SetContents(CreateTestWebContents());
 }
 
 void RenderViewHostTestHarness::TearDown() {

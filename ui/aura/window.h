@@ -17,9 +17,10 @@
 #include "ui/base/events.h"
 #include "ui/aura/aura_export.h"
 #include "ui/aura/client/window_types.h"
-#include "ui/gfx/compositor/layer.h"
 #include "ui/gfx/compositor/layer_animator.h"
 #include "ui/gfx/compositor/layer_delegate.h"
+#include "ui/gfx/compositor/layer_type.h"
+#include "ui/gfx/insets.h"
 #include "ui/gfx/native_widget_types.h"
 #include "ui/gfx/rect.h"
 
@@ -71,7 +72,7 @@ class AURA_EXPORT Window : public ui::LayerDelegate {
   explicit Window(WindowDelegate* delegate);
   virtual ~Window();
 
-  void Init(ui::Layer::LayerType layer_type);
+  void Init(ui::LayerType layer_type);
 
   // A type is used to identify a class of Windows and customize behavior such
   // as event handling and parenting.  This field should only be consumed by the
@@ -218,26 +219,28 @@ class AURA_EXPORT Window : public ui::LayerDelegate {
   void AddObserver(WindowObserver* observer);
   void RemoveObserver(WindowObserver* observer);
 
-  // When set to true, this Window will stop propagation of all events targeted
-  // at Windows below it in the z-order, but only if this Window has children.
-  // This is used to implement lock-screen type functionality where we do not
-  // want events to be sent to running logged-in windows when the lock screen is
-  // displayed.
-  void set_stops_event_propagation(bool stops_event_propagation) {
-    stops_event_propagation_ = stops_event_propagation;
-  }
-
   void set_ignore_events(bool ignore_events) { ignore_events_ = ignore_events; }
 
-  // Sets the window to grab hits for an area extending |outer| pixels outside
-  // its bounds and |inner| pixels inside its bounds (even if that inner region
-  // overlaps a child window).  This can be used to create an invisible non-
-  // client area, for example if your windows have no visible frames but still
-  // need to have resize edges.  Both |outer| and |inner| must be >= 0.
-  void SetHitTestBoundsOverride(int outer, int inner);
+  // Sets the window to grab hits for an area extending -|insets| pixels outside
+  // its bounds. This can be used to create an invisible non- client area, for
+  // example if your windows have no visible frames but still need to have
+  // resize edges.
+  void set_hit_test_bounds_override_outer(const gfx::Insets& insets) {
+    hit_test_bounds_override_outer_ = insets;
+  }
+  gfx::Insets hit_test_bounds_override_outer() const {
+    return hit_test_bounds_override_outer_;
+  }
 
-  // Returns the hit test bounds override set above.
-  void GetHitTestBoundsOverride(int* outer, int* inner);
+  // Sets the window to grab hits for an area extending |insets| pixels inside
+  // its bounds (even if that inner region overlaps a child window). This can be
+  // used to create an invisible non-client area that overlaps the client area.
+  void set_hit_test_bounds_override_inner(const gfx::Insets& insets) {
+    hit_test_bounds_override_inner_ = insets;
+  }
+  gfx::Insets hit_test_bounds_override_inner() const {
+    return hit_test_bounds_override_inner_;
+  }
 
   // Returns true if the |point_in_root| in root window's coordinate falls
   // within this window's bounds. Returns false if the window is detached
@@ -293,10 +296,6 @@ class AURA_EXPORT Window : public ui::LayerDelegate {
 
   // Returns true if this window has a mouse capture.
   bool HasCapture();
-
-  // Returns true if this window is currently stopping event
-  // propagation for any windows behind it in the z-order.
-  bool StopsEventPropagation() const;
 
   // Suppresses painting window content by disgarding damaged rect and ignoring
   // new paint requests.
@@ -358,8 +357,7 @@ class AURA_EXPORT Window : public ui::LayerDelegate {
   // If |return_tightest| is true, returns the tightest-containing (i.e.
   // furthest down the hierarchy) Window containing the point; otherwise,
   // returns the loosest.  If |for_event_handling| is true, then hit-test masks
-  // and StopsEventPropagation() are honored; otherwise, only bounds checks are
-  // performed.
+  // are honored; otherwise, only bounds checks are performed.
   Window* GetWindowForPoint(const gfx::Point& local_point,
                             bool return_tightest,
                             bool for_event_handling);
@@ -391,10 +389,6 @@ class AURA_EXPORT Window : public ui::LayerDelegate {
 
   // Updates the layer name with a name based on the window's name and id.
   void UpdateLayerName(const std::string& name);
-
-  // Returns true if this window is behind a window that stops event
-  // propagation.
-  bool IsBehindStopEventsWindow() const;
 
   client::WindowType type_;
 
@@ -437,16 +431,12 @@ class AURA_EXPORT Window : public ui::LayerDelegate {
 
   void* user_data_;
 
-  // When true, events are not sent to windows behind this one in the z-order,
-  // provided this window has children. See set_stops_event_propagation().
-  bool stops_event_propagation_;
-
   // Makes the window pass all events through to any windows behind it.
   bool ignore_events_;
 
-  // See SetHitTestBoundsOverride().
-  int hit_test_bounds_override_outer_;
-  int hit_test_bounds_override_inner_;
+  // See set_hit_test_outer_override().
+  gfx::Insets hit_test_bounds_override_outer_;
+  gfx::Insets hit_test_bounds_override_inner_;
 
   ObserverList<WindowObserver> observers_;
 

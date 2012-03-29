@@ -49,8 +49,8 @@ void LazyBackgroundTaskQueue::AddPendingTask(
     // is loaded.
     const Extension* extension = profile->GetExtensionService()->
         extensions()->GetByID(extension_id);
-    DCHECK(!extension->background_page_persists());
-    ExtensionProcessManager* pm = profile->GetExtensionProcessManager();
+    DCHECK(extension->has_lazy_background_page());
+  ExtensionProcessManager* pm = profile->GetExtensionProcessManager();
     pm->IncrementLazyKeepaliveCount(extension);
     pm->CreateBackgroundHost(extension, extension->GetBackgroundURL());
   } else {
@@ -60,8 +60,7 @@ void LazyBackgroundTaskQueue::AddPendingTask(
   tasks_list->push_back(task);
 }
 
-void LazyBackgroundTaskQueue::ProcessPendingTasks(
-    ExtensionHost* host) {
+void LazyBackgroundTaskQueue::ProcessPendingTasks(ExtensionHost* host) {
   PendingTasksKey key(host->profile(), host->extension()->id());
   PendingTasksMap::iterator map_it = pending_tasks_.find(key);
   if (map_it == pending_tasks_.end()) {
@@ -95,7 +94,7 @@ void LazyBackgroundTaskQueue::Observe(
       if (host->profile()->IsSameProfile(profile_) &&
           host->extension_host_type() ==
               chrome::VIEW_TYPE_EXTENSION_BACKGROUND_PAGE &&
-          !host->extension()->background_page_persists()) {
+          host->extension()->has_lazy_background_page()) {
         CHECK(host->did_stop_loading());
         ProcessPendingTasks(host);
       }

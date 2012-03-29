@@ -7,6 +7,7 @@
 #pragma once
 
 #include <map>
+#include <set>
 
 #include "base/basictypes.h"
 #include "base/compiler_specific.h"
@@ -34,20 +35,20 @@ class ASH_EXPORT AcceleratorController : public ui::AcceleratorTarget {
   AcceleratorController();
   virtual ~AcceleratorController();
 
-  // Register a global keyboard accelerator for the specified target. If
+  // Registers a global keyboard accelerator for the specified target. If
   // multiple targets are registered for an accelerator, a target registered
   // later has higher priority.
   void Register(const ui::Accelerator& accelerator,
                 ui::AcceleratorTarget* target);
 
-  // Unregister the specified keyboard accelerator for the specified target.
+  // Unregisters the specified keyboard accelerator for the specified target.
   void Unregister(const ui::Accelerator& accelerator,
                   ui::AcceleratorTarget* target);
 
-  // Unregister all keyboard accelerators for the specified target.
+  // Unregisters all keyboard accelerators for the specified target.
   void UnregisterAll(ui::AcceleratorTarget* target);
 
-  // Activate the target associated with the specified accelerator.
+  // Activates the target associated with the specified accelerator.
   // First, AcceleratorPressed handler of the most recently registered target
   // is called, and if that handler processes the event (i.e. returns true),
   // this method immediately returns. If not, we do the same thing on the next
@@ -74,11 +75,17 @@ class ASH_EXPORT AcceleratorController : public ui::AcceleratorTarget {
   }
 
  private:
-  // Initialize the accelerators this class handles as a target.
+  // Initializes the accelerators this class handles as a target.
   void Init();
+
+  // Switches to a 0-indexed (in order of creation) window.
+  // A negative index switches to the last window in the list.
+  void SwitchToWindow(int window);
 
   scoped_ptr<ui::AcceleratorManager> accelerator_manager_;
 
+  // TODO(derat): BrightnessControlDelegate is also used by the system tray;
+  // move it outside of this class.
   scoped_ptr<BrightnessControlDelegate> brightness_control_delegate_;
   scoped_ptr<CapsLockDelegate> caps_lock_delegate_;
   scoped_ptr<ImeControlDelegate> ime_control_delegate_;
@@ -88,6 +95,9 @@ class ASH_EXPORT AcceleratorController : public ui::AcceleratorTarget {
   // A map from accelerators to the AcceleratorAction values, which are used in
   // the implementation.
   std::map<ui::Accelerator, int> accelerators_;
+
+  // Actions allowed when the user is not signed in or screen is locked
+  std::set<int> actions_allowed_at_login_screen_;
 
   DISALLOW_COPY_AND_ASSIGN(AcceleratorController);
 };

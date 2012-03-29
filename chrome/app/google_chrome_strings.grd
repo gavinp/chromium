@@ -167,7 +167,7 @@ Chrome supports. -->
       </message>
       <!-- Session restore & conflicting content settings -->
       <message name="IDS_SESSION_RESTORE_OVERLAY_MESSAGE" desc="Message of the session restore conflicts with content settings dialog">
-        When you start Google Chrome, you'll now continue where you left off. Settings that rely on sessions or that perform actions on exit (such as Clear browsing data) have now been disabled.
+        Google Chrome will restore your previous session on startup. Some of your session-based settings, such as those that clear data on exit, will be disabled.
       </message>
       <message name="IDS_CERT_ERROR_COMMON_NAME_INVALID_EXTRA_INFO_2" desc="2nd paragraph of extra information for an unsafe common name in an X509 certificate">
         In this case, the address listed in the certificate does not match the address of the website your browser tried to go to. One possible reason for this is that your communications are being intercepted by an attacker who is presenting a certificate for a different website, which would cause a mismatch. Another possible reason is that the server is set up to return the same certificate for multiple websites, including the one you are attempting to visit, even though that certificate is not valid for all of those websites. Google Chrome can say for sure that you reached &lt;strong&gt;<ph name="DOMAIN2">$1<ex>paypal.com</ex></ph>&lt;/strong&gt;, but cannot verify that that is the same site as &lt;strong&gt;<ph name="DOMAIN">$2<ex>www.paypal.com</ex></ph>&lt;/strong&gt; which you intended to reach. If you proceed, Chrome will not check for any further name mismatches.
@@ -216,17 +216,12 @@ Chrome supports. -->
       <message name="IDS_ABOUT_OLD_VERSION_LICENSE" desc="The label below the copyright message, containing the URLs.">
         Google Chrome is made possible by the <ph name="BEGIN_LINK_CHROMIUM">BEGIN_LINK_CHR</ph>Chromium<ph name="END_LINK_CHROMIUM">END_LINK_CHR</ph> open source project and other <ph name="BEGIN_LINK_OSS">BEGIN_LINK_OSS</ph>open source software<ph name="END_LINK_OSS">END_LINK_OSS</ph>.
       </message>
-      <if expr="not pp_ifdef('chromeos')">
-          <message name="IDS_ABOUT_VERSION_LICENSE" desc="The label below the copyright message, containing the URLs.">
-            Google Chrome is made possible by the <ph name="BEGIN_LINK_CHROMIUM">&lt;a target="_blank" href="$1"&gt;</ph>Chromium<ph name="END_LINK_CHROMIUM">&lt;/a&gt;</ph> open source project and other <ph name="BEGIN_LINK_OSS">&lt;a target="_blank" href="$2"&gt;</ph>open source software<ph name="END_LINK_OSS">&lt;/a&gt;</ph>.
-          </message>
-      </if>
+      <message name="IDS_ABOUT_VERSION_LICENSE" desc="The label below the copyright message, containing the URLs.">
+        Google Chrome is made possible by the <ph name="BEGIN_LINK_CHROMIUM">&lt;a target="_blank" href="$1"&gt;</ph>Chromium<ph name="END_LINK_CHROMIUM">&lt;/a&gt;</ph> open source project and other <ph name="BEGIN_LINK_OSS">&lt;a target="_blank" href="$2"&gt;</ph>open source software<ph name="END_LINK_OSS">&lt;/a&gt;</ph>.
+      </message>
       <if expr="pp_ifdef('chromeos')">
-        <message name="IDS_ABOUT_VERSION_LICENSE" desc="The label below the copyright message, containing the URLs.">
-          Chrome OS is made possible by additional <ph name="BEGIN_LINK_OSS">&lt;a target="_blank" href="$1"&gt;</ph>open source software<ph name="END_LINK_OSS">&lt;/a&gt;</ph>.
-        </message>
         <message name="IDS_ABOUT_CROS_VERSION_LICENSE" desc="Additional text displayed beneath the Chromium open source URLs for Chrome OS.">
-          Chrome OS is made possible by additional <ph name="BEGIN_LINK_CROS_OSS">BEGIN_LINK_CROS_OSS</ph>open source software<ph name="END_LINK_CROS_OSS">END_LINK_CROS_OSS</ph>.
+          Chrome OS is made possible by additional <ph name="BEGIN_LINK_CROS_OSS">&lt;a target="_blank" href="$1"&gt;</ph>open source software<ph name="END_LINK_CROS_OSS">&lt;/a&gt;</ph>.
         </message>
       </if>
       <message name="IDS_ABOUT_TERMS_OF_SERVICE" desc="The terms of service label in the About box.">
@@ -463,6 +458,11 @@ Google Chrome is unable to recover your settings.
       <message name="IDS_DEFAULT_BROWSER_INFOBAR_SHORT_TEXT" desc="More compact text to show in the default browser query infobar.">
         Google Chrome isn't your default browser.
       </message>
+      <if expr="pp_ifdef('chromeos')">
+        <message name="IDS_SYNC_OVERVIEW" desc="Chrome OS: The message that appears in the options dialog when sync has not been set up by the user.">
+	  Set up Sync to save your personalized browser features to the web and access them from Google Chrome on any computer.
+        </message>
+      </if>
       <!-- Try Chrome Toast Dialog -->
       <message name="IDS_TRY_TOAST_HEADING" desc="Top line of the try-chrome-again dialog">
         There is a new version of Google Chrome available.

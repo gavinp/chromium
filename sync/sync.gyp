@@ -28,11 +28,8 @@
         'protocol/sync_proto.gyp:sync_proto',
       ],
       'export_dependent_settings': [
-        '../base/base.gyp:base',
-        '../build/temp_gyp/googleurl.gyp:googleurl',
-        '../crypto/crypto.gyp:crypto',
-        '../net/net.gyp:net',
-        '../sql/sql.gyp:sql',
+        # Propagate sync_proto since our headers include its generated
+        # files.
         'protocol/sync_proto.gyp:sync_proto',
       ],
       'sources': [
@@ -89,6 +86,8 @@
         'engine/syncer_util.cc',
         'engine/syncer_util.h',
         'engine/syncproto.h',
+        'engine/traffic_logger.cc',
+        'engine/traffic_logger.h',
         'engine/update_applicator.cc',
         'engine/update_applicator.h',
         'engine/verify_updates_command.cc',
@@ -169,6 +168,8 @@
         'util/nigori.cc',
         'util/nigori.h',
         'util/report_unrecoverable_error_function.h',
+        'util/session_utils_android.cc',
+        'util/session_utils_android.h',
         'util/syncer_error.cc',
         'util/syncer_error.h',
         'util/time.cc',
@@ -193,12 +194,13 @@
         '../base/base.gyp:base',
         '../testing/gmock.gyp:gmock',
         '../testing/gtest.gyp:gtest',
+        'protocol/sync_proto.gyp:sync_proto',
         'sync',
       ],
       'export_dependent_settings': [
-        '../base/base.gyp:base',
         '../testing/gmock.gyp:gmock',
         '../testing/gtest.gyp:gtest',
+        'protocol/sync_proto.gyp:sync_proto',
         'sync',
       ],
       'sources': [
@@ -250,17 +252,19 @@
       'suppress_wildcard': 1,
       'dependencies': [
         '../base/base.gyp:base',
-        '../base/base.gyp:test_support_base',
         '../testing/gmock.gyp:gmock',
         '../testing/gtest.gyp:gtest',
+        'protocol/sync_proto.gyp:sync_proto',
         'sync',
         'test_support_sync',
       ],
+      # Propagate all dependencies since the actual compilation
+      # happens in the dependents.
       'export_dependent_settings': [
         '../base/base.gyp:base',
-        '../base/base.gyp:test_support_base',
         '../testing/gmock.gyp:gmock',
         '../testing/gtest.gyp:gtest',
+        'protocol/sync_proto.gyp:sync_proto',
         'sync',
         'test_support_sync',
       ],
@@ -324,20 +328,13 @@
     #
     # TODO(akalin): Rename this to sync_unit_tests once we've moved
     # everything from chrome.gyp.
-    #
-    # TODO(akalin): Make base.gyp have a test_main target that
-    # includes run_all_unittests.cc and the possible tcmalloc
-    # dependency and use that everywhere.
     {
       'target_name': 'sync_unit_tests_canary',
       'type': 'executable',
-      'sources': [
-        '../base/test/run_all_unittests.cc',
-      ],
       'dependencies': [
+        '../base/base.gyp:run_all_unittests',
         'sync_tests',
       ],
-
       # TODO(akalin): This is needed because histogram.cc uses
       # leak_annotations.h, which pulls this in.  Make 'base'
       # propagate this dependency.

@@ -13,6 +13,7 @@
 #include "../client/mapped_memory.h"
 #include "../client/program_info_manager.h"
 #include "../client/query_tracker.h"
+#include "../client/share_group.h"
 #include "../client/transfer_buffer.h"
 #include "../common/gles2_cmd_utils.h"
 #include "../common/id_allocator.h"
@@ -575,6 +576,7 @@ GLES2Implementation::SingleThreadChecker::~SingleThreadChecker() {
 
 GLES2Implementation::GLES2Implementation(
       GLES2CmdHelper* helper,
+      ShareGroup* share_group,
       TransferBufferInterface* transfer_buffer,
       bool share_resources,
       bool bind_generates_resource)
@@ -605,6 +607,8 @@ GLES2Implementation::GLES2Implementation(
     debug_ = CommandLine::ForCurrentProcess()->HasSwitch(
         switches::kEnableGPUClientLogging);
   });
+
+  share_group_ = (share_group ? share_group : new ShareGroup());
 
   memset(&reserved_ids_, 0, sizeof(reserved_ids_));
 }
@@ -1154,8 +1158,10 @@ void GLES2Implementation::GenSharedIdsCHROMIUM(
       << namespace_id << ", " << id_offset << ", " << n << ", " <<
       static_cast<void*>(ids) << ")");
   TRACE_EVENT0("gpu", "GLES2::GenSharedIdsCHROMIUM");
-  while (n) {
-    ScopedTransferBufferArray<GLint> id_buffer(n, helper_, transfer_buffer_);
+  GLsizei num = n;
+  GLuint* dst = ids;
+  while (num) {
+    ScopedTransferBufferArray<GLint> id_buffer(num, helper_, transfer_buffer_);
     if (!id_buffer.valid()) {
       return;
     }
@@ -1163,13 +1169,13 @@ void GLES2Implementation::GenSharedIdsCHROMIUM(
         namespace_id, id_offset, id_buffer.num_elements(),
         id_buffer.shm_id(), id_buffer.offset());
     WaitForCmd();
-    memcpy(ids, id_buffer.address(), sizeof(*ids) * id_buffer.num_elements());
-    n -= id_buffer.num_elements();
-    ids += id_buffer.num_elements();
+    memcpy(dst, id_buffer.address(), sizeof(*dst) * id_buffer.num_elements());
+    num -= id_buffer.num_elements();
+    dst += id_buffer.num_elements();
   }
   GPU_CLIENT_LOG_CODE_BLOCK({
     for (GLsizei i = 0; i < n; ++i) {
-      GPU_CLIENT_LOG("  " << i << ": " << ids[i]);
+      GPU_CLIENT_LOG("  " << i << ": " << namespace_id << ", " << ids[i]);
     }
   });
 }
@@ -1181,7 +1187,7 @@ void GLES2Implementation::DeleteSharedIdsCHROMIUM(
       << static_cast<const void*>(ids) << ")");
   GPU_CLIENT_LOG_CODE_BLOCK({
     for (GLsizei i = 0; i < n; ++i) {
-      GPU_CLIENT_LOG("  " << i << ": " << ids[i]);
+      GPU_CLIENT_LOG("  " << i << ": " << namespace_id << ", "  << ids[i]);
     }
   });
   TRACE_EVENT0("gpu", "GLES2::DeleteSharedIdsCHROMIUM");
@@ -1207,7 +1213,7 @@ void GLES2Implementation::RegisterSharedIdsCHROMIUM(
      << static_cast<const void*>(ids) << ")");
   GPU_CLIENT_LOG_CODE_BLOCK({
     for (GLsizei i = 0; i < n; ++i) {
-      GPU_CLIENT_LOG("  " << i << ": " << ids[i]);
+      GPU_CLIENT_LOG("  " << i << ": "  << namespace_id << ", " << ids[i]);
     }
   });
   TRACE_EVENT0("gpu", "GLES2::RegisterSharedIdsCHROMIUM");
@@ -2692,7 +2698,12 @@ void GLES2Implementation::UnmapBufferSubDataCHROMIUM(const void* mem) {
   helper_->BufferSubData(
       mb.target, mb.offset, mb.size, mb.shm_id, mb.shm_offset);
   mapped_memory_->FreePendingToken(mb.shm_memory, helper_->InsertToken());
+  // Flushing after unmap lets the service side start processing commands
+  // sooner. However, on lowend devices, the thread thrashing causes is
+  // worse than the latency hit.
+#if !defined(OS_ANDROID) && !defined(OS_CHROMEOS)
   helper_->CommandBufferHelper::Flush();
+#endif
   mapped_buffers_.erase(it);
 }
 
@@ -2765,7 +2776,9 @@ void GLES2Implementation::UnmapTexSubImage2DCHROMIUM(const void* mem) {
       mt.target, mt.level, mt.xoffset, mt.yoffset, mt.width, mt.height,
       mt.format, mt.type, mt.shm_id, mt.shm_offset, GL_FALSE);
   mapped_memory_->FreePendingToken(mt.shm_memory, helper_->InsertToken());
+#if !defined(OS_ANDROID) && !defined(OS_CHROMEOS)
   helper_->CommandBufferHelper::Flush();
+#endif
   mapped_textures_.erase(it);
 }
 

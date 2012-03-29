@@ -8,7 +8,6 @@
 
 #include <deque>
 #include <map>
-#include <queue>
 #include <set>
 #include <string>
 #include <vector>
@@ -38,6 +37,7 @@
 #include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebFileSystem.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebConsoleMessage.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebFrameClient.h"
+#include "third_party/WebKit/Source/WebKit/chromium/public/WebHistoryItem.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebIconURL.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebNode.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebPageSerializerClient.h"
@@ -59,6 +59,7 @@
 #pragma warning(disable: 4250)
 #endif
 
+class CommandLine;
 class DeviceOrientationDispatcher;
 class DevToolsAgent;
 class DomAutomationController;
@@ -127,6 +128,7 @@ class WebMediaPlayerClient;
 class WebMouseEvent;
 class WebPeerConnectionHandler;
 class WebPeerConnectionHandlerClient;
+class WebSocketStreamHandle;
 class WebSpeechInputController;
 class WebSpeechInputListener;
 class WebStorageNamespace;
@@ -134,6 +136,7 @@ class WebTouchEvent;
 class WebURLLoader;
 class WebURLRequest;
 class WebUserMediaClient;
+struct WebActiveWheelFlingParameters;
 struct WebFileChooserParams;
 struct WebFindOptions;
 struct WebMediaPlayerAction;
@@ -246,6 +249,8 @@ class RenderViewImpl : public RenderWidget,
   // Sets whether  the renderer should report load progress to the browser.
   void SetReportLoadProgressEnabled(bool enabled);
 
+  bool guest() const { return guest_; }
+
   void LoadNavigationErrorPage(
       WebKit::WebFrame* frame,
       const WebKit::WebURLRequest& failed_request,
@@ -321,6 +326,9 @@ class RenderViewImpl : public RenderWidget,
                                     webkit::WebPluginInfo* plugin_info,
                                     std::string* actual_mime_type);
 
+  void TransferActiveWheelFlingAnimation(
+      const WebKit::WebActiveWheelFlingParameters& params);
+
   // IPC::Channel::Listener implementation -------------------------------------
 
   virtual bool OnMessageReceived(const IPC::Message& msg) OVERRIDE;
@@ -337,6 +345,7 @@ class RenderViewImpl : public RenderWidget,
   virtual bool requestPointerLock();
   virtual void requestPointerUnlock();
   virtual bool isPointerLocked();
+  virtual void didActivateCompositor(int input_handler_identifier);
 
   // WebKit::WebViewClient implementation --------------------------------------
 
@@ -391,8 +400,6 @@ class RenderViewImpl : public RenderWidget,
                                           const WebKit::WebString& message);
   virtual void showContextMenu(WebKit::WebFrame* frame,
                                const WebKit::WebContextMenuData& data);
-  virtual void enterFullscreen();
-  virtual void exitFullscreen();
   virtual void setStatusText(const WebKit::WebString& text);
   virtual void setMouseOverURL(const WebKit::WebURL& url);
   virtual void setKeyboardFocusURL(const WebKit::WebURL& url);
@@ -555,29 +562,27 @@ class RenderViewImpl : public RenderWidget,
   virtual void reportFindInPageSelection(int request_id,
                                          int active_match_ordinal,
                                          const WebKit::WebRect& sel);
-
   virtual void openFileSystem(WebKit::WebFrame* frame,
                               WebKit::WebFileSystem::Type type,
                               long long size,
                               bool create,
                               WebKit::WebFileSystemCallbacks* callbacks);
-
   virtual void queryStorageUsageAndQuota(
       WebKit::WebFrame* frame,
       WebKit::WebStorageQuotaType type,
       WebKit::WebStorageQuotaCallbacks* callbacks);
-
   virtual void requestStorageQuota(
       WebKit::WebFrame* frame,
       WebKit::WebStorageQuotaType type,
       unsigned long long requested_size,
       WebKit::WebStorageQuotaCallbacks* callbacks);
-
   virtual void registerIntentService(
       WebKit::WebFrame* frame,
       const WebKit::WebIntentServiceInfo& service);
   virtual void dispatchIntent(WebKit::WebFrame* frame,
                               const WebKit::WebIntentRequest& intentRequest);
+  virtual void willOpenSocketStream(
+      WebKit::WebSocketStreamHandle* handle);
 
   // WebKit::WebPageSerializerClient implementation ----------------------------
 
@@ -590,15 +595,14 @@ class RenderViewImpl : public RenderWidget,
 
   virtual bool Send(IPC::Message* message) OVERRIDE;
   virtual int GetRoutingID() const OVERRIDE;
-  bool IsGuest() const;
-  virtual int GetPageId() OVERRIDE;
-  virtual gfx::Size GetSize() OVERRIDE;
-  virtual gfx::NativeViewId GetHostWindow() OVERRIDE;
+  virtual int GetPageId() const OVERRIDE;
+  virtual gfx::Size GetSize() const OVERRIDE;
+  virtual gfx::NativeViewId GetHostWindow() const OVERRIDE;
   virtual WebPreferences& GetWebkitPreferences() OVERRIDE;
   virtual WebKit::WebView* GetWebView() OVERRIDE;
   virtual WebKit::WebNode GetFocusedNode() const OVERRIDE;
   virtual WebKit::WebNode GetContextMenuNode() const OVERRIDE;
-  virtual bool IsEditableNode(const WebKit::WebNode& node) OVERRIDE;
+  virtual bool IsEditableNode(const WebKit::WebNode& node) const OVERRIDE;
   virtual WebKit::WebPlugin* CreatePlugin(
       WebKit::WebFrame* frame,
       const webkit::WebPluginInfo& info,
@@ -608,9 +612,9 @@ class RenderViewImpl : public RenderWidget,
                               int id,
                               bool notify_result) OVERRIDE;
   virtual bool ShouldDisplayScrollbars(int width, int height) const OVERRIDE;
-  virtual int GetEnabledBindings() OVERRIDE;
-  virtual bool GetContentStateImmediately() OVERRIDE;
-  virtual float GetFilteredTimePerFrame() OVERRIDE;
+  virtual int GetEnabledBindings() const OVERRIDE;
+  virtual bool GetContentStateImmediately() const OVERRIDE;
+  virtual float GetFilteredTimePerFrame() const OVERRIDE;
   virtual void ShowContextMenu(WebKit::WebFrame* frame,
                                const WebKit::WebContextMenuData& data) OVERRIDE;
   virtual WebKit::WebPageVisibilityState GetVisibilityState() const OVERRIDE;
@@ -742,6 +746,7 @@ class RenderViewImpl : public RenderWidget,
   void UpdateTitle(WebKit::WebFrame* frame, const string16& title,
                    WebKit::WebTextDirection title_direction);
   void UpdateSessionHistory(WebKit::WebFrame* frame);
+  void SendUpdateState(const WebKit::WebHistoryItem& item);
 
   // Update current main frame's encoding and send it to browser window.
   // Since we want to let users see the right encoding info from menu
@@ -792,12 +797,6 @@ class RenderViewImpl : public RenderWidget,
   void OnCancelDownload(int32 download_id);
   void OnClearFocusedNode();
   void OnClosePage();
-#if defined(ENABLE_FLAPPER_HACKS)
-  void OnConnectTcpACK(int request_id,
-                       IPC::PlatformFileForTransit socket_for_transit,
-                       const PP_NetAddress_Private& local_addr,
-                       const PP_NetAddress_Private& remote_addr);
-#endif
   void OnContextMenuClosed(
       const content::CustomContextMenuContext& custom_context);
   void OnCopy();
@@ -976,6 +975,10 @@ class RenderViewImpl : public RenderWidget,
   // with the navigation information saved in OnNavigate().
   void PopulateStateFromPendingNavigationParams(
       content::DocumentState* document_state);
+
+  // Processes the command-line flags --enable-viewport and
+  // --enable-fixed-layout[=w,h].
+  void ProcessViewLayoutFlags(const CommandLine& command_line);
 
   // Starts nav_state_sync_timer_ if it isn't already running.
   void StartNavStateSyncTimerIfNecessary();

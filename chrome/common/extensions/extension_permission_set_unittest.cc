@@ -10,7 +10,7 @@
 #include "base/utf_string_conversions.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/extensions/extension.h"
-#include "chrome/common/extensions/extension_constants.h"
+#include "chrome/common/extensions/extension_manifest_constants.h"
 #include "chrome/common/extensions/extension_error_utils.h"
 #include "chrome/common/extensions/extension_permission_set.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -601,11 +601,11 @@ TEST(ExtensionPermissionsTest, PermissionMessages) {
   // These are private.
   skip.insert(ExtensionAPIPermission::kChromeAuthPrivate);
   skip.insert(ExtensionAPIPermission::kChromeosInfoPrivate);
-  skip.insert(ExtensionAPIPermission::kChromePrivate);
   skip.insert(ExtensionAPIPermission::kFileBrowserPrivate);
   skip.insert(ExtensionAPIPermission::kInputMethodPrivate);
   skip.insert(ExtensionAPIPermission::kMediaPlayerPrivate);
   skip.insert(ExtensionAPIPermission::kMetricsPrivate);
+  skip.insert(ExtensionAPIPermission::kOffersPrivate);
   skip.insert(ExtensionAPIPermission::kSystemPrivate);
   skip.insert(ExtensionAPIPermission::kTerminalPrivate);
   skip.insert(ExtensionAPIPermission::kWebSocketProxyPrivate);

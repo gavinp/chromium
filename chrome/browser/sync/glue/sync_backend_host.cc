@@ -220,7 +220,7 @@ class SyncBackendHost::Core
   SyncBackendRegistrar* registrar_;
 
   // The timer used to periodically call SaveChanges.
-  base::RepeatingTimer<Core> save_changes_timer_;
+  scoped_ptr<base::RepeatingTimer<Core> > save_changes_timer_;
 
   // Our encryptor, which uses Chrome's encryption functions.
   ChromeEncryptor encryptor_;
@@ -434,6 +434,17 @@ bool SyncBackendHost::SetDecryptionPassphrase(const std::string& passphrase) {
   sync_thread_.message_loop()->PostTask(FROM_HERE,
       base::Bind(&SyncBackendHost::Core::DoSetDecryptionPassphrase, core_.get(),
                  passphrase));
+
+  // Since we were able to decrypt the cached pending keys with the passphrase
+  // provided, we immediately alert the UI layer that the passphrase was
+  // accepted. This will avoid the situation where a user enters a passphrase,
+  // clicks OK, immediately reopens the advanced settings dialog, and gets an
+  // unnecessary prompt for a passphrase.
+  // Note: It is not guaranteed that the passphrase will be accepted by the
+  // syncer thread, since we could receive a new nigori node while the task is
+  // pending. This scenario is a valid race, and SetDecryptionPassphrase can
+  // trigger a new OnPassphraseRequired if it needs to.
+  NotifyPassphraseAccepted();
   return true;
 }
 
@@ -600,11 +611,6 @@ sync_api::UserShare* SyncBackendHost::GetUserShare() const {
 SyncBackendHost::Status SyncBackendHost::GetDetailedStatus() {
   DCHECK(initialized());
   return core_->sync_manager()->GetDetailedStatus();
-}
-
-SyncBackendHost::StatusSummary SyncBackendHost::GetStatusSummary() {
-  DCHECK(initialized());
-  return core_->sync_manager()->GetStatusSummary();
 }
 
 const SyncSessionSnapshot* SyncBackendHost::GetLastSessionSnapshot() const {
@@ -1143,7 +1149,7 @@ void SyncBackendHost::Core::DoShutdown(bool sync_disabled) {
   if (!sync_manager_.get())
     return;
 
-  save_changes_timer_.Stop();
+  save_changes_timer_.reset();
   sync_manager_->ShutdownOnSyncThread();
   sync_manager_->RemoveObserver(this);
   sync_manager_.reset();
@@ -1190,7 +1196,9 @@ void SyncBackendHost::Core::StartSavingChanges() {
   if (!sync_loop_)
     return;
   DCHECK_EQ(MessageLoop::current(), sync_loop_);
-  save_changes_timer_.Start(FROM_HERE,
+  DCHECK(!save_changes_timer_.get());
+  save_changes_timer_.reset(new base::RepeatingTimer<Core>());
+  save_changes_timer_->Start(FROM_HERE,
       base::TimeDelta::FromSeconds(kSaveChangesIntervalSeconds),
       this, &Core::SaveChanges);
 }

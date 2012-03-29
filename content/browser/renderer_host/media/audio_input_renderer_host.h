@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -69,7 +69,7 @@ class ResourceContext;
 }
 
 class AudioManager;
-struct AudioParameters;
+class AudioParameters;
 
 class CONTENT_EXPORT AudioInputRendererHost
     : public content::BrowserMessageFilter,
@@ -140,7 +140,8 @@ class CONTENT_EXPORT AudioInputRendererHost
   // required properties.
   void OnCreateStream(int stream_id,
                       const AudioParameters& params,
-                      const std::string& device_id);
+                      const std::string& device_id,
+                      bool automatic_gain_control);
 
   // Record the audio input stream referenced by |stream_id|.
   void OnRecordStream(int stream_id);
@@ -150,9 +151,6 @@ class CONTENT_EXPORT AudioInputRendererHost
 
   // Set the volume of the audio stream referenced by |stream_id|.
   void OnSetVolume(int stream_id, double volume);
-
-  // Get the volume of the audio stream referenced by |stream_id|.
-  void OnGetVolume(int stream_id);
 
   // Complete the process of creating an audio input stream. This will set up
   // the shared memory or shared socket in low latency mode.
@@ -174,9 +172,6 @@ class CONTENT_EXPORT AudioInputRendererHost
   // Closes the stream. The stream is then deleted in DeleteEntry() after it
   // is closed.
   void CloseAndDeleteStream(AudioEntry* entry);
-
-  // Called on the audio thread after the audio input stream is closed.
-  void OnStreamClosed(AudioEntry* entry);
 
   // Delete an audio entry and close the related audio stream.
   void DeleteEntry(AudioEntry* entry);

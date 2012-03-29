@@ -19,6 +19,7 @@
 #include "chrome/browser/chromeos/dbus/bluetooth_device_client.h"
 #include "chrome/browser/chromeos/dbus/bluetooth_input_client.h"
 #include "chrome/browser/chromeos/dbus/introspectable_client.h"
+#include "chrome/browser/chromeos/dbus/introspect_util.h"
 #include "chrome/browser/chromeos/dbus/dbus_thread_manager.h"
 #include "dbus/bus.h"
 #include "dbus/object_path.h"
@@ -32,7 +33,7 @@ BluetoothDevice::BluetoothDevice(BluetoothAdapter* adapter)
   : weak_ptr_factory_(this),
     adapter_(adapter),
     bluetooth_class_(0),
-    paired_(false),
+    bonded_(false),
     connected_(false),
     pairing_delegate_(NULL) {
 }
@@ -48,12 +49,26 @@ void BluetoothDevice::SetObjectPath(const dbus::ObjectPath& object_path) {
 void BluetoothDevice::Update(
     const BluetoothDeviceClient::Properties* properties,
     bool update_state) {
-  address_ = properties->address.value();
-  name_ = properties->name.value();
-  bluetooth_class_ = properties->bluetooth_class.value();
+  std::string address = properties->address.value();
+  std::string name = properties->name.value();
+  uint32 bluetooth_class = properties->bluetooth_class.value();
+  const std::vector<std::string> &uuids = properties->uuids.value();
+
+  if (!address.empty())
+    address_ = address;
+  if (!name.empty())
+    name_ = name;
+  if (bluetooth_class)
+    bluetooth_class_ = bluetooth_class;
+  if (!uuids.empty()) {
+    service_uuids_.clear();
+    service_uuids_.assign(uuids.begin(), uuids.end());
+  }
 
   if (update_state) {
-    paired_ = properties->paired.value();
+    // BlueZ uses paired to mean link keys exchanged, whereas the Bluetooth
+    // spec refers to this as bonded. Use the spec name for our interface.
+    bonded_ = properties->paired.value();
     connected_ = properties->connected.value();
   }
 }
@@ -118,9 +133,7 @@ BluetoothDevice::DeviceType BluetoothDevice::GetDeviceType() const {
 
 bool BluetoothDevice::IsSupported() const {
   DeviceType device_type = GetDeviceType();
-  return (device_type == DEVICE_COMPUTER ||
-          device_type == DEVICE_PHONE ||
-          device_type == DEVICE_KEYBOARD ||
+  return (device_type == DEVICE_KEYBOARD ||
           device_type == DEVICE_MOUSE ||
           device_type == DEVICE_TABLET ||
           device_type == DEVICE_KEYBOARD_MOUSE_COMBO);
@@ -156,10 +169,6 @@ string16 BluetoothDevice::GetAddressWithLocalizedDeviceTypeName() const {
   }
 }
 
-bool BluetoothDevice::WasDiscovered() const {
-  return object_path_.value().empty();
-}
-
 bool BluetoothDevice::IsConnected() const {
   // TODO(keybuk): examine protocol-specific connected state, such as Input
   return connected_;
@@ -167,8 +176,8 @@ bool BluetoothDevice::IsConnected() const {
 
 void BluetoothDevice::Connect(PairingDelegate* pairing_delegate,
                               ErrorCallback error_callback) {
-  if (paired_ || connected_ || !WasDiscovered()) {
-    // Connection to already known or paired device.
+  if (IsPaired() || IsBonded() || IsConnected()) {
+    // Connection to already paired or connected device.
     ConnectApplications(error_callback);
 
   } else if (!pairing_delegate) {
@@ -229,7 +238,7 @@ void BluetoothDevice::ConnectCallback(ErrorCallback error_callback,
     // we can connect after rebooting. This information is part of the
     // pairing information of the device, and is unique to the combination
     // of our bluetooth address and the device's bluetooth address. A
-    // different device needs a new pairing, so it's not useful to sync.
+    // different host needs a new pairing, so it's not useful to sync.
     DBusThreadManager::Get()->GetBluetoothDeviceClient()->
         GetProperties(object_path_)->trusted.Set(
             true,
@@ -278,7 +287,7 @@ void BluetoothDevice::OnIntrospect(ErrorCallback error_callback,
   // device. Send appropraite Connect calls for each of those interfaces
   // to connect all of the application protocols for this device.
   std::vector<std::string> interfaces =
-      IntrospectableClient::GetInterfacesFromXmlData(xml_data);
+      GetInterfacesFromIntrospectResult(xml_data);
 
   for (std::vector<std::string>::iterator iter = interfaces.begin();
        iter != interfaces.end(); ++iter) {

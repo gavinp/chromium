@@ -32,6 +32,13 @@ const char* GetPageTransitionQualifierString(
 const char* GetUpdatesSourceString(
     sync_pb::GetUpdatesCallerInfo::GetUpdatesSource updates_source);
 
+const char* GetResponseTypeString(
+    sync_pb::CommitResponse::ResponseType response_type);
+
+const char* GetErrorTypeString(sync_pb::SyncEnums::ErrorType error_type);
+
+const char* GetActionString(sync_pb::SyncEnums::Action action);
+
 const char* GetDeviceTypeString(
     sync_pb::SessionHeader::DeviceType device_type);
 

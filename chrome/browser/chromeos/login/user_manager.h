@@ -53,8 +53,25 @@ class UserManager {
   // called from the main UI thread.
   static UserManager* Get();
 
-  // Set UserManager singleton object for test purpose only!
-  static void Set(UserManager* mock);
+  // Set UserManager singleton object for test purpose only! Returns the
+  // previous singleton object and releases it from the singleton memory
+  // management. It is the responsibility of the test writer to restore the
+  // original object or delete it if needed.
+  //
+  // The intended usage is meant to be something like this:
+  //   virtual void SetUp() {
+  //     mock_user_manager_.reset(new MockUserManager());
+  //     old_user_manager_ = UserManager::Set(mock_user_manager_.get());
+  //     EXPECT_CALL...
+  //     ...
+  //   }
+  //   virtual void TearDown() {
+  //     ...
+  //     UserManager::Set(old_user_manager_);
+  //   }
+  //   scoped_ptr<MockUserManager> mock_user_manager_;
+  //   UserManager* old_user_manager_;
+  static UserManager* Set(UserManager* mock);
 
   // Registers user manager preferences.
   static void RegisterPrefs(PrefService* local_state);
@@ -119,16 +136,14 @@ class UserManager {
   virtual std::string GetUserDisplayEmail(
       const std::string& username) const = 0;
 
-  // Returns the index of the default wallpapers saved in local state for user
-  // |username| if it is known (was previousely set by
-  // |SaveWallpaperToLocalState| call).
-  // Otherwise, returns default wallpaper index.
-  virtual int GetUserWallpaper(const std::string& username) = 0;
+  // Returns the index of the default wallpapers saved in local state for login
+  // user if it is known (was previousely set by |SaveWallpaperToLocalState|
+  // call). Otherwise, returns a randomly generated index.
+  virtual int GetUserWallpaperIndex() = 0;
 
-  // Sets user wallpaper to the default wallpaper with index |wallpaper_index|,
-  // updates Local State.
-  virtual void SaveWallpaperDefaultIndex(const std::string& username,
-                                         int wallpaper_index) = 0;
+  // Save the index |wallpaper_index| of the default wallpapers selected by
+  // current user to Local State.
+  virtual void SaveUserWallpaperIndex(int wallpaper_index) = 0;
 
   // Sets user image to the default image with index |image_index|, sends
   // LOGIN_USER_IMAGE_CHANGED notification and updates Local State.
@@ -159,6 +174,9 @@ class UserManager {
   // download times).
   virtual void DownloadProfileImage(const std::string& reason) = 0;
 
+  // Loads the key/certificates database for the current logged in user.
+  virtual void LoadKeyStore() = 0;
+
   // Returns true if current user is an owner.
   virtual bool IsCurrentUserOwner() const = 0;
 
@@ -176,6 +194,9 @@ class UserManager {
 
   // Returns true if we're logged in as a Guest.
   virtual bool IsLoggedInAsGuest() const = 0;
+
+  // Returns true if we're logged in as the stub userused for testing on linux.
+  virtual bool IsLoggedInAsStub() const = 0;
 
   virtual void AddObserver(Observer* obs) = 0;
   virtual void RemoveObserver(Observer* obs) = 0;

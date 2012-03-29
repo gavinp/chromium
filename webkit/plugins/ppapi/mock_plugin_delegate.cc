@@ -85,14 +85,15 @@ uint32_t MockPluginDelegate::GetAudioHardwareOutputBufferSize() {
 MockPluginDelegate::PlatformAudioOutput* MockPluginDelegate::CreateAudioOutput(
     uint32_t sample_rate,
     uint32_t sample_count,
-    PlatformAudioCommonClient* client) {
+    PlatformAudioOutputClient* client) {
   return NULL;
 }
 
 MockPluginDelegate::PlatformAudioInput* MockPluginDelegate::CreateAudioInput(
+    const std::string& device_id,
     uint32_t sample_rate,
     uint32_t sample_count,
-    PlatformAudioCommonClient* client) {
+    PlatformAudioInputClient* client) {
   return NULL;
 }
 
@@ -231,19 +232,6 @@ void MockPluginDelegate::SyncGetFileSystemPlatformPath(
 scoped_refptr<base::MessageLoopProxy>
 MockPluginDelegate::GetFileThreadMessageLoopProxy() {
   return scoped_refptr<base::MessageLoopProxy>();
-}
-
-int32_t MockPluginDelegate::ConnectTcp(
-    webkit::ppapi::PPB_Flash_NetConnector_Impl* connector,
-    const char* host,
-    uint16_t port) {
-  return PP_ERROR_FAILED;
-}
-
-int32_t MockPluginDelegate::ConnectTcpAddress(
-    webkit::ppapi::PPB_Flash_NetConnector_Impl* connector,
-    const PP_NetAddress_Private* addr) {
-  return PP_ERROR_FAILED;
 }
 
 uint32 MockPluginDelegate::TCPSocketCreate() {

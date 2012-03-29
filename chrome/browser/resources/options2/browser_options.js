@@ -72,10 +72,7 @@ cr.define('options', function() {
             $('advanced-settings-container'));
       }
       $('advanced-settings').addEventListener('webkitTransitionEnd',
-          function(event) {
-            self.onTransitionEnd_(event);
-            self.updateAdvancedSettingsExpander_();
-      });
+          this.updateAdvancedSettingsExpander_.bind(this));
 
       if (cr.isChromeOS)
         AccountsOptions.applyGuestModeVisibility(document);
@@ -114,19 +111,17 @@ cr.define('options', function() {
       if (this.sessionRestoreEnabled_) {
         $('old-startup-last-text').hidden = true;
         $('new-startup-last-text').hidden = false;
-        $('startup-restore-session').customChangeHandler = function(event) {
-          if (this.checked)
-            BrowserOptions.getInstance().maybeShowSessionRestoreDialog_();
-          // Continue the normal event handling (set the preference).
-          return false;
+        $('startup-restore-session').onchange = function(event) {
+          if (!BrowserOptions.getInstance().maybeShowSessionRestoreDialog_()) {
+            // The dialog is not shown; handle the event normally.
+            event.currentTarget.savePrefState();
+          }
         };
       }
 
       // Appearance section.
       Preferences.getInstance().addEventListener('browser.show_home_button',
           this.onShowHomeButtonChanged_.bind(this));
-      $('change-home-page-section').addEventListener('webkitTransitionEnd',
-          this.onTransitionEnd_.bind(this));
 
       Preferences.getInstance().addEventListener('homepage',
           this.onHomePageChanged_.bind(this));
@@ -441,12 +436,6 @@ cr.define('options', function() {
               [String($('backgroundModeCheckbox').checked)]);
         };
       }
-
-      // Update Bluetooth controls.  If no Bluetooth adapter is available then
-      // the Bluetooth section is hidden.  If the adapter is found and powered
-      // then the list of known and connected devices is populated.
-      if (cr.isChromeOS)
-        chrome.send('initializeBluetoothStatus');
     },
 
     /**
@@ -496,14 +485,15 @@ cr.define('options', function() {
     },
 
     /**
-     * Show the given section, with animation. The section should have a
-     * onTransitionEnd_ as a listener for the |webkitTransitionEnd| event.
+     * Shows the given section, with animation.
      * @param {HTMLElement} section The section to be shown.
      * @param {HTMLElement} container The container for the section. Must be
      *     inside of |section|.
      * @private
      */
     showSectionWithAnimation_: function(section, container) {
+      this.addTransitionEndListener_(section);
+
       // Unhide
       section.hidden = false;
 
@@ -521,6 +511,8 @@ cr.define('options', function() {
      * See showSectionWithAnimation_.
      */
     hideSectionWithAnimation_: function(section, container) {
+      this.addTransitionEndListener_(section);
+
       // Before we start hiding the section, we need to set
       // the height to a pixel value.
       section.style.height = container.offsetHeight + 'px';
@@ -542,6 +534,22 @@ cr.define('options', function() {
         this.showSectionWithAnimation_(section, container);
       else
         this.hideSectionWithAnimation_(section, container);
+    },
+
+    /**
+     * Adds a |webkitTransitionEnd| listener to the given section so that
+     * it can be animated. The listener will only be added to a given section
+     * once, so this can be called as multiple times.
+     * @param {HTMLElement} section The section to be animated.
+     * @private
+     */
+    addTransitionEndListener_: function(section) {
+      if (section.hasTransitionEndListener_)
+        return;
+
+      section.addEventListener('webkitTransitionEnd',
+          this.onTransitionEnd_.bind(this));
+      section.hasTransitionEndListener_ = true;
     },
 
     /**
@@ -569,16 +577,10 @@ cr.define('options', function() {
 
     updateAdvancedSettingsExpander_: function() {
       var expander = $('advanced-settings-expander');
-      if ($('advanced-settings').style.height == '') {
+      if ($('advanced-settings').style.height == '')
         expander.textContent = localStrings.getString('showAdvancedSettings');
-      } else {
+      else
         expander.textContent = localStrings.getString('hideAdvancedSettings');
-
-        // Items added to the Bluetooth list while hidden are often not properly
-        // rendered once the list becomes visible.  Force the list to refresh.
-        if (cr.isChromeOS)
-          $('bluetooth-paired-devices-list').refresh();
-      }
     },
 
     /**
@@ -620,12 +622,17 @@ cr.define('options', function() {
       $('sync-action-link').hidden = syncData.actionLinkText.length == 0;
       $('sync-action-link').disabled = syncData.managed;
 
-      if (syncData.syncHasError)
+      if (syncData.hasError)
         $('sync-status').classList.add('sync-error');
       else
         $('sync-status').classList.remove('sync-error');
 
       $('customize-sync').disabled = syncData.hasUnrecoverableError;
+      // Move #enable-auto-login-checkbox to a different location on CrOS.
+      if (cr.isChromeOs) {
+        $('sync-general').insertBefore($('sync-status').nextSibling,
+                                       $('enable-auto-login-checkbox'));
+      }
       $('enable-auto-login-checkbox').hidden = !syncData.autoLoginVisible;
     },
 
@@ -754,20 +761,44 @@ cr.define('options', function() {
      * (session only cookies or clearning data on exit) are selected, and the
      * dialog has never been shown.
      * @private
+     * @return {boolean} True if the dialog is shown, false otherwise.
      */
     maybeShowSessionRestoreDialog_: function() {
       // Don't show this dialog in Guest mode.
       if (cr.isChromeOS && AccountsOptions.loggedInAsGuest())
-        return;
+        return false;
       // If some of the needed preferences haven't been read yet, the
       // corresponding member variable will be undefined and we won't display
       // the dialog yet.
       if (this.userHasSelectedSessionContentSettings_() &&
           this.sessionRestoreDialogShown_ === false) {
-        this.sessionRestoreDialogShown_ = true;
-        Preferences.setBooleanPref('restore_session_state.dialog_shown', true);
         OptionsPage.navigateToPage('sessionRestoreOverlay');
+        return true;
       }
+      return false;
+    },
+
+    /**
+     * Called when the user clicks the "ok" button in the session restore
+     * dialog.
+     */
+    sessionRestoreDialogOk: function() {
+      // Set the preference.
+      $('startup-restore-session').savePrefState();
+      this.sessionRestoreDialogShown_ = true;
+      Preferences.setBooleanPref('restore_session_state.dialog_shown', true);
+    },
+
+    /**
+     * Called when the user clicks the "cancel" button in the session restore
+     * dialog.
+     */
+    sessionRestoreDialogCancel: function() {
+      // The preference was never set to "continue where I left off". Update the
+      // UI to reflect the preference.
+      $('startup-newtab').resetPrefState();
+      $('startup-restore-session').resetPrefState();
+      $('startup-show-pages').resetPrefState();
     },
 
     /**
@@ -954,7 +985,7 @@ cr.define('options', function() {
     handleAddBluetoothDevice_: function() {
       $('bluetooth-unpaired-devices-list').clear();
       chrome.send('findBluetoothDevices');
-      OptionsPage.navigateToPage('bluetooth');
+      OptionsPage.showPageByName('bluetooth', false);
     },
 
     /**
@@ -1027,16 +1058,28 @@ cr.define('options', function() {
     },
 
     /**
-     * Set the enabled state for the autoOpenFileTypesResetToDefault button.
+     * Shows/hides the autoOpenFileTypesResetToDefault button and label, with
+     * animation.
+     * @param {boolean} display Whether to show the button and label or not.
      * @private
      */
-    setAutoOpenFileTypesDisabledAttribute_: function(disabled) {
-      if (!cr.isChromeOS) {
-        $('autoOpenFileTypesResetToDefault').disabled = disabled;
-        if (disabled)
-          $('auto-open-file-types-label').classList.add('disabled');
-        else
-          $('auto-open-file-types-label').classList.remove('disabled');
+    setAutoOpenFileTypesDisplayed_: function(display) {
+      if (cr.isChromeOS)
+        return;
+
+      if ($('advanced-settings').hidden) {
+        // If the Advanced section is hidden, don't animate the transition.
+        $('auto-open-file-types-section').hidden = !display;
+      } else {
+        if (display) {
+          this.showSectionWithAnimation_(
+              $('auto-open-file-types-section'),
+              $('auto-open-file-types-container'));
+        } else {
+          this.hideSectionWithAnimation_(
+              $('auto-open-file-types-section'),
+              $('auto-open-file-types-container'));
+        }
       }
     },
 
@@ -1177,15 +1220,15 @@ cr.define('options', function() {
      * with a matching address is found, the existing element is updated.
      * @param {{name: string,
      *          address: string,
-     *          discovered: boolean,
      *          paired: boolean,
+     *          bonded: boolean,
      *          connected: boolean}} device
      *     Decription of the bluetooth device.
      * @private
      */
     addBluetoothDevice_: function(device) {
       var list = $('bluetooth-unpaired-devices-list');
-      if (!device.discovered) {
+      if (device.paired) {
         // Test to see if the device is currently in the unpaired list, in which
         // case it should be removed from that list.
         var index = $('bluetooth-unpaired-devices-list').find(device.address);
@@ -1237,7 +1280,7 @@ cr.define('options', function() {
     'hideBluetoothSettings',
     'removeCloudPrintConnectorSection',
     'removeBluetoothDevice',
-    'setAutoOpenFileTypesDisabledAttribute',
+    'setAutoOpenFileTypesDisplayed',
     'setBackgroundModeCheckboxState',
     'setBluetoothState',
     'setCheckRevocationCheckboxState',

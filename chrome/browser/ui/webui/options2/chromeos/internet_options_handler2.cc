@@ -166,7 +166,7 @@ NetworkInfoDictionary::NetworkInfoDictionary() {
 NetworkInfoDictionary::NetworkInfoDictionary(const chromeos::Network* network) {
   set_service_path(network->service_path());
   set_icon(chromeos::NetworkMenuIcon::GetBitmap(network,
-      chromeos::NetworkMenuIcon::SIZE_SMALL));
+      chromeos::NetworkMenuIcon::COLOR_DARK));
   set_name(network->name());
   set_connecting(network->connecting());
   set_connected(network->connected());
@@ -175,7 +175,7 @@ NetworkInfoDictionary::NetworkInfoDictionary(const chromeos::Network* network) {
   set_remembered(false);
   set_shared(false);
   set_needs_new_plan(false);
-  set_policy_managed(chromeos::NetworkUIData::IsManaged(network->ui_data()));
+  set_policy_managed(network->ui_data().is_managed());
 }
 
 NetworkInfoDictionary::NetworkInfoDictionary(
@@ -183,7 +183,7 @@ NetworkInfoDictionary::NetworkInfoDictionary(
     const chromeos::Network* remembered) {
   set_service_path(remembered->service_path());
   set_icon(chromeos::NetworkMenuIcon::GetBitmap(
-      network ? network : remembered, chromeos::NetworkMenuIcon::SIZE_SMALL));
+      network ? network : remembered, chromeos::NetworkMenuIcon::COLOR_DARK));
   set_name(remembered->name());
   set_connecting(network ? network->connecting() : false);
   set_connected(network ? network->connected() : false);
@@ -192,7 +192,7 @@ NetworkInfoDictionary::NetworkInfoDictionary(
   set_remembered(true);
   set_shared(remembered->profile_type() == chromeos::PROFILE_SHARED);
   set_needs_new_plan(false);
-  set_policy_managed(chromeos::NetworkUIData::IsManaged(remembered->ui_data()));
+  set_policy_managed(remembered->ui_data().is_managed());
 }
 
 DictionaryValue* NetworkInfoDictionary::BuildDictionary() {
@@ -293,11 +293,16 @@ void InternetOptionsHandler::GetLocalizedValues(
     { "disconnectNetwork", IDS_OPTIONS_SETTINGS_DISCONNECT },
     { "preferredNetworks", IDS_OPTIONS_SETTINGS_PREFERRED_NETWORKS_LABEL },
     { "preferredNetworksPage", IDS_OPTIONS_SETTINGS_PREFERRED_NETWORKS_TITLE },
-    { "useSharedProxiesTitle", IDS_OPTIONS_SETTINGS_USE_SHARED_PROXIES },
+    { "useSharedProxies", IDS_OPTIONS_SETTINGS_USE_SHARED_PROXIES },
     { "addConnectionTitle",
       IDS_OPTIONS_SETTINGS_SECTION_TITLE_ADD_CONNECTION },
     { "addConnectionWifi", IDS_OPTIONS_SETTINGS_ADD_CONNECTION_WIFI },
     { "addConnectionVPN", IDS_STATUSBAR_NETWORK_ADD_VPN },
+    { "enableDataRoaming", IDS_OPTIONS_SETTINGS_ENABLE_DATA_ROAMING },
+    { "disableDataRoaming", IDS_OPTIONS_SETTINGS_DISABLE_DATA_ROAMING },
+    { "dataRoamingDisableToggleTooltip",
+      IDS_OPTIONS_SETTINGS_TOGGLE_DATA_ROAMING_RESTRICTION },
+    { "activateNetwork", IDS_STATUSBAR_NETWORK_DEVICE_ACTIVATE },
 
     // Network options dialog labels.
     // TODO(kevers): Remove once dialog is deprecated.
@@ -404,7 +409,6 @@ void InternetOptionsHandler::GetLocalizedValues(
       IDS_OPTIONS_SETTINGS_INTERNET_CELLULAR_APN_CLEAR },
     { "cellularApnSet", IDS_OPTIONS_SETTINGS_INTERNET_CELLULAR_APN_SET },
     { "cellularApnCancel", IDS_CANCEL },
-    { "enableDataRoaming", IDS_OPTIONS_SETTINGS_ENABLE_DATA_ROAMING },
 
     // Security Tab.
 
@@ -787,7 +791,7 @@ void InternetOptionsHandler::PopulateDictionaryDetails(
         network->service_path());
   }
 
-  const base::DictionaryValue* ui_data = network->ui_data();
+  const chromeos::NetworkUIData& ui_data = network->ui_data();
   const base::DictionaryValue* onc =
       cros_->FindOncForNetwork(network->unique_id());
 
@@ -1034,9 +1038,8 @@ void InternetOptionsHandler::SetActivationButtonVisibility(
 }
 
 void InternetOptionsHandler::CreateModalPopup(views::WidgetDelegate* view) {
-  views::Widget* window = browser::CreateViewsWindow(GetNativeWindow(),
-                                                     view,
-                                                     STYLE_GENERIC);
+  views::Widget* window = views::Widget::CreateWindowWithParent(
+      view, GetNativeWindow());
   window->SetAlwaysOnTop(true);
   window->Show();
 }
@@ -1217,7 +1220,7 @@ ListValue* InternetOptionsHandler::GetWirelessList() {
     network_dict.set_icon(
         chromeos::NetworkMenuIcon::GetDisconnectedBitmap(
             chromeos::NetworkMenuIcon::BARS,
-            chromeos::NetworkMenuIcon::SIZE_SMALL));
+            chromeos::NetworkMenuIcon::COLOR_DARK));
     network_dict.set_name(
         l10n_util::GetStringUTF8(IDS_OPTIONS_SETTINGS_OTHER_CELLULAR_NETWORKS));
     network_dict.set_connectable(true);

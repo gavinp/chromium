@@ -28,8 +28,11 @@ enum ASH_EXPORT LauncherItemType {
   // Represents a tabbed browser.
   TYPE_TABBED,
 
-  // Represents an app window.
-  TYPE_APP,
+  // Represents a running app panel.
+  TYPE_APP_PANEL,
+
+  // Represents a pinned shortcut to an app.
+  TYPE_APP_SHORTCUT,
 
   // Toggles visiblity of the app list.
   TYPE_APP_LIST,
@@ -50,9 +53,6 @@ struct ASH_EXPORT LauncherItem {
   ~LauncherItem();
 
   LauncherItemType type;
-
-  // Number of tabs. Only used if this is TYPE_TABBED.
-  int num_tabs;
 
   // Whether it is incognito. Only used if this is TYPE_TABBED.
   bool is_incognito;

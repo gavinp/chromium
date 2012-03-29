@@ -12,39 +12,24 @@ namespace appcache {
 class AppCacheService;
 }
 
-namespace fileapi {
-class FileSystemContext;
-}
-
 namespace net {
 class HostResolver;
 class URLRequestContext;
 }
 
-namespace webkit_blob {
-class BlobStorageController;
-}
-
 namespace content {
-
-class MediaObserver;
 
 // ResourceContext contains the relevant context information required for
 // resource loading. It lives on the IO thread, although it is constructed on
-// the UI thread.
+// the UI thread. It must be destructed on the IO thread.
 class CONTENT_EXPORT ResourceContext : public base::SupportsUserData {
  public:
   static appcache::AppCacheService* GetAppCacheService(
       ResourceContext* resource_context);
-  static fileapi::FileSystemContext* GetFileSystemContext(
-      ResourceContext* resource_context);
-  static webkit_blob::BlobStorageController* GetBlobStorageController(
-      ResourceContext* resource_context);
 
-  virtual ~ResourceContext() {}
+  virtual ~ResourceContext();
   virtual net::HostResolver* GetHostResolver() = 0;
   virtual net::URLRequestContext* GetRequestContext() = 0;
-  virtual MediaObserver* GetMediaObserver() = 0;
 };
 
 }  // namespace content

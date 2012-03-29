@@ -225,8 +225,6 @@ const char kWebKitAllowDisplayingInsecureContent[] =
     "webkit.webprefs.allow_displaying_insecure_content";
 const char kWebKitAllowRunningInsecureContent[] =
     "webkit.webprefs.allow_running_insecure_content";
-const char kWebKitXSSAuditorEnabled[] =
-    "webkit.webprefs.xss_auditor_enabled";
 
 // Settings below can be overridden for each tab individually.
 const char kDefaultCharset[] = "intl.charset_default";
@@ -248,8 +246,6 @@ const char kWebKitJavascriptCanOpenWindowsAutomatically[] =
     "webkit.webprefs.javascript_can_open_windows_automatically";
 const char kWebKitLoadsImagesAutomatically[] =
     "webkit.webprefs.loads_images_automatically";
-const char kWebKitImagesEnabled[] =
-    "webkit.webprefs.images_enabled";
 const char kWebKitPluginsEnabled[] = "webkit.webprefs.plugins_enabled";
 
 // Boolean which specifies whether the bookmark bar is visible on all tabs.
@@ -457,8 +453,11 @@ const char kAudioVolumeDb[] = "settings.audio.volume";
 // A double pref storing the user-requested volume.
 const char kAudioVolumePercent[] = "settings.audio.volume_percent";
 
-// A boolean pref set to true if TapToClick is being done in browser.
+// A boolean pref set to true if touchpad tap-to-click is enabled.
 const char kTapToClickEnabled[] = "settings.touchpad.enable_tap_to_click";
+
+// A boolean pref set to true if touchpad natural scrolling is enabled.
+const char kNaturalScroll[] = "settings.touchpad.natural_scroll";
 
 // A boolean pref set to true if primary mouse button is the left button.
 const char kPrimaryMouseButtonRight[] = "settings.mouse.primary_right";
@@ -468,6 +467,15 @@ const char kTouchpadSensitivity[] = "settings.touchpad.sensitivity2";
 
 // A boolean pref set to true if time should be displayed in 24-hour clock.
 const char kUse24HourClock[] = "settings.clock.use_24hour_clock";
+
+// A boolean pref to disable gdata.
+const char kDisableGData[] = "gdata.disabled";
+
+// A boolean pref to disable gdata over cellular connections.
+const char kDisableGDataOverCellular[] = "gdata.cellular.disabled";
+
+// A boolean pref to disable gdata hosted files.
+const char kDisableGDataHostedFiles[] = "gdata.hosted_files.disabled";
 
 // A string pref set to the current input method.
 const char kLanguageCurrentInputMethod[] =
@@ -872,12 +880,6 @@ const char kPinnedTabs[] = "pinned_tabs";
 
 // Boolean that is true when HTTP throttling is enabled.
 const char kHttpThrottlingEnabled[] = "http_throttling.enabled";
-
-// Boolean that is true until the user changes the setting of the check-box
-// that controls whether HTTP throttling is enabled. When this is false,
-// we do not allow FieldTrial experiments to modify whether the feature
-// is enabled or not.
-const char kHttpThrottlingMayExperiment[] = "http_throttling.may_experiment";
 
 // Integer containing the default Geolocation content setting.
 const char kGeolocationDefaultContentSetting[] =
@@ -1500,6 +1502,10 @@ const char kSyncAcknowledgedSyncTypes[] = "sync.acknowledged_types";
 // version (int64 represented as a string).
 const char kSyncMaxInvalidationVersions[] = "sync.max_invalidation_versions";
 
+// The GUID session sync will use to identify this client, even across sync
+// disable/enable events.
+const char kSyncSessionsGUID[] = "sync.session_sync_guid";
+
 // A string that can be used to restore sync encryption infrastructure on
 // startup so that the user doesn't need to provide credentials on each start.
 const char kSyncEncryptionBootstrapToken[] =
@@ -1798,6 +1804,10 @@ const char kMinFlickSpeedSquared[] =
     "gesture.min_flick_speed_squared";
 const char kMinimumTouchDownDurationInSecondsForClick[] =
     "gesture.minimum_touch_down_duration_in_seconds_for_click";
+
+// String value corresponding to ash::Shell::ShelfAutoHideBehavior.
+const char kShelfAutoHideBehavior[] = "auto_hide_behavior";
+
 #endif
 
 // Indicates whether the browser is in managed mode.

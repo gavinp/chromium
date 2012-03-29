@@ -49,7 +49,19 @@ bool DoUrlAndIconMatch(const FaviconURL& favicon_url,
       favicon_url.icon_type == static_cast<FaviconURL::IconType>(icon_type);
 }
 
+std::string UrlWithoutFragment(const GURL& gurl) {
+  GURL::Replacements replacements;
+  replacements.ClearRef();
+  return gurl.ReplaceComponents(replacements).spec();
+}
+
+bool UrlMatches(const GURL& gurl_a, const GURL& gurl_b) {
+  return UrlWithoutFragment(gurl_a) == UrlWithoutFragment(gurl_b);
+}
+
 }  // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 
 FaviconHandler::DownloadRequest::DownloadRequest()
     : icon_type(history::INVALID_ICON) {
@@ -69,6 +81,31 @@ FaviconHandler::DownloadRequest::DownloadRequest(
       icon_type(icon_type) {
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+FaviconHandler::FaviconCandidate::FaviconCandidate()
+    : bitmap_size(0),
+      icon_type(history::INVALID_ICON) {
+}
+
+FaviconHandler::FaviconCandidate::~FaviconCandidate() {
+}
+
+FaviconHandler::FaviconCandidate::FaviconCandidate(
+    const GURL& url,
+    const GURL& image_url,
+    const gfx::Image& image,
+    int bitmap_size,
+    history::IconType icon_type)
+    : url(url),
+      image_url(image_url),
+      image(image),
+      bitmap_size(bitmap_size),
+      icon_type(icon_type) {
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 FaviconHandler::FaviconHandler(Profile* profile,
                                FaviconHandlerDelegate* delegate,
                                Type icon_type)
@@ -76,7 +113,6 @@ FaviconHandler::FaviconHandler(Profile* profile,
       favicon_expired_(false),
       icon_types_(icon_type == FAVICON ? history::FAVICON :
           history::TOUCH_ICON | history::TOUCH_PRECOMPOSED_ICON),
-      current_url_index_(0),
       profile_(profile),
       delegate_(delegate) {
   DCHECK(profile_);
@@ -99,8 +135,7 @@ void FaviconHandler::FetchFavicon(const GURL& url) {
   url_ = url;
 
   favicon_expired_ = got_favicon_from_history_ = false;
-  current_url_index_ = 0;
-  urls_.clear();
+  image_urls_.clear();
 
   // Request the favicon from the history service. In parallel to this the
   // renderer is going to notify us (well TabContents) when the favicon url is
@@ -124,12 +159,47 @@ FaviconService* FaviconHandler::GetFaviconService() {
   return profile_->GetFaviconService(Profile::EXPLICIT_ACCESS);
 }
 
+bool FaviconHandler::UpdateFaviconCandidate(const GURL& url,
+                                            const GURL& image_url,
+                                            const gfx::Image& image,
+                                            history::IconType icon_type) {
+  bool update_candidate = false;
+  SkBitmap bitmap = *(image.ToSkBitmap());
+  int bitmap_size = std::max(bitmap.width(), bitmap.height());
+  bool exact_match = (bitmap_size == preferred_icon_size());
+  if (preferred_icon_size() == 0) {
+    // No preferred size, use this icon.
+    update_candidate = true;
+    exact_match = true;
+  } else if (favicon_candidate_.icon_type == history::INVALID_ICON) {
+    // No current candidate, use this.
+    update_candidate = true;
+  } else {
+    if (bitmap_size == preferred_icon_size()) {
+      // Exact match, use this.
+      update_candidate = true;
+    } else {
+      // Compare against current candidate.
+      int cur_size = favicon_candidate_.bitmap_size;
+      if ((bitmap_size >= preferred_icon_size() && bitmap_size < cur_size) ||
+          (cur_size < preferred_icon_size() && bitmap_size > cur_size)) {
+        update_candidate = true;
+      }
+    }
+  }
+  if (update_candidate) {
+    favicon_candidate_ = FaviconCandidate(
+        url, image_url, image, bitmap_size, icon_type);
+  }
+  return exact_match;
+}
+
 void FaviconHandler::SetFavicon(
     const GURL& url,
     const GURL& image_url,
     const gfx::Image& image,
     history::IconType icon_type) {
-  const SkBitmap& bitmap = image;
+  SkBitmap bitmap = *(image.ToSkBitmap());
   const gfx::Image& sized_image = (preferred_icon_size() == 0 ||
       (preferred_icon_size() == bitmap.width() &&
        preferred_icon_size() == bitmap.height())) ?
@@ -141,10 +211,12 @@ void FaviconHandler::SetFavicon(
       SetHistoryFavicon(url, image_url, image_data, icon_type);
   }
 
-  if (url == url_ && icon_type == history::FAVICON) {
+  if (UrlMatches(url, url_) && icon_type == history::FAVICON) {
     NavigationEntry* entry = GetEntry();
-    if (entry)
+    if (entry) {
+      entry->GetFavicon().url = image_url;
       UpdateFavicon(entry, &sized_image);
+    }
   }
 }
 
@@ -163,37 +235,38 @@ void FaviconHandler::UpdateFavicon(NavigationEntry* entry,
   if (!image)
     return;
 
-  entry->GetFavicon().bitmap = *image;
+  entry->GetFavicon().bitmap = *image->ToSkBitmap();
   delegate_->NotifyFaviconUpdated();
 }
 
 void FaviconHandler::OnUpdateFaviconURL(
     int32 page_id,
     const std::vector<FaviconURL>& candidates) {
-  NavigationEntry* entry = GetEntry();
-  if (!entry)
-    return;
 
-  bool got_favicon_url_update = false;
+  image_urls_.clear();
+  favicon_candidate_ = FaviconCandidate();
   for (std::vector<FaviconURL>::const_iterator i = candidates.begin();
        i != candidates.end(); ++i) {
-    if (!i->icon_url.is_empty() && (i->icon_type & icon_types_)) {
-      if (!got_favicon_url_update) {
-        got_favicon_url_update = true;
-        urls_.clear();
-        current_url_index_ = 0;
-      }
-      urls_.push_back(*i);
-    }
+    if (!i->icon_url.is_empty() && (i->icon_type & icon_types_))
+      image_urls_.push_back(*i);
   }
 
   // TODO(davemoore) Should clear on empty url. Currently we ignore it.
   // This appears to be what FF does as well.
-  // No URL was added.
-  if (!got_favicon_url_update)
+  if (image_urls_.empty())
     return;
 
   if (!GetFaviconService())
+    return;
+
+  ProcessCurrentUrl();
+}
+
+void FaviconHandler::ProcessCurrentUrl() {
+  DCHECK(!image_urls_.empty());
+
+  NavigationEntry* entry = GetEntry();
+  if (!entry)
     return;
 
   // For FAVICON.
@@ -229,19 +302,30 @@ void FaviconHandler::OnDidDownloadFavicon(int id,
   }
 
   if (!i->second.callback.is_null()) {
-    i->second.callback.Run(id, errored, *(&image));
+    i->second.callback.Run(id, errored, *image.ToSkBitmap());
   } else if (current_candidate() &&
              DoUrlAndIconMatch(*current_candidate(), image_url,
                                i->second.icon_type)) {
     // The downloaded icon is still valid when there is no FaviconURL update
     // during the downloading.
+    bool request_next_icon = true;
     if (!errored) {
-      SetFavicon(i->second.url, image_url, image, i->second.icon_type);
-    } else if (GetEntry() && ++current_url_index_ < urls_.size()) {
-      // Copies all candidate except first one and notifies the FaviconHandler,
-      // so the next candidate can be processed.
-      std::vector<FaviconURL> new_candidates(urls_.begin() + 1, urls_.end());
-      OnUpdateFaviconURL(0, new_candidates);
+      request_next_icon = !UpdateFaviconCandidate(
+          i->second.url, image_url, image, i->second.icon_type);
+    }
+    if (request_next_icon && GetEntry() && image_urls_.size() > 1) {
+      // Remove the first member of image_urls_ and process the remaining.
+      image_urls_.pop_front();
+      ProcessCurrentUrl();
+    } else if (favicon_candidate_.icon_type != history::INVALID_ICON) {
+      // No more icons to request, set the favicon from the candidate.
+      SetFavicon(favicon_candidate_.url,
+                 favicon_candidate_.image_url,
+                 favicon_candidate_.image,
+                 favicon_candidate_.icon_type);
+      // Reset candidate.
+      image_urls_.clear();
+      favicon_candidate_ = FaviconCandidate();
     }
   }
   download_requests_.erase(i);
@@ -249,7 +333,7 @@ void FaviconHandler::OnDidDownloadFavicon(int id,
 
 NavigationEntry* FaviconHandler::GetEntry() {
   NavigationEntry* entry = delegate_->GetActiveEntry();
-  if (entry && entry->GetURL() == url_)
+  if (entry && UrlMatches(entry->GetURL(), url_))
     return entry;
 
   // If the URL has changed out from under us (as will happen with redirects)

@@ -7,6 +7,7 @@
 #include "base/message_loop_proxy.h"
 #include "net/base/ip_endpoint.h"
 #include "remoting/proto/event.pb.h"
+#include "remoting/protocol/transport.h"
 
 namespace remoting {
 
@@ -30,24 +31,24 @@ MockDisconnectWindow::MockDisconnectWindow() {}
 
 MockDisconnectWindow::~MockDisconnectWindow() {}
 
-DisconnectWindow* DisconnectWindow::Create() {
-  return new MockDisconnectWindow();
+scoped_ptr<DisconnectWindow> DisconnectWindow::Create() {
+  return scoped_ptr<DisconnectWindow>(new MockDisconnectWindow());
 }
 
 MockContinueWindow::MockContinueWindow() {}
 
 MockContinueWindow::~MockContinueWindow() {}
 
-ContinueWindow* ContinueWindow::Create() {
-  return new MockContinueWindow();
+scoped_ptr<ContinueWindow> ContinueWindow::Create() {
+  return scoped_ptr<ContinueWindow>(new MockContinueWindow());
 }
 
 MockLocalInputMonitor::MockLocalInputMonitor() {}
 
 MockLocalInputMonitor::~MockLocalInputMonitor() {}
 
-LocalInputMonitor* LocalInputMonitor::Create() {
-  return new MockLocalInputMonitor();
+scoped_ptr<LocalInputMonitor> LocalInputMonitor::Create() {
+  return scoped_ptr<LocalInputMonitor>(new MockLocalInputMonitor());
 }
 
 MockChromotingHostContext::MockChromotingHostContext()

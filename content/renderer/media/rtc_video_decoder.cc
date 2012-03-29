@@ -31,7 +31,7 @@ using media::VideoDecoder;
 RTCVideoDecoder::RTCVideoDecoder(MessageLoop* message_loop,
                                  const std::string& url)
     : message_loop_(message_loop),
-      visible_size_(176, 144),
+      visible_size_(640, 480),
       url_(url),
       state_(kUnInitialized),
       got_first_frame_(false) {
@@ -61,14 +61,13 @@ void RTCVideoDecoder::Initialize(DemuxerStream* demuxer_stream,
 void RTCVideoDecoder::Play(const base::Closure& callback) {
   if (MessageLoop::current() != message_loop_) {
     message_loop_->PostTask(FROM_HERE,
-                            base::Bind(&RTCVideoDecoder::Play,
-                                       this, callback));
+                            base::Bind(&RTCVideoDecoder::Play, this, callback));
     return;
   }
 
   DCHECK_EQ(MessageLoop::current(), message_loop_);
 
-  VideoDecoder::Play(callback);
+  callback.Run();
 }
 
 void RTCVideoDecoder::Pause(const base::Closure& callback) {
@@ -83,7 +82,7 @@ void RTCVideoDecoder::Pause(const base::Closure& callback) {
 
   state_ = kPaused;
 
-  VideoDecoder::Pause(callback);
+  callback.Run();
 }
 
 void RTCVideoDecoder::Flush(const base::Closure& callback) {
@@ -164,7 +163,11 @@ bool RTCVideoDecoder::SetSize(int width, int height, int reserved) {
   visible_size_.SetSize(width, height);
 
   // TODO(vrk): Provide natural size when aspect ratio support is implemented.
-  host()->SetNaturalVideoSize(visible_size_);
+
+  // TODO(xhwang) host() can be NULL after r128289.  Remove this check when
+  // it is no longer needed.
+  if (host())
+    host()->SetNaturalVideoSize(visible_size_);
   return true;
 }
 

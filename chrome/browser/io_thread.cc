@@ -20,7 +20,6 @@
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/extensions/extension_event_router_forwarder.h"
-#include "chrome/browser/media/media_internals.h"
 #include "chrome/browser/net/chrome_net_log.h"
 #include "chrome/browser/net/chrome_network_delegate.h"
 #include "chrome/browser/net/chrome_url_request_context.h"
@@ -35,13 +34,13 @@
 #include "content/public/common/content_client.h"
 #include "content/public/common/url_fetcher.h"
 #include "net/base/cert_verifier.h"
-#include "net/base/default_origin_bound_cert_store.h"
+#include "net/base/default_server_bound_cert_store.h"
 #include "net/base/host_cache.h"
 #include "net/base/host_resolver.h"
 #include "net/base/mapped_host_resolver.h"
 #include "net/base/net_util.h"
-#include "net/base/origin_bound_cert_service.h"
 #include "net/base/sdch_manager.h"
+#include "net/base/server_bound_cert_service.h"
 #include "net/cookies/cookie_monster.h"
 #include "net/ftp/ftp_network_layer.h"
 #include "net/http/http_auth_filter.h"
@@ -212,8 +211,8 @@ ConstructProxyScriptFetcherContext(IOThread::Globals* globals,
   context->set_ftp_transaction_factory(
       globals->proxy_script_fetcher_ftp_transaction_factory.get());
   context->set_cookie_store(globals->system_cookie_store.get());
-  context->set_origin_bound_cert_service(
-      globals->system_origin_bound_cert_service.get());
+  context->set_server_bound_cert_service(
+      globals->system_server_bound_cert_service.get());
   context->set_network_delegate(globals->system_network_delegate.get());
   // TODO(rtenneti): We should probably use HttpServerPropertiesManager for the
   // system URLRequestContext too. There's no reason this should be tied to a
@@ -239,8 +238,8 @@ ConstructSystemRequestContext(IOThread::Globals* globals,
   context->set_ftp_transaction_factory(
       globals->system_ftp_transaction_factory.get());
   context->set_cookie_store(globals->system_cookie_store.get());
-  context->set_origin_bound_cert_service(
-      globals->system_origin_bound_cert_service.get());
+  context->set_server_bound_cert_service(
+      globals->system_server_bound_cert_service.get());
   return context;
 }
 
@@ -286,10 +285,6 @@ SystemURLRequestContextGetter::GetIOMessageLoopProxy() const {
 IOThread::Globals::Globals() {}
 
 IOThread::Globals::~Globals() {}
-
-IOThread::Globals::MediaGlobals::MediaGlobals() {}
-
-IOThread::Globals::MediaGlobals::~MediaGlobals() {}
 
 // |local_state| is passed in explicitly in order to (1) reduce implicit
 // dependencies and (2) make IOThread more flexible for testing.
@@ -374,8 +369,6 @@ void IOThread::Init() {
   DCHECK(!globals_);
   globals_ = new Globals;
 
-  globals_->media.media_internals.reset(new MediaInternals());
-
   // Add an observer that will emit network change events to the ChromeNetLog.
   // Assuming NetworkChangeNotifier dispatches in FIFO order, we should be
   // logging the network change before other IO thread consumers respond to it.
@@ -393,7 +386,7 @@ void IOThread::Init() {
       &system_enable_referrers_));
   globals_->host_resolver.reset(
       CreateGlobalHostResolver(net_log_));
-  globals_->cert_verifier.reset(new net::CertVerifier);
+  globals_->cert_verifier.reset(net::CertVerifier::CreateDefault());
   globals_->transport_security_state.reset(new net::TransportSecurityState(""));
   globals_->ssl_config_service = GetSSLConfigService();
   globals_->http_auth_handler_factory.reset(CreateDefaultAuthHandlerFactory(
@@ -404,15 +397,15 @@ void IOThread::Init() {
       net::ProxyService::CreateDirectWithNetLog(net_log_));
   // In-memory cookie store.
   globals_->system_cookie_store = new net::CookieMonster(NULL, NULL);
-  // In-memory origin-bound cert store.
-  globals_->system_origin_bound_cert_service.reset(
-      new net::OriginBoundCertService(
-          new net::DefaultOriginBoundCertStore(NULL)));
+  // In-memory server bound cert store.
+  globals_->system_server_bound_cert_service.reset(
+      new net::ServerBoundCertService(
+          new net::DefaultServerBoundCertStore(NULL)));
   net::HttpNetworkSession::Params session_params;
   session_params.host_resolver = globals_->host_resolver.get();
   session_params.cert_verifier = globals_->cert_verifier.get();
-  session_params.origin_bound_cert_service =
-      globals_->system_origin_bound_cert_service.get();
+  session_params.server_bound_cert_service =
+      globals_->system_server_bound_cert_service.get();
   session_params.transport_security_state =
       globals_->transport_security_state.get();
   session_params.proxy_service =
@@ -586,8 +579,8 @@ void IOThread::InitSystemRequestContextOnIOThread() {
   net::HttpNetworkSession::Params system_params;
   system_params.host_resolver = globals_->host_resolver.get();
   system_params.cert_verifier = globals_->cert_verifier.get();
-  system_params.origin_bound_cert_service =
-      globals_->system_origin_bound_cert_service.get();
+  system_params.server_bound_cert_service =
+      globals_->system_server_bound_cert_service.get();
   system_params.transport_security_state =
       globals_->transport_security_state.get();
   system_params.ssl_host_info_factory = NULL;

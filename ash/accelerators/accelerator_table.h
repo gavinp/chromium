@@ -13,9 +13,13 @@ namespace ash {
 enum AcceleratorAction {
   BRIGHTNESS_DOWN,
   BRIGHTNESS_UP,
-  CYCLE_BACKWARD,
-  CYCLE_FORWARD,
+  CYCLE_BACKWARD_MRU,
+  CYCLE_FORWARD_MRU,
+  CYCLE_BACKWARD_LINEAR,
+  CYCLE_FORWARD_LINEAR,
   EXIT,
+  NEW_INCOGNITO_WINDOW,
+  NEW_WINDOW,
   NEXT_IME,
   PREVIOUS_IME,
   SWITCH_IME,  // Switch to another IME depending on the accelerator.
@@ -27,15 +31,28 @@ enum AcceleratorAction {
   VOLUME_MUTE,
   VOLUME_UP,
   SHOW_OAK,
+  FOCUS_TRAY,
 #if defined(OS_CHROMEOS)
   LOCK_SCREEN,
 #endif
+  SELECT_WIN_0,
+  SELECT_WIN_1,
+  SELECT_WIN_2,
+  SELECT_WIN_3,
+  SELECT_WIN_4,
+  SELECT_WIN_5,
+  SELECT_WIN_6,
+  SELECT_WIN_7,
+  SELECT_LAST_WIN,
+  ROTATE_WINDOWS,
 #if !defined(NDEBUG)
   PRINT_LAYER_HIERARCHY,
   PRINT_WINDOW_HIERARCHY,
   ROTATE_SCREEN,
   TOGGLE_DESKTOP_BACKGROUND_MODE,
   TOGGLE_ROOT_WINDOW_FULL_SCREEN,
+  ADD_REMOVE_MONITOR,
+  CYCLE_MONITOR,
 #endif
 };
 
@@ -51,8 +68,14 @@ struct AcceleratorData {
 // Accelerators handled by AcceleratorController.
 extern const AcceleratorData kAcceleratorData[];
 
-// The numbers of elements in kAcceleratorData.
+// The number of elements in kAcceleratorData.
 extern const size_t kAcceleratorDataLength;
+
+// Actions allowed while user is not signed in or screen is locked.
+extern const AcceleratorAction kActionsAllowedAtLoginScreen[];
+
+// The number of elements in kActionsAllowedAtLoginScreen.
+extern const size_t kActionsAllowedAtLoginScreenLength;
 
 }  // namespace ash
 

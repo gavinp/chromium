@@ -6,6 +6,7 @@
 
 #include "base/event_types.h"
 #include "base/message_loop.h"
+#include "base/utf_string_conversions.h"
 #include "chrome/browser/ui/sad_tab_helper.h"
 #include "chrome/browser/ui/tab_contents/tab_contents_wrapper.h"
 #include "chrome/browser/ui/views/tab_contents/native_tab_contents_view_delegate.h"
@@ -13,11 +14,14 @@
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_view.h"
+#include "content/public/browser/web_drag_dest_delegate.h"
 #include "ui/aura/client/drag_drop_client.h"
 #include "ui/aura/client/drag_drop_delegate.h"
 #include "ui/aura/event.h"
 #include "ui/aura/root_window.h"
 #include "ui/aura/window.h"
+#include "ui/base/clipboard/clipboard.h"
+#include "ui/base/clipboard/custom_data_helper.h"
 #include "ui/base/dragdrop/drag_drop_types.h"
 #include "ui/base/dragdrop/os_exchange_data.h"
 #include "ui/base/dragdrop/os_exchange_data_provider_aura.h"
@@ -90,7 +94,21 @@ void PrepareDragData(const WebDropData& drop_data,
     provider->SetString(drop_data.plain_text);
   if (drop_data.url.is_valid())
     provider->SetURL(drop_data.url, drop_data.url_title);
-  // TODO(varunjain): support other formats.
+  if (!drop_data.text_html.empty())
+    provider->SetHtml(drop_data.text_html, drop_data.html_base_url);
+  if (!drop_data.filenames.empty()) {
+    std::vector<FilePath> paths;
+    for (std::vector<string16>::const_iterator it = drop_data.filenames.begin();
+        it != drop_data.filenames.end(); ++it)
+      paths.push_back(FilePath::FromUTF8Unsafe(UTF16ToUTF8(*it)));
+    provider->SetFilenames(paths);
+  }
+  if (!drop_data.custom_data.empty()) {
+    Pickle pickle;
+    ui::WriteCustomDataToPickle(drop_data.custom_data, &pickle);
+    provider->SetPickledData(ui::Clipboard::GetWebCustomDataFormatType(),
+                             pickle);
+  }
 }
 
 // Utility to fill a WebDropData object from ui::OSExchangeData.
@@ -98,15 +116,31 @@ void PrepareWebDropData(WebDropData* drop_data,
                         const ui::OSExchangeData& data) {
   string16 plain_text, url_title;
   GURL url;
+
   data.GetString(&plain_text);
   if (!plain_text.empty())
     drop_data->plain_text = plain_text;
+
   data.GetURLAndTitle(&url, &url_title);
   if (url.is_valid()) {
     drop_data->url = url;
     drop_data->url_title = url_title;
   }
-  // TODO(varunjain): support other formats.
+
+  data.GetHtml(&drop_data->text_html, &drop_data->html_base_url);
+
+  std::vector<FilePath> files;
+  if (data.GetFilenames(&files) && !files.empty()) {
+    for (std::vector<FilePath>::const_iterator it = files.begin();
+        it != files.end(); ++it)
+      drop_data->filenames.push_back(UTF8ToUTF16(it->AsUTF8Unsafe()));
+  }
+
+  Pickle pickle;
+  if (data.GetPickledData(ui::Clipboard::GetWebCustomDataFormatType(),
+                          &pickle))
+    ui::ReadCustomDataIntoMap(pickle.data(), pickle.size(),
+                              &drop_data->custom_data);
 }
 
 // Utilities to convert between WebKit::WebDragOperationsMask and
@@ -142,7 +176,8 @@ NativeTabContentsViewAura::NativeTabContentsViewAura(
     internal::NativeTabContentsViewDelegate* delegate)
     : views::NativeWidgetAura(delegate->AsNativeWidgetDelegate()),
       delegate_(delegate),
-      current_drag_op_(WebKit::WebDragOperationNone) {
+      current_drag_op_(WebKit::WebDragOperationNone),
+      drag_dest_delegate_(NULL) {
 }
 
 NativeTabContentsViewAura::~NativeTabContentsViewAura() {
@@ -159,7 +194,7 @@ void NativeTabContentsViewAura::InitNativeTabContentsView() {
   views::Widget::InitParams params(views::Widget::InitParams::TYPE_CONTROL);
   params.native_widget = this;
   // We don't draw anything so we don't need a texture.
-  params.create_texture_for_layer = false;
+  params.layer_type = ui::LAYER_NOT_DRAWN;
   params.ownership = views::Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET;
   params.parent = NULL;
   params.can_activate = true;
@@ -171,6 +206,9 @@ void NativeTabContentsViewAura::InitNativeTabContentsView() {
 #else
   NOTIMPLEMENTED() << "Need to animate in";
 #endif
+
+  if (delegate_)
+    drag_dest_delegate_ = delegate_->GetDragDestDelegate();
 
   // Hide the widget to prevent it from showing up on the root window. This is
   // needed for TabContentses that aren't immediately added to the tabstrip,
@@ -293,6 +331,9 @@ bool NativeTabContentsViewAura::OnMouseEvent(aura::MouseEvent* event) {
 
 void NativeTabContentsViewAura::OnDragEntered(
     const aura::DropTargetEvent& event) {
+  if (drag_dest_delegate_)
+    drag_dest_delegate_->DragInitialize(GetWebContents());
+
   WebDropData drop_data;
   PrepareWebDropData(&drop_data, event.data());
   WebKit::WebDragOperationsMask op = ConvertToWeb(event.source_operations());
@@ -301,6 +342,11 @@ void NativeTabContentsViewAura::OnDragEntered(
       GetNativeView()->GetRootWindow()->last_mouse_location();
   GetWebContents()->GetRenderViewHost()->DragTargetDragEnter(
       drop_data, event.location(), screen_pt, op);
+
+  if (drag_dest_delegate_) {
+    drag_dest_delegate_->OnReceiveDragData(event.data());
+    drag_dest_delegate_->OnDragEnter();
+  }
 }
 
 int NativeTabContentsViewAura::OnDragUpdated(
@@ -310,11 +356,17 @@ int NativeTabContentsViewAura::OnDragUpdated(
       GetNativeView()->GetRootWindow()->last_mouse_location();
   GetWebContents()->GetRenderViewHost()->DragTargetDragOver(
       event.location(), screen_pt, op);
+
+  if (drag_dest_delegate_)
+    drag_dest_delegate_->OnDragOver();
+
   return ConvertFromWeb(current_drag_op_);
 }
 
 void NativeTabContentsViewAura::OnDragExited() {
   GetWebContents()->GetRenderViewHost()->DragTargetDragLeave();
+  if (drag_dest_delegate_)
+    drag_dest_delegate_->OnDragLeave();
 }
 
 int NativeTabContentsViewAura::OnPerformDrop(
@@ -322,6 +374,8 @@ int NativeTabContentsViewAura::OnPerformDrop(
   GetWebContents()->GetRenderViewHost()->DragTargetDrop(
       event.location(),
       GetNativeView()->GetRootWindow()->last_mouse_location());
+  if (drag_dest_delegate_)
+    drag_dest_delegate_->OnDrop();
   return current_drag_op_;
 }
 

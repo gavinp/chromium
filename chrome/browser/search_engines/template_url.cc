@@ -12,6 +12,7 @@
 #include "base/string_number_conversions.h"
 #include "base/stringprintf.h"
 #include "base/utf_string_conversions.h"
+#include "chrome/browser/autocomplete/autocomplete_field_trial.h"
 #include "chrome/browser/google/google_util.h"
 #include "chrome/browser/search_engines/search_terms_data.h"
 #include "chrome/browser/search_engines/template_url_service.h"
@@ -397,20 +398,21 @@ std::string TemplateURLRef::ReplaceSearchTermsUsingTermsData(
         // to happen so that we replace the RLZ template with the
         // empty string.  (If we don't handle this case, we hit a
         // NOTREACHED below.)
-#if defined(OS_WIN) && defined(GOOGLE_CHROME_BUILD)
+#if defined(ENABLE_RLZ)
         string16 rlz_string = search_terms_data.GetRlzParameterValue();
         if (!rlz_string.empty()) {
-          rlz_string = L"rlz=" + rlz_string + L"&";
-          url.insert(i->index, UTF16ToUTF8(rlz_string));
+          url.insert(i->index, "rlz=" + UTF16ToUTF8(rlz_string) + "&");
         }
 #endif
         break;
       }
 
       case GOOGLE_SEARCH_FIELDTRIAL_GROUP:
-        // We are not curerntly running any fieldtrials that modulate the search
-        // url.  If we do, then we'd have some conditional insert such as:
-        // url.insert(i->index, used_www ? "gcx=w&" : "gcx=c&");
+        if (AutocompleteFieldTrial::InSuggestFieldTrial()) {
+          // Add something like sugexp=chrome,mod=5 to the URL request.
+          url.insert(i->index, "sugexp=chrome,mod=" +
+              AutocompleteFieldTrial::GetSuggestGroupName() + "&");
+        }
         break;
 
       case GOOGLE_UNESCAPED_SEARCH_TERMS: {

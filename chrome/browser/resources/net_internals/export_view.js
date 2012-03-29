@@ -25,8 +25,6 @@ var ExportView = (function() {
     securityStrippingCheckbox.onclick =
         this.onSetSecurityStripping_.bind(this, securityStrippingCheckbox);
 
-    this.downloadIframe_ = $(ExportView.DOWNLOAD_IFRAME_ID);
-
     this.saveFileButton_ = $(ExportView.SAVE_FILE_BUTTON_ID);
     this.saveFileButton_.onclick = this.onSaveFile_.bind(this);
     this.saveStatusText_ = $(ExportView.SAVE_STATUS_TEXT_ID);
@@ -46,7 +44,7 @@ var ExportView = (function() {
 
   // IDs for special HTML elements in export_view.html
   ExportView.MAIN_BOX_ID = 'export-view-tab-content';
-  ExportView.DOWNLOAD_IFRAME_ID = 'export-view-download-iframe';
+  ExportView.DOWNLOAD_ANCHOR_ID = 'export-view-download-anchor';
   ExportView.SAVE_FILE_BUTTON_ID = 'export-view-save-log-file';
   ExportView.SAVE_STATUS_TEXT_ID = 'export-view-save-status-text';
   ExportView.SECURITY_STRIPPING_CHECKBOX_ID =
@@ -163,7 +161,7 @@ var ExportView = (function() {
       var value = this.userCommentsTextArea_.value;
 
       // Reset the class name in case we had hilighted it earlier.
-      this.userCommentsTextArea_.className = ''
+      this.userCommentsTextArea_.className = '';
 
       // We don't accept empty explanations. We don't care what is entered, as
       // long as there is something (a single whitespace would work).
@@ -186,7 +184,13 @@ var ExportView = (function() {
       blobBuilder.append(dumpText, 'native');
       var textBlob = blobBuilder.getBlob('octet/stream');
       this.lastBlobURL_ = window.webkitURL.createObjectURL(textBlob);
-      this.downloadIframe_.src = this.lastBlobURL_;
+
+      // Update the anchor tag and simulate a click on it to start the
+      // download.
+      var downloadAnchor = $(ExportView.DOWNLOAD_ANCHOR_ID);
+      downloadAnchor.href = this.lastBlobURL_;
+      downloadAnchor.click();
+
       this.setSaveFileStatus('Dump successful', false);
     }
   };

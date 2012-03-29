@@ -18,18 +18,30 @@
 #include "chrome/browser/sync/profile_sync_service.h"
 #include "chrome/browser/sync/profile_sync_service_factory.h"
 #include "chrome/browser/ui/webui/ntp/new_tab_ui.h"
+#include "chrome/browser/ui/webui/web_ui_util.h"
 #include "chrome/common/chrome_notification_types.h"
 #include "chrome/common/url_constants.h"
+#include "content/public/browser/notification_service.h"
 #include "content/public/browser/notification_source.h"
 #include "content/public/browser/web_ui.h"
 
 namespace browser_sync {
 
 // Maximum number of session we're going to display on the NTP
-static const int kMaxSessionsToShow = 10;
+static const size_t kMaxSessionsToShow = 10;
 
 // Invalid value, used to note that we don't have a tab or window number.
 static const int kInvalidId = -1;
+
+namespace {
+
+// Comparator function for use with std::sort that will sort sessions by
+// descending modified_time (i.e., most recent first).
+bool SortSessionsByRecency(const SyncedSession* s1, const SyncedSession* s2) {
+  return s1->modified_time > s2->modified_time;
+}
+
+}  // namepace
 
 ForeignSessionHandler::ForeignSessionHandler() {
 }
@@ -62,12 +74,8 @@ void ForeignSessionHandler::Observe(
   switch (type) {
     case chrome::NOTIFICATION_SYNC_CONFIGURE_DONE:
     case chrome::NOTIFICATION_FOREIGN_SESSION_UPDATED:
-      HandleGetForeignSessions(&list_value);
-      break;
     case chrome::NOTIFICATION_FOREIGN_SESSION_DISABLED:
-      // Calling foreignSessions with empty list will automatically hide
-      // foreign session section.
-      web_ui()->CallJavascriptFunction("ntp.foreignSessions", list_value);
+      HandleGetForeignSessions(&list_value);
       break;
     default:
       NOTREACHED();
@@ -75,13 +83,13 @@ void ForeignSessionHandler::Observe(
 }
 
 SessionModelAssociator* ForeignSessionHandler::GetModelAssociator() {
-  ProfileSyncService* service(ProfileSyncServiceFactory::
-      GetInstance()->GetForProfile(Profile::FromWebUI(web_ui())));
+  Profile* profile = Profile::FromWebUI(web_ui());
+  ProfileSyncService* service =
+      ProfileSyncServiceFactory::GetInstance()->GetForProfile(profile);
   if (service == NULL)
     return NULL;
 
-  // We only want to set the model associator if there is one, and it is done
-  // syncing sessions.
+  // Only return the associator if it exists and it is done syncing sessions.
   SessionModelAssociator* model_associator =
       service->GetSessionModelAssociator();
   if (!service->ShouldPushChanges())
@@ -89,51 +97,57 @@ SessionModelAssociator* ForeignSessionHandler::GetModelAssociator() {
   return model_associator;
 }
 
+bool ForeignSessionHandler::IsTabSyncEnabled() {
+  Profile* profile = Profile::FromWebUI(web_ui());
+  ProfileSyncService* service =
+      ProfileSyncServiceFactory::GetInstance()->GetForProfile(profile);
+  return service && service->GetSessionModelAssociator();
+}
+
 void ForeignSessionHandler::HandleGetForeignSessions(const ListValue* args) {
   SessionModelAssociator* associator = GetModelAssociator();
   std::vector<const SyncedSession*> sessions;
 
-  if (associator == NULL) {
-    // Called before associator created, exit.
-    return;
-  }
-
-  // Note: we don't own the SyncedSessions themselves.
-  if (!associator->GetAllForeignSessions(&sessions)) {
-    LOG(ERROR) << "ForeignSessionHandler failed to get session data from"
-        "SessionModelAssociator.";
-    return;
-  }
-  int added_count = 0;
   ListValue session_list;
-  for (std::vector<const SyncedSession*>::const_iterator i =
-      sessions.begin(); i != sessions.end() &&
-      added_count < kMaxSessionsToShow; ++i) {
-    const SyncedSession* session = *i;
-    scoped_ptr<DictionaryValue> session_data(new DictionaryValue());
-    session_data->SetString("tag", session->session_tag);
-    session_data->SetString("name", session->session_name);
-    scoped_ptr<ListValue> window_list(new ListValue());
-    for (SyncedSession::SyncedWindowMap::const_iterator it =
-        session->windows.begin(); it != session->windows.end(); ++it) {
-      SessionWindow* window = it->second;
-      scoped_ptr<DictionaryValue> window_data(new DictionaryValue());
-      if (SessionWindowToValue(*window, window_data.get())) {
-        window_list->Append(window_data.release());
+  if (associator && associator->GetAllForeignSessions(&sessions)) {
+    // Sort sessions from most recent to least recent.
+    std::sort(sessions.begin(), sessions.end(), SortSessionsByRecency);
+
+    // Note: we don't own the SyncedSessions themselves.
+    for (size_t i = 0; i < sessions.size() && i < kMaxSessionsToShow; ++i) {
+      const SyncedSession* session = sessions[i];
+      scoped_ptr<DictionaryValue> session_data(new DictionaryValue());
+      session_data->SetString("tag", session->session_tag);
+      session_data->SetString("name", session->session_name);
+      scoped_ptr<ListValue> window_list(new ListValue());
+      for (SyncedSession::SyncedWindowMap::const_iterator it =
+           session->windows.begin(); it != session->windows.end(); ++it) {
+        SessionWindow* window = it->second;
+        scoped_ptr<DictionaryValue> window_data(new DictionaryValue());
+        if (SessionWindowToValue(*window, window_data.get()))
+          window_list->Append(window_data.release());
       }
+
+      session_data->Set("windows", window_list.release());
+      session_list.Append(session_data.release());
     }
-    session_data->Set("windows", window_list.release());
-    session_list.Append(session_data.release());
-    added_count++;
   }
-  web_ui()->CallJavascriptFunction("ntp.foreignSessions", session_list);
+  base::FundamentalValue tab_sync_enabled(IsTabSyncEnabled());
+  web_ui()->CallJavascriptFunction("ntp.setForeignSessions",
+                                   session_list,
+                                   tab_sync_enabled);
 }
 
 void ForeignSessionHandler::HandleOpenForeignSession(
     const ListValue* args) {
   size_t num_args = args->GetSize();
-  if (num_args > 3U || num_args == 0) {
-    LOG(ERROR) << "openForeignWindow called with only " << args->GetSize()
+  // Expect either 2 or 8 args. For restoring an entire window, only
+  // two arguments are required -- the session tag and the window id.
+  // To restore a tab, the additional args required are the tab id,
+  // and 4 properties of the event object (button, altKey, ctrlKey,
+  // metaKey, shiftKey) for determining how to open the tab.
+  if (num_args != 8U && num_args != 2U) {
+    LOG(ERROR) << "openForeignSession called with " << args->GetSize()
                << " arguments.";
     return;
   }
@@ -145,7 +159,7 @@ void ForeignSessionHandler::HandleOpenForeignSession(
     return;
   }
 
-  // Extract window number.
+  // Extract window number (always provided).
   std::string window_num_str;
   int window_num = kInvalidId;
   if (num_args >= 2 && (!args->GetString(1, &window_num_str) ||
@@ -157,7 +171,7 @@ void ForeignSessionHandler::HandleOpenForeignSession(
   // Extract tab id.
   std::string tab_id_str;
   SessionID::id_type tab_id = kInvalidId;
-  if (num_args == 3 && (!args->GetString(2, &tab_id_str) ||
+  if (num_args >= 3 && (!args->GetString(2, &tab_id_str) ||
       !base::StringToInt(tab_id_str, &tab_id))) {
     LOG(ERROR) << "Failed to extract tab SessionID.";
     return;
@@ -174,7 +188,9 @@ void ForeignSessionHandler::HandleOpenForeignSession(
       LOG(ERROR) << "Failed to load foreign tab.";
       return;
     }
-    SessionRestore::RestoreForeignSessionTab(profile, *tab);
+    WindowOpenDisposition disposition =
+        web_ui_util::GetDispositionFromClick(args, 3);
+    SessionRestore::RestoreForeignSessionTab(profile, *tab, disposition);
   } else {
     std::vector<const SessionWindow*> windows;
     // Note: we don't own the ForeignSessions themselves.

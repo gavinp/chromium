@@ -10,6 +10,7 @@
 #include "base/logging.h"
 #include "base/mac/bundle_locations.h"
 #include "base/mac/mac_util.h"
+#include "base/mac/scoped_nsautorelease_pool.h"
 #include "base/sys_string_conversions.h"
 #include "base/time.h"
 #include "chrome/app/chrome_command_ids.h"  // IDC_*
@@ -31,6 +32,7 @@
 #include "chrome/browser/ui/panels/panel_bounds_animation.h"
 #include "chrome/browser/ui/panels/panel_browser_window_cocoa.h"
 #include "chrome/browser/ui/panels/panel_manager.h"
+#include "chrome/browser/ui/panels/panel_resize_controller.h"
 #include "chrome/browser/ui/panels/panel_settings_menu_model.h"
 #include "chrome/browser/ui/panels/panel_strip.h"
 #import "chrome/browser/ui/panels/panel_titlebar_view_cocoa.h"
@@ -50,6 +52,12 @@ using content::WebContents;
 const int kMinimumWindowSize = 1;
 const double kBoundsAnimationSpeedPixelsPerSecond = 1000;
 const double kBoundsAnimationMaxDurationSeconds = 0.18;
+
+// Resize edge thickness, in screen pixels.
+const double kWidthOfMouseResizeArea = 4.0;
+// The distance the user has to move the mouse while keeping the left button
+// down before panel resizing operation actually starts.
+const double kDragThreshold = 3.0;
 
 // Replicate specific 10.6 SDK declarations for building with prior SDKs.
 #if !defined(MAC_OS_X_VERSION_10_6) || \
@@ -119,6 +127,297 @@ enum {
 }
 @end
 
+// Transparent view covering the whole panel in order to intercept mouse
+// messages for custom user resizing. We need custom resizing because panels
+// use their own constrained layout.
+// TODO(dimich): Pull the start/stop drag logic into a separate base class and
+// reuse between here and PanelTitlebarController.
+@interface PanelResizeByMouseOverlay : NSView {
+ @private
+   Panel* panel_;
+   NSPoint startMouseLocationScreen_;
+   PanelDragState dragState_;
+   scoped_nsobject<NSCursor> dragCursor_;
+   scoped_nsobject<NSCursor> eastWestCursor_;
+   scoped_nsobject<NSCursor> northSouthCursor_;
+   scoped_nsobject<NSCursor> northEastSouthWestCursor_;
+   scoped_nsobject<NSCursor> northWestSouthEastCursor_;
+}
+@end
+
+@implementation PanelResizeByMouseOverlay
+- (PanelResizeByMouseOverlay*)initWithFrame:(NSRect)frame panel:(Panel*)panel {
+  if ((self = [super initWithFrame:frame])) {
+    panel_ = panel;
+    // Initialize resize cursors, they are very likely to be needed so it's
+    // better to pre-init them then stutter the mouse later when it hovers over
+    // a resize edge. We use WebKit cursors that look similar to what OSX Lion
+    // uses. NSCursor class does not yet have support for those new cursors.
+    NSImage* image = gfx::GetCachedImageWithName(@"eastWestResizeCursor.png");
+    DCHECK(image);
+    eastWestCursor_.reset(
+        [[NSCursor alloc] initWithImage:image hotSpot:NSMakePoint(8,8)]);
+    image = gfx::GetCachedImageWithName(@"northSouthResizeCursor.png");
+    DCHECK(image);
+    northSouthCursor_.reset(
+        [[NSCursor alloc] initWithImage:image hotSpot:NSMakePoint(8,8)]);
+    image = gfx::GetCachedImageWithName(@"northEastSouthWestResizeCursor.png");
+    DCHECK(image);
+    northEastSouthWestCursor_.reset(
+        [[NSCursor alloc] initWithImage:image hotSpot:NSMakePoint(8,8)]);
+    image = gfx::GetCachedImageWithName(@"northWestSouthEastResizeCursor.png");
+    DCHECK(image);
+    northWestSouthEastCursor_.reset(
+        [[NSCursor alloc] initWithImage:image hotSpot:NSMakePoint(8,8)]);
+  }
+  return self;
+}
+
+- (BOOL)acceptsFirstMouse:(NSEvent*)event {
+  return YES;
+}
+
+  // NSWindow uses this method to figure out if this view is under the mouse
+  // and hence the one to handle the incoming mouse event.
+  // Since this view covers the whole panel, it is asked first.
+  // See if this is the mouse event we are interested in (in the resize areas)
+  // and return 'nil' to let NSWindow find another candidate otherwise.
+  // |point| is in coordinate system of the parent view.
+- (NSView*)hitTest:(NSPoint)point {
+  // If panel is not resizable, let the mouse events fall through.
+  if (!panel_->CanResizeByMouse())
+    return nil;
+
+  // Grab the view which coordinate system is used for hit-testing.
+  NSView* superview = [self superview];
+
+  NSRect frame = [self frame];
+  NSSize resizeAreaThickness = NSMakeSize(kWidthOfMouseResizeArea,
+                                          kWidthOfMouseResizeArea);
+  // Convert to the view coordinate system.
+  NSSize resizeAreaThicknessView = [superview convertSize:resizeAreaThickness
+                                                 fromView:nil];
+  frame = NSInsetRect(frame,
+                      resizeAreaThicknessView.width,
+                      resizeAreaThicknessView.height);
+  BOOL inResizeArea = ![superview mouse:point inRect:frame];
+  return inResizeArea ? self : nil;
+}
+
+- (void)mouseDown:(NSEvent*)event {
+  // If the panel is not resizable, hitTest should have failed and no mouse
+  // events should have came here.
+  DCHECK(panel_->CanResizeByMouse());
+  [self prepareForDrag:event];
+}
+
+- (void)mouseUp:(NSEvent*)event {
+  // The mouseUp while in drag should be processed by nested message loop
+  // in mouseDragged: method.
+  DCHECK(dragState_ != PANEL_DRAG_IN_PROGRESS);
+  // Cleanup in case the actual drag was not started (because of threshold).
+  [self cleanupAfterDrag];
+}
+
+- (void)mouseDragged:(NSEvent*)event {
+  if (dragState_ == PANEL_DRAG_SUPPRESSED)
+    return;
+
+  // In addition to events needed to control the drag operation, fetch the right
+  // mouse click events and key down events and ignore them, to prevent their
+  // accumulation in the queue and "playing out" when the mouse is released.
+  const NSUInteger mask =
+      NSLeftMouseUpMask | NSLeftMouseDraggedMask | NSKeyUpMask |
+      NSRightMouseDownMask | NSKeyDownMask ;
+
+  while (true) {
+    base::mac::ScopedNSAutoreleasePool autorelease_pool;
+    BOOL keepGoing = YES;
+
+    switch ([event type]) {
+      case NSLeftMouseDragged: {
+        // Set the resize cursor on every mouse drag event in case the mouse
+        // wandered outside the window and was switched to another one.
+        // This does not produce flicker, seems the real cursor is updated after
+        // mouseDrag is processed.
+        [dragCursor_ set];
+
+        // If drag didn't start yet, see if mouse moved far enough to start it.
+        if (dragState_ == PANEL_DRAG_CAN_START && ![self tryStartDrag:event])
+          return;
+
+        DCHECK(dragState_ == PANEL_DRAG_IN_PROGRESS);
+        // Get current mouse location in Cocoa's screen coordinates.
+        NSPoint mouseLocation =
+            [[event window] convertBaseToScreen:[event locationInWindow]];
+        [self resizeByMouse:mouseLocation];
+        break;
+      }
+
+      case NSKeyUp:
+        if ([event keyCode] == kVK_Escape) {
+          // The drag might not be started yet because of threshold, so check.
+          if (dragState_ == PANEL_DRAG_IN_PROGRESS)
+            [self endResize:YES];
+          keepGoing = NO;
+        }
+        break;
+
+      case NSLeftMouseUp:
+        // The drag might not be started yet because of threshold, so check.
+        if (dragState_ == PANEL_DRAG_IN_PROGRESS)
+          [self endResize:NO];
+        keepGoing = NO;
+        break;
+
+      case NSRightMouseDownMask:
+        break;
+
+      default:
+        // Dequeue and ignore other mouse and key events so the Chrome context
+        // menu does not come after right click on a page during Panel
+        // resize, or the keystrokes are not 'accumulated' and entered
+        // at once when the drag ends.
+        break;
+    }
+
+    if (!keepGoing)
+      break;
+
+    autorelease_pool.Recycle();
+
+    event = [NSApp nextEventMatchingMask:mask
+                               untilDate:[NSDate distantFuture]
+                                  inMode:NSDefaultRunLoopMode
+                                 dequeue:YES];
+
+  }
+  [self cleanupAfterDrag];
+}
+
+- (void)prepareForDrag:(NSEvent*)initialMouseDownEvent {
+  dragState_ = PANEL_DRAG_CAN_START;
+  NSWindow* window = [initialMouseDownEvent window];
+  startMouseLocationScreen_ =
+    [window convertBaseToScreen:[initialMouseDownEvent locationInWindow]];
+
+  // Make sure the cursor stays the same during whole resize operation.
+  // The cursor rects normally do not guarantee the same cursor, since the
+  // mouse may temporarily leave the cursor rect area (or even the window) so
+  // the cursor will flicker. Disable cursor rects and grab the current cursor
+  // so we can set it on mouseDragged: events to avoid flicker.
+  [[self window] disableCursorRects];
+  dragCursor_.reset([NSCursor currentCursor], scoped_policy::RETAIN);
+}
+
+-(void)cleanupAfterDrag {
+  dragState_ = PANEL_DRAG_SUPPRESSED;
+  [[self window] enableCursorRects];
+  dragCursor_.reset();
+  startMouseLocationScreen_ = NSZeroPoint;
+}
+
+- (BOOL)exceedsDragThreshold:(NSPoint)mouseLocation {
+  float deltaX = fabs(startMouseLocationScreen_.x - mouseLocation.x);
+  float deltaY = fabs(startMouseLocationScreen_.y - mouseLocation.y);
+  return deltaX > kDragThreshold || deltaY > kDragThreshold;
+}
+
+- (BOOL)tryStartDrag:(NSEvent*)event {
+  DCHECK(dragState_ == PANEL_DRAG_CAN_START);
+  NSPoint mouseLocation =
+      [[event window] convertBaseToScreen:[event locationInWindow]];
+
+  if (![self exceedsDragThreshold:mouseLocation])
+    return NO;
+
+  // Mouse moved over threshold, start drag.
+  dragState_ = PANEL_DRAG_IN_PROGRESS;
+  [self startResize:startMouseLocationScreen_];
+  return YES;
+}
+
+// |initialMouseLocation| is in screen coordinates.
+- (void)startResize:(NSPoint)initialMouseLocation {
+  DCHECK(dragState_ == PANEL_DRAG_IN_PROGRESS);
+
+  // TODO(dimich): move IsMouseNearFrameSide helper here and make sure it uses
+  // correct methods to detect edges, to avoid 1-px errors on the boundaries.
+  // The errors may come up because of different assumptions on which edge of
+  // a rect 'belongs' to a rect.
+  PanelResizeController::ResizingSides side =
+      PanelResizeController::IsMouseNearFrameSide(
+          cocoa_utils::ConvertPointFromCocoaCoordinates(initialMouseLocation),
+          kWidthOfMouseResizeArea,
+          panel_);
+
+  panel_->manager()->StartResizingByMouse(
+      panel_,
+      cocoa_utils::ConvertPointFromCocoaCoordinates(initialMouseLocation),
+      side);
+}
+
+// |initialMouseLocation| is in screen coordinates.
+- (void)resizeByMouse:(NSPoint)mouseLocation {
+  DCHECK(dragState_ == PANEL_DRAG_IN_PROGRESS);
+  panel_->manager()->ResizeByMouse(
+      cocoa_utils::ConvertPointFromCocoaCoordinates(mouseLocation));
+}
+
+- (void)endResize:(BOOL)cancelled {
+  DCHECK(dragState_ == PANEL_DRAG_IN_PROGRESS);
+  panel_->manager()->EndResizingByMouse(cancelled);
+}
+
+-(void)resetCursorRects
+{
+  if(!panel_->CanResizeByMouse())
+    return;
+
+  NSRect bounds = [self bounds];
+
+  // Left vertical edge.
+  NSRect rect = NSMakeRect(NSMinX(bounds),
+                           NSMinY(bounds) + kWidthOfMouseResizeArea,
+                           kWidthOfMouseResizeArea,
+                           NSHeight(bounds) - 2 * kWidthOfMouseResizeArea);
+  [self addCursorRect:rect cursor:eastWestCursor_];
+
+  // Right vertical edge.
+  rect.origin.x = NSMaxX(bounds) - kWidthOfMouseResizeArea;
+  [self addCursorRect:rect cursor:eastWestCursor_];
+
+  // Top horizontal edge.
+  rect = NSMakeRect(NSMinX(bounds) + kWidthOfMouseResizeArea,
+                    NSMaxY(bounds) - kWidthOfMouseResizeArea,
+                    NSWidth(bounds) - 2 * kWidthOfMouseResizeArea,
+                    kWidthOfMouseResizeArea);
+  [self addCursorRect:rect cursor:northSouthCursor_];
+
+  // Bottom horizontal edge.
+  rect.origin.y = NSMinY(bounds);
+  [self addCursorRect:rect cursor:northSouthCursor_];
+
+  // Top left corner.
+  rect = NSMakeRect(NSMinX(bounds),
+                    NSMaxY(bounds) - kWidthOfMouseResizeArea,
+                    kWidthOfMouseResizeArea,
+                    NSMaxY(bounds));
+  [self addCursorRect:rect cursor:northWestSouthEastCursor_];
+
+  // Top right corner.
+  rect.origin.x = NSMaxX(bounds) - kWidthOfMouseResizeArea;
+  [self addCursorRect:rect cursor:northEastSouthWestCursor_];
+
+  // Bottom right corner.
+  rect.origin.y = NSMinY(bounds);
+  [self addCursorRect:rect cursor:northWestSouthEastCursor_];
+
+  // Bottom left corner.
+  rect.origin.x = NSMinX(bounds);
+  [self addCursorRect:rect cursor:northEastSouthWestCursor_];
+}
+@end
 
 @implementation PanelWindowControllerCocoa
 
@@ -186,6 +485,17 @@ enum {
 
   [[window contentView] addSubview:[contentsController_ view]];
   [self enableTabContentsViewAutosizing];
+
+  // Add a transparent overlay on top of the whole window to process mouse
+  // events - for example, user-resizing.
+  NSView* superview = [[window contentView] superview];
+  NSRect bounds = [superview bounds];
+  overlayView_.reset(
+      [[PanelResizeByMouseOverlay alloc] initWithFrame:bounds
+                                                 panel:windowShim_->panel()]);
+    // Set autoresizing behavior: glued to edges.
+  [overlayView_ setAutoresizingMask:(NSViewHeightSizable | NSViewWidthSizable)];
+  [superview addSubview:overlayView_ positioned:NSWindowAbove relativeTo:nil];
 }
 
 - (void)mouseEntered:(NSEvent*)event {
@@ -456,8 +766,6 @@ enum {
 }
 
 - (void)startDrag:(NSPoint)mouseLocation {
-  animateOnBoundsChange_ = NO;
-
   // Convert from Cocoa's screen coordinates to platform-indepedent screen
   // coordinates because PanelManager method takes platform-indepedent screen
   // coordinates.
@@ -467,7 +775,6 @@ enum {
 }
 
 - (void)endDrag:(BOOL)cancelled {
-  animateOnBoundsChange_ = YES;
   windowShim_->panel()->manager()->EndDragging(cancelled);
 }
 
@@ -502,21 +809,31 @@ enum {
   [[[[self window] contentView] superview]
       addTrackingArea:windowTrackingArea_.get()];
 
-  if (!animateOnBoundsChange_ || !animate) {
+  BOOL jumpToDestination = (!animateOnBoundsChange_ || !animate);
+
+  // If no animation is in progress, apply bounds change instantly.
+  if (jumpToDestination && ![self isAnimatingBounds]) {
     [[self window] setFrame:frame display:YES animate:NO];
     return;
   }
+
+  NSDictionary *windowResize = [NSDictionary dictionaryWithObjectsAndKeys:
+      [self window], NSViewAnimationTargetKey,
+      [NSValue valueWithRect:frame], NSViewAnimationEndFrameKey, nil];
+  NSArray *animations = [NSArray arrayWithObjects:windowResize, nil];
+
+  // If an animation is in progress, update the animation with new target
+  // bounds. Otherwise, apply bounds change instantly.
+  if (jumpToDestination && [self isAnimatingBounds]) {
+    [boundsAnimation_ setViewAnimations:animations];
+    return;
+  }
+
   // Will be enabled back in animationDidEnd callback.
   [self disableTabContentsViewAutosizing];
 
   // Terminate previous animation, if it is still playing.
   [self terminateBoundsAnimation];
-
-  NSDictionary *windowResize = [NSDictionary dictionaryWithObjectsAndKeys:
-      [self window], NSViewAnimationTargetKey,
-      [NSValue valueWithRect:frame], NSViewAnimationEndFrameKey, nil];
-
-  NSArray *animations = [NSArray arrayWithObjects:windowResize, nil];
 
   boundsAnimation_ =
       [[NSViewAnimation alloc] initWithViewAnimations:animations];
@@ -559,20 +876,24 @@ enum {
       progress, playingMinimizeAnimation_, animationStopToShowTitlebarOnly_);
 }
 
-- (void)animationDidEnd:(NSAnimation*)animation {
+- (void)cleanupAfterAnimation {
+  playingMinimizeAnimation_ = NO;
   Panel* panel = windowShim_->panel();
-  PanelStrip* panelStrip = panel->panel_strip();
-  if (panelStrip) {
-    playingMinimizeAnimation_ = NO;
-    if (panelStrip->type() == PanelStrip::DOCKED &&
-        panel->expansion_state() == Panel::EXPANDED)
-      [self enableTabContentsViewAutosizing];
-  }
+  if (!panel->IsMinimized())
+    [self enableTabContentsViewAutosizing];
 
   content::NotificationService::current()->Notify(
       chrome::NOTIFICATION_PANEL_BOUNDS_ANIMATIONS_FINISHED,
       content::Source<Panel>(panel),
       content::NotificationService::NoDetails());
+}
+
+- (void)animationDidEnd:(NSAnimation*)animation {
+  [self cleanupAfterAnimation];
+}
+
+- (void)animationDidStop:(NSAnimation*)animation {
+  [self cleanupAfterAnimation];
 }
 
 - (void)terminateBoundsAnimation {
@@ -588,8 +909,15 @@ enum {
   return boundsAnimation_ && [boundsAnimation_ isAnimating];
 }
 
-- (void)onTitlebarMouseClicked {
+- (void)onTitlebarMouseClicked:(int)modifierFlags {
   Panel* panel = windowShim_->panel();
+  if (modifierFlags & NSAlternateKeyMask) {
+    panel->OnTitlebarClicked(panel::APPLY_TO_ALL);
+    return;
+  }
+
+  // TODO(jennb): Move remaining titlebar click handling out of here.
+  // (http://crbug.com/118431)
   PanelStrip* panelStrip = panel->panel_strip();
   if (!panelStrip)
     return;
@@ -714,8 +1042,42 @@ enum {
 - (void)updateWindowLevel {
   if (![self isWindowLoaded])
     return;
-  BOOL onTop = windowShim_->panel()->always_on_top() &&
-               !windowShim_->panel()->manager()->is_full_screen();
-  [[self window] setLevel:(onTop ? NSStatusWindowLevel : NSNormalWindowLevel)];
+  // Make sure we don't draw on top of a window in full screen mode.
+  if (windowShim_->panel()->manager()->is_full_screen() ||
+      !windowShim_->panel()->always_on_top()) {
+    [[self window] setLevel:NSNormalWindowLevel];
+    return;
+  }
+  // If we simply use NSStatusWindowLevel (25) for all docked panel windows,
+  // IME composition windows for things like CJK languages appear behind panels.
+  // Pre 10.7, IME composition windows have a window level of 19, which is
+  // lower than the dock at level 20. Since we want panels to appear on top of
+  // the dock, it is impossible to enforce an ordering where IME > panel > dock,
+  // since IME < dock.
+  // On 10.7, IME composition windows and the dock both live at level 20, so we
+  // use the same window level for panels. Since newly created windows appear at
+  // the top of their window level, panels are typically on top of the dock, and
+  // the IME composition window correctly draws over the panel.
+  // An autohide dock causes problems though: since it's constantly being
+  // revealed, it ends up drawing on top of other windows at the same level.
+  // While this is OK for expanded panels, it makes minimized panels impossible
+  // to activate. As a result, we still use NSStatusWindowLevel for minimized
+  // panels, since it's impossible to compose IME text in them anyway.
+  if (windowShim_->panel()->IsMinimized()) {
+    [[self window] setLevel:NSStatusWindowLevel];
+    return;
+  }
+  [[self window] setLevel:NSDockWindowLevel];
 }
+
+- (void)enableResizeByMouse:(BOOL)enable {
+  if (![self isWindowLoaded])
+    return;
+  [[self window] invalidateCursorRectsForView:overlayView_];
+}
+
+- (BOOL)isActivationByClickingTitlebarEnabled {
+  return !windowShim_->panel()->always_on_top();
+}
+
 @end

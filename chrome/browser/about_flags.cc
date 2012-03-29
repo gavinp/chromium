@@ -91,6 +91,14 @@ const Experiment::Choice kOmniboxInlineHistoryQuickProviderChoices[] = {
     switches::kOmniboxInlineHistoryQuickProviderProhibited }
 };
 
+const Experiment::Choice kThreadedCompositingModeChoices[] = {
+  { IDS_FLAGS_THREADED_COMPOSITING_MODE_DEFAULT, "", "" },
+  { IDS_FLAGS_THREADED_COMPOSITING_MODE_DISABLED,
+    switches::kDisableThreadedCompositing, ""},
+  { IDS_FLAGS_THREADED_COMPOSITING_MODE_ENABLED,
+    switches::kEnableThreadedCompositing, ""}
+};
+
 // RECORDING USER METRICS FOR FLAGS:
 // -----------------------------------------------------------------------------
 // The first line of the experiment is the internal name. If you'd like to
@@ -180,18 +188,18 @@ const Experiment kExperiments[] = {
     SINGLE_VALUE_TYPE(switches::kForceCompositingMode)
   },
   {
-    "enable-threaded-compositing",
-    IDS_FLAGS_ENABLE_THREADED_COMPOSITING_NAME,
-    IDS_FLAGS_ENABLE_THREADED_COMPOSITING_DESCRIPTION,
+    "threaded-compositing-mode",
+    IDS_FLAGS_THREADED_COMPOSITING_MODE_NAME,
+    IDS_FLAGS_THREADED_COMPOSITING_MODE_DESCRIPTION,
     kOsAll,
-    SINGLE_VALUE_TYPE(switches::kEnableThreadedCompositing)
+    MULTI_VALUE_TYPE(kThreadedCompositingModeChoices)
   },
   {
-    "enable-threaded-animation",
-    IDS_FLAGS_ENABLE_THREADED_ANIMATION_NAME,
-    IDS_FLAGS_ENABLE_THREADED_ANIMATION_DESCRIPTION,
+    "disable-threaded-animation",
+    IDS_FLAGS_DISABLE_THREADED_ANIMATION_NAME,
+    IDS_FLAGS_DISABLE_THREADED_ANIMATION_DESCRIPTION,
     kOsAll,
-    SINGLE_VALUE_TYPE(switches::kEnableThreadedAnimation)
+    SINGLE_VALUE_TYPE(switches::kDisableThreadedAnimation)
   },
   {
     "composited-layer-borders",
@@ -433,6 +441,27 @@ const Experiment kExperiments[] = {
     SINGLE_VALUE_TYPE(switches::kEnableHttpPipelining)
   },
   {
+    "enable-spdy3",
+    IDS_FLAGS_ENABLE_SPDY3_NAME,
+    IDS_FLAGS_ENABLE_SPDY3_DESCRIPTION,
+    kOsAll,
+    SINGLE_VALUE_TYPE(switches::kEnableSpdy3)
+  },
+  {
+    "enable-spdy-flow-control",
+    IDS_FLAGS_ENABLE_SPDY_FLOW_CONTROL_NAME,
+    IDS_FLAGS_ENABLE_SPDY_FLOW_CONTROL_DESCRIPTION,
+    kOsAll,
+    SINGLE_VALUE_TYPE(switches::kEnableSpdyFlowControl)
+  },
+  {
+    "enable-async-dns",
+    IDS_FLAGS_ENABLE_ASYNC_DNS_NAME,
+    IDS_FLAGS_ENABLE_ASYNC_DNS_DESCRIPTION,
+    kOsWin | kOsMac | kOsLinux | kOsCrOS,
+    SINGLE_VALUE_TYPE(switches::kEnableAsyncDns)
+  },
+  {
     "enable-video-track",
     IDS_FLAGS_ENABLE_VIDEO_TRACK_NAME,
     IDS_FLAGS_ENABLE_VIDEO_TRACK_DESCRIPTION,
@@ -529,13 +558,6 @@ const Experiment kExperiments[] = {
     SINGLE_VALUE_TYPE(switches::kEnableMediaStream)
   },
   {
-    "disable-uber-page",
-    IDS_FLAGS_DISABLE_UBER_PAGE_NAME,
-    IDS_FLAGS_DISABLE_UBER_PAGE_DESCRIPTION,
-    kOsAll,
-    SINGLE_VALUE_TYPE(switches::kDisableUberPage)
-  },
-  {
     "enable-shadow-dom",
     IDS_FLAGS_SHADOW_DOM_NAME,
     IDS_FLAGS_SHADOW_DOM_DESCRIPTION,
@@ -613,6 +635,13 @@ const Experiment kExperiments[] = {
     IDS_FLAGS_NTP_SUGGESTIONS_PAGE_DESCRIPTION,
     kOsAll,
     SINGLE_VALUE_TYPE(switches::kEnableSuggestionsTabPage)
+  },
+  {
+    "enable-chrome-to-mobile",  // FLAGS:RECORD_UMA
+    IDS_FLAGS_ENABLE_CHROME_TO_MOBILE_NAME,
+    IDS_FLAGS_ENABLE_CHROME_TO_MOBILE_DESCRIPTION,
+    kOsAll,
+    SINGLE_VALUE_TYPE(switches::kEnableChromeToMobile)
   },
 };
 

@@ -33,10 +33,15 @@ const char kBackupShowHomeButton[] = "backup.browser.show_home_button";
 const char kBackupRestoreOnStartup[] = "backup.session.restore_on_startup";
 const char kBackupURLsToRestoreOnStartup[] =
     "backup.session.urls_to_restore_on_startup";
+const char kBackupPinnedTabs[] = "backup.pinned_tabs";
 const char kBackupExtensionsIDs[] = "backup.extensions.ids";
 const char kBackupSignature[] = "backup._signature";
+const char kBackupVersion[] = "backup._version";
 
 }  // namespace
+
+// static
+const int ProtectedPrefsWatcher::kCurrentVersionNumber = 2;
 
 ProtectedPrefsWatcher::ProtectedPrefsWatcher(Profile* profile)
     : is_backup_valid_(true),
@@ -66,10 +71,26 @@ void ProtectedPrefsWatcher::RegisterUserPrefs(PrefService* prefs) {
                              PrefService::UNSYNCABLE_PREF);
   prefs->RegisterListPref(kBackupURLsToRestoreOnStartup,
                           PrefService::UNSYNCABLE_PREF);
+  prefs->RegisterListPref(kBackupPinnedTabs,
+                          PrefService::UNSYNCABLE_PREF);
   prefs->RegisterListPref(kBackupExtensionsIDs,
                           PrefService::UNSYNCABLE_PREF);
   prefs->RegisterStringPref(kBackupSignature, "",
                             PrefService::UNSYNCABLE_PREF);
+  prefs->RegisterIntegerPref(kBackupVersion, 1,
+                             PrefService::UNSYNCABLE_PREF);
+}
+
+bool ProtectedPrefsWatcher::DidPrefChange(const std::string& path) const {
+  const base::Value* backup_value = GetBackupForPref(path);
+  if (!backup_value) {
+    LOG(WARNING) << "No backup for " << path;
+    return false;
+  }
+  const PrefService::Preference* new_pref =
+      profile_->GetPrefs()->FindPreference(path.c_str());
+  DCHECK(new_pref);
+  return !backup_value->Equals(new_pref->GetValue());
 }
 
 const base::Value* ProtectedPrefsWatcher::GetBackupForPref(
@@ -133,6 +154,7 @@ void ProtectedPrefsWatcher::InitBackup() {
                     prefs->GetInteger(prefs::kRestoreOnStartup));
   prefs->Set(kBackupURLsToRestoreOnStartup,
              *prefs->GetList(prefs::kURLsToRestoreOnStartup));
+  prefs->Set(kBackupPinnedTabs, *prefs->GetList(prefs::kPinnedTabs));
   ListPrefUpdate extension_ids_update(prefs, kBackupExtensionsIDs);
   base::ListValue* extension_ids = extension_ids_update.Get();
   extension_ids->Clear();
@@ -141,6 +163,25 @@ void ProtectedPrefsWatcher::InitBackup() {
        it != cached_extension_ids_.end(); ++it) {
     extension_ids->Append(base::Value::CreateStringValue(*it));
   }
+  prefs->SetInteger(kBackupVersion, kCurrentVersionNumber);
+  UpdateBackupSignature();
+}
+
+void ProtectedPrefsWatcher::MigrateOldBackupIfNeeded() {
+  PrefService* prefs = profile_->GetPrefs();
+
+  int current_version = prefs->GetInteger(kBackupVersion);
+  VLOG(1) << "Backup version: " << current_version;
+  if (current_version == kCurrentVersionNumber)
+    return;
+
+  switch (current_version) {
+    case 1:
+      prefs->Set(kBackupPinnedTabs, *prefs->GetList(prefs::kPinnedTabs));
+      // FALL THROUGH
+  }
+
+  prefs->SetInteger(kBackupVersion, kCurrentVersionNumber);
   UpdateBackupSignature();
 }
 
@@ -173,6 +214,8 @@ bool ProtectedPrefsWatcher::UpdateBackupEntry(const std::string& pref_name) {
   } else if (pref_name == prefs::kURLsToRestoreOnStartup) {
     prefs->Set(kBackupURLsToRestoreOnStartup,
                *prefs->GetList(prefs::kURLsToRestoreOnStartup));
+  } else if (pref_name == prefs::kPinnedTabs) {
+    prefs->Set(kBackupPinnedTabs, *prefs->GetList(prefs::kPinnedTabs));
   } else {
     NOTREACHED();
     return false;
@@ -216,14 +259,16 @@ void ProtectedPrefsWatcher::ValidateBackup() {
         kProtectorErrorValueValidZero,
         kProtectorErrorCount);
   } else if (IsSignatureValid()) {
+    MigrateOldBackupIfNeeded();
     UMA_HISTOGRAM_ENUMERATION(
         kProtectorHistogramPrefs,
         kProtectorErrorValueValid,
         kProtectorErrorCount);
   } else {
     LOG(WARNING) << "Invalid backup signature";
-    // Further changes to protected prefs will overwrite the signature.
     is_backup_valid_ = false;
+    // The whole backup has been compromised, overwrite it.
+    InitBackup();
     UMA_HISTOGRAM_ENUMERATION(
         kProtectorHistogramPrefs,
         kProtectorErrorBackupInvalid,
@@ -232,7 +277,9 @@ void ProtectedPrefsWatcher::ValidateBackup() {
 }
 
 std::string ProtectedPrefsWatcher::GetSignatureData(PrefService* prefs) const {
-  // std::stringstream data;
+  int current_version = prefs->GetInteger(kBackupVersion);
+  // TODO(ivankr): replace this with some existing reliable serializer.
+  // JSONWriter isn't a good choice because JSON formatting may change suddenly.
   std::string data = base::StringPrintf(
       "%s|%d|%d|%d",
       prefs->GetString(kBackupHomePage).c_str(),
@@ -254,6 +301,27 @@ std::string ProtectedPrefsWatcher::GetSignatureData(PrefService* prefs) const {
            cached_extension_ids_.begin();
        it != cached_extension_ids_.end(); ++it) {
     base::StringAppendF(&data, "|%s", it->c_str());
+  }
+  if (current_version >= 2) {
+    // Version itself is included only since version 2 since it wasn't there
+    // in version 1.
+    base::StringAppendF(&data, "|v%d", current_version);
+    const base::ListValue* pinned_tabs = prefs->GetList(kBackupPinnedTabs);
+    for (base::ListValue::const_iterator it = pinned_tabs->begin();
+         it != pinned_tabs->end(); ++it) {
+      const base::DictionaryValue* tab = NULL;
+      if (!(*it)->GetAsDictionary(&tab)) {
+        NOTREACHED();
+        continue;
+      }
+      for (base::DictionaryValue::Iterator it2(*tab); it2.HasNext();
+           it2.Advance()) {
+        std::string value;
+        if (!it2.value().GetAsString(&value))
+          NOTREACHED();
+        base::StringAppendF(&data, "|%s|%s", it2.key().c_str(), value.c_str());
+      }
+    }
   }
   return data;
 }

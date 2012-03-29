@@ -12,7 +12,9 @@
 #include "chrome/browser/extensions/extension_uninstall_dialog.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_list.h"
+#include "chrome/browser/ui/views/ash/launcher/chrome_launcher_delegate.h"
 #include "chrome/common/extensions/extension.h"
 #include "chrome/common/extensions/extension_icon_set.h"
 #include "chrome/common/extensions/extension_resource.h"
@@ -21,6 +23,7 @@
 #include "grit/generated_resources.h"
 #include "grit/theme_resources.h"
 #include "third_party/skia/include/core/SkBitmap.h"
+#include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/gfx/codec/png_codec.h"
 #include "ui/gfx/image/image.h"
@@ -29,6 +32,7 @@ namespace {
 
 enum CommandId {
   LAUNCH = 100,
+  TOGGLE_PIN,
   OPTIONS,
   UNINSTALL,
   // Order matters in LAUNCHER_TYPE_xxxx and must match LaunchType.
@@ -112,6 +116,35 @@ bool IsExtensionEnabled(Profile* profile, const std::string& extension_id) {
       !service->GetTerminatedExtension(extension_id);
 }
 
+bool IsAppPinned(const std::string& extension_id) {
+  return ChromeLauncherDelegate::instance()->IsAppPinned(extension_id);
+}
+
+void PinApp(const std::string& extension_id,
+            ExtensionPrefs::LaunchType launch_type) {
+  ChromeLauncherDelegate::AppType app_type =
+      ChromeLauncherDelegate::APP_TYPE_TAB;
+  switch (launch_type) {
+    case ExtensionPrefs::LAUNCH_PINNED:
+    case ExtensionPrefs::LAUNCH_REGULAR:
+      app_type = ChromeLauncherDelegate::APP_TYPE_TAB;
+      break;
+    case ExtensionPrefs::LAUNCH_FULLSCREEN:
+    case ExtensionPrefs::LAUNCH_WINDOW:
+      app_type = ChromeLauncherDelegate::APP_TYPE_WINDOW;
+      break;
+    default:
+      NOTREACHED() << "Unknown launch_type=" << launch_type;
+      break;
+  }
+
+  ChromeLauncherDelegate::instance()->PinAppWithID(extension_id, app_type);
+}
+
+void UnpinApp(const std::string& extension_id) {
+  return ChromeLauncherDelegate::instance()->UnpinAppsWithID(extension_id);
+}
+
 }  // namespace
 
 ExtensionAppItem::ExtensionAppItem(Profile* profile,
@@ -191,9 +224,13 @@ void ExtensionAppItem::ShowExtensionOptions() {
     return;
 
   Browser* browser = BrowserList::GetLastActiveWithProfile(profile_);
+  if (!browser)
+    browser = Browser::Create(profile_);
+
   if (browser) {
     browser->AddSelectedTabWithURL(extension->options_url(),
                                    content::PAGE_TRANSITION_LINK);
+    browser->window()->Activate();
   }
 }
 
@@ -211,6 +248,21 @@ void ExtensionAppItem::OnImageLoaded(const gfx::Image& image,
     SetIcon(*image.ToSkBitmap());
   else
     LoadDefaultImage();
+}
+
+bool ExtensionAppItem::IsItemForCommandIdDynamic(int command_id) const {
+  return command_id == TOGGLE_PIN;
+}
+
+string16 ExtensionAppItem::GetLabelForCommandId(int command_id) const {
+  if (command_id == TOGGLE_PIN) {
+    return IsAppPinned(extension_id_) ?
+        l10n_util::GetStringUTF16(IDS_APP_LIST_CONTEXT_MENU_UNPIN) :
+        l10n_util::GetStringUTF16(IDS_APP_LIST_CONTEXT_MENU_PIN);
+  } else {
+    NOTREACHED();
+    return string16();
+  }
 }
 
 bool ExtensionAppItem::IsCommandIdChecked(int command_id) const {
@@ -242,6 +294,13 @@ bool ExtensionAppItem::GetAcceleratorForCommandId(
 void ExtensionAppItem::ExecuteCommand(int command_id) {
   if (command_id == LAUNCH) {
     Activate(0);
+  } else if (command_id == TOGGLE_PIN) {
+    if (IsAppPinned(extension_id_)) {
+      UnpinApp(extension_id_);
+    } else {
+      PinApp(extension_id_,
+             GetExtensionLaunchType(profile_, extension_id_));
+    }
   } else if (command_id >= LAUNCH_TYPE_START &&
              command_id < LAUNCH_TYPE_LAST) {
     SetExtensionLaunchType(profile_,
@@ -293,6 +352,11 @@ ui::MenuModel* ExtensionAppItem::GetContextMenuModel() {
   if (!context_menu_model_.get()) {
     context_menu_model_.reset(new ui::SimpleMenuModel(this));
     context_menu_model_->AddItem(LAUNCH, UTF8ToUTF16(title()));
+    context_menu_model_->AddSeparator();
+    context_menu_model_->AddItemWithStringId(
+        TOGGLE_PIN,
+        IsAppPinned(extension_id_) ? IDS_APP_LIST_CONTEXT_MENU_UNPIN :
+                                     IDS_APP_LIST_CONTEXT_MENU_PIN);
     context_menu_model_->AddSeparator();
     context_menu_model_->AddCheckItemWithStringId(
         LAUNCH_TYPE_REGULAR_TAB,

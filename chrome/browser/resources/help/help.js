@@ -28,6 +28,9 @@ cr.define('help', function() {
       uber.invokeMethodOnParent('setTitle', {title: title});
 
       $('product-license').innerHTML = localStrings.getString('productLicense');
+      if (cr.isChromeOS)
+        $('product-os-license').innerHTML =
+            localStrings.getString('productOsLicense');
 
       var productTOS = $('product-tos');
       if (productTOS)
@@ -126,7 +129,7 @@ cr.define('help', function() {
      * @private
      */
     setProgress_: function(progress) {
-      $('update-percentage').innerHTML = progress + "%";
+      $('update-percentage').innerHTML = progress + '%';
     },
 
     /**
@@ -253,6 +256,9 @@ cr.define('help', function() {
   };
 });
 
+/**
+ * onload listener to initialize the HelpPage.
+ */
 window.onload = function() {
   help.HelpPage.getInstance().initialize();
 };

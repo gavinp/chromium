@@ -125,11 +125,8 @@ bool PropertySet::UpdatePropertiesFromReader(MessageReader* reader) {
 
   while (array_reader.HasMoreData()) {
     MessageReader dict_entry_reader(NULL);
-    if (!array_reader.PopDictEntry(&dict_entry_reader))
-      continue;
-
-    if (!UpdatePropertyFromReader(&dict_entry_reader))
-      continue;
+    if (array_reader.PopDictEntry(&dict_entry_reader))
+      UpdatePropertyFromReader(&dict_entry_reader);
   }
 
   return true;
@@ -382,6 +379,7 @@ bool Property<std::vector<std::string> >::PopValueFromReader(
   if (!reader->PopVariant(&variant_reader))
     return false;
 
+  value_.clear();
   return variant_reader.PopArrayOfStrings(&value_);
 }
 
@@ -406,6 +404,7 @@ bool Property<std::vector<ObjectPath> >::PopValueFromReader(
   if (!reader->PopVariant(&variant_reader))
     return false;
 
+  value_.clear();
   return variant_reader.PopArrayOfObjectPaths(&value_);
 }
 

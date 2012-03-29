@@ -6,6 +6,7 @@
 #define ASH_LAUNCHER_LAUNCHER_VIEW_H_
 #pragma once
 
+#include <utility>
 #include <vector>
 
 #include "ash/launcher/launcher_button_host.h"
@@ -25,7 +26,6 @@ namespace ash {
 class LauncherDelegate;
 struct LauncherItem;
 class LauncherModel;
-class LauncherWindowCycler;
 class ViewModel;
 
 namespace internal {
@@ -64,6 +64,9 @@ class ASH_EXPORT LauncherView : public views::View,
   // isn't know.
   gfx::Rect GetIdealBoundsOfItemIcon(LauncherID id);
 
+  // Returns true if we're showing a menu.
+  bool IsShowingMenu() const;
+
  private:
   class FadeOutAnimationDelegate;
   class StartFadeAnimationDelegate;
@@ -99,6 +102,13 @@ class ASH_EXPORT LauncherView : public views::View,
   // Invoked when the mouse is dragged. Updates the models as appropriate.
   void ContinueDrag(const views::MouseEvent& event);
 
+  // Returns true if |typea| and |typeb| should be in the same drag range.
+  bool SameDragType(LauncherItemType typea, LauncherItemType typeb) const;
+
+  // Returns the range (in the model) the item at the specified index can be
+  // dragged to.
+  std::pair<int,int> GetDragRange(int index);
+
   // If there is a drag operation in progress it's canceled.
   void CancelDrag(views::View* deleted_view);
 
@@ -110,10 +120,6 @@ class ASH_EXPORT LauncherView : public views::View,
 
   // Shows the overflow menu.
   void ShowOverflowMenu();
-
-  // If |view| represents TYPE_BROWSER_SHORTCUT Reset() is invoked on the
-  // LauncherWindowCycler.
-  void MaybeResetWindowCycler(views::View* view);
 
   // Overridden from views::View:
   virtual gfx::Size GetPreferredSize() OVERRIDE;
@@ -181,9 +187,6 @@ class ASH_EXPORT LauncherView : public views::View,
 
   scoped_ptr<views::MenuRunner> launcher_menu_runner_;
 #endif
-
-  // Used to handle cycling among windows.
-  scoped_ptr<LauncherWindowCycler> cycler_;
 
   DISALLOW_COPY_AND_ASSIGN(LauncherView);
 };

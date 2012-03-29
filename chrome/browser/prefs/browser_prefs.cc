@@ -57,10 +57,10 @@
 #include "chrome/browser/ui/gesture_prefs.h"
 #include "chrome/browser/ui/prefs/prefs_tab_helper.h"
 #include "chrome/browser/ui/search_engines/keyword_editor_controller.h"
+#include "chrome/browser/ui/webui/extensions/extension_settings_handler.h"
 #include "chrome/browser/ui/webui/flags_ui.h"
 #include "chrome/browser/ui/webui/ntp/new_tab_page_handler.h"
 #include "chrome/browser/ui/webui/ntp/new_tab_ui.h"
-#include "chrome/browser/ui/webui/options/extension_settings_handler.h"
 #include "chrome/browser/ui/webui/plugins_ui.h"
 #include "chrome/browser/ui/webui/sync_promo/sync_promo_ui.h"
 #include "chrome/browser/upgrade_detector.h"
@@ -113,7 +113,6 @@ void RegisterLocalState(PrefService* local_state) {
   Browser::RegisterPrefs(local_state);
   browser_shutdown::RegisterPrefs(local_state);
   ExternalProtocolHandler::RegisterPrefs(local_state);
-  FlagsUI::RegisterPrefs(local_state);
   geolocation::RegisterPrefs(local_state);
   GoogleURLTracker::RegisterPrefs(local_state);
   IntranetRedirectDetector::RegisterPrefs(local_state);
@@ -127,7 +126,6 @@ void RegisterLocalState(PrefService* local_state) {
   ProfileManager::RegisterPrefs(local_state);
   SSLConfigServiceManager::RegisterPrefs(local_state);
   TaskManager::RegisterPrefs(local_state);
-  UpgradeDetector::RegisterPrefs(local_state);
   WebCacheManager::RegisterPrefs(local_state);
 
 #if defined(ENABLE_CONFIGURATION_POLICY)
@@ -144,14 +142,16 @@ void RegisterLocalState(PrefService* local_state) {
 
 #if !defined(OS_ANDROID)
   BackgroundModeManager::RegisterPrefs(local_state);
+  FlagsUI::RegisterPrefs(local_state);
   NewTabPageHandler::RegisterPrefs(local_state);
   printing::PrintJobManager::RegisterPrefs(local_state);
   PromoResourceService::RegisterPrefs(local_state);
+  UpgradeDetector::RegisterPrefs(local_state);
 #endif
 
 #if defined(OS_CHROMEOS)
   chromeos::AudioHandler::RegisterPrefs(local_state);
-  chromeos::InputMethodMenu::RegisterPrefs(local_state);
+  chromeos::language_prefs::RegisterPrefs(local_state);
   chromeos::NetworkMenuButton::RegisterPrefs(local_state);
   chromeos::ProxyConfigServiceImpl::RegisterPrefs(local_state);
   chromeos::UserManager::RegisterPrefs(local_state);
