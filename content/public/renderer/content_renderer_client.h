@@ -163,13 +163,13 @@ class ContentRendererClient {
                                              size_t length) = 0;
   virtual bool IsLinkVisited(unsigned long long link_hash) = 0;
   virtual void PrefetchHostName(const char* hostname, size_t length) = 0;
-  virtual void NewLinkPrerender(int prerender_id,
-                                int render_view_route_id,
-                                const GURL& url,
-                                const content::Referrer& referrer,
-                                const gfx::Size& size) = 0;
-  virtual void RemovedLinkPrerender(int prerender_id) = 0;
-  virtual void UnloadedLinkPrerender(int prerender_id) = 0;
+  virtual void AddPrerender(int prerender_id,
+                            const GURL& url,
+                            const content::Referrer& referrer,
+                            const gfx::Size& size,
+                            int render_view_route_id) = 0;
+  virtual void CancelPrerender(int prerender_id) = 0;
+  virtual void AbandonPrerender(int prerender_id) = 0;
   virtual bool ShouldOverridePageVisibilityState(
       const RenderView* render_view,
       WebKit::WebPageVisibilityState* override_state) const = 0;

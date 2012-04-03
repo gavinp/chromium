@@ -3472,6 +3472,13 @@ void RenderViewImpl::didSerializeDataForFrame(
     static_cast<int32>(status)));
 }
 
+// WebKit::WebPrerendererClient implementation ---------------------------------
+
+void RenderViewImpl::willAddPrerender(WebKit::WebPrerender* prerender) {
+  prerender->setRequestorID(routing_id());
+  prerender->setSize(size());
+}
+
 // content::RenderView implementation ------------------------------------------
 
 bool RenderViewImpl::Send(IPC::Message* message) {

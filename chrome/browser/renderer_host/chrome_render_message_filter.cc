@@ -114,11 +114,9 @@ bool ChromeRenderMessageFilter::OnMessageReceived(const IPC::Message& message,
                         OnCanTriggerClipboardRead)
     IPC_MESSAGE_HANDLER(ChromeViewHostMsg_CanTriggerClipboardWrite,
                         OnCanTriggerClipboardWrite)
-    IPC_MESSAGE_HANDLER(PrerenderMsg_NewLinkPrerender, OnNewLinkPrerender)
-    IPC_MESSAGE_HANDLER(PrerenderMsg_RemovedLinkPrerender,
-                        OnRemovedLinkPrerender)
-    IPC_MESSAGE_HANDLER(PrerenderMsg_UnloadedLinkPrerender,
-                        OnUnloadedLinkPrerender)
+    IPC_MESSAGE_HANDLER(PrerenderMsg_AddPrerender, OnAddPrerender)
+    IPC_MESSAGE_HANDLER(PrerenderMsg_CancelPrerender, OnCancelPrerender)
+    IPC_MESSAGE_HANDLER(PrerenderMsg_AbandonPrerender, OnAbandonPrerender)
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP()
 
@@ -531,33 +529,33 @@ void ChromeRenderMessageFilter::OnSetCookie(const IPC::Message& message,
 #endif
 }
 
-void ChromeRenderMessageFilter::OnNewLinkPrerender(
+void ChromeRenderMessageFilter::OnAddPrerender(
     int prerender_id,
-    int render_view_route_id,
     const GURL& url,
     const content::Referrer& referrer,
-    const gfx::Size& size) {
+    const gfx::Size& size,
+    int render_view_route_id) {
   BrowserThread::PostTask(
       BrowserThread::UI, FROM_HERE,
       base::Bind(
-          &prerender::PrerenderLinkManager::OnNewLinkPrerender,
-          profile_, prerender_id, render_process_id_, render_view_route_id,
-          url, referrer, size));
+          &prerender::PrerenderLinkManager::OnAddPrerender,
+          profile_, prerender_id, render_process_id_,
+          url, referrer, size, render_view_route_id));
 }
 
-void ChromeRenderMessageFilter::OnRemovedLinkPrerender(
+void ChromeRenderMessageFilter::OnCancelPrerender(
     int prerender_id) {
   BrowserThread::PostTask(
       BrowserThread::UI, FROM_HERE,
       base::Bind(
-          &prerender::PrerenderLinkManager::OnRemovedLinkPrerender,
+          &prerender::PrerenderLinkManager::OnCancelPrerender,
           profile_, prerender_id, render_process_id_));
 }
-void ChromeRenderMessageFilter::OnUnloadedLinkPrerender(
+void ChromeRenderMessageFilter::OnAbandonPrerender(
     int prerender_id) {
   BrowserThread::PostTask(
       BrowserThread::UI, FROM_HERE,
       base::Bind(
-          &prerender::PrerenderLinkManager::OnUnloadedLinkPrerender,
+          &prerender::PrerenderLinkManager::OnAbandonPrerender,
           profile_, prerender_id, render_process_id_));
 }

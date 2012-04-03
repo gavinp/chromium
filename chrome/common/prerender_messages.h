@@ -25,20 +25,20 @@ IPC_STRUCT_TRAITS_END()
 
 // Notifies of the insertion of a <link rel=prerender> element in the
 // document.
-IPC_MESSAGE_CONTROL5(PrerenderMsg_NewLinkPrerender,
-                     int /* prerender_id, assigned in WebCore */,
-                     int /* render_view_route_id of launcher */,
-                     GURL /* href from the element */,
+IPC_MESSAGE_CONTROL5(PrerenderMsg_AddPrerender,
+                     int /* id, assigned by WebKit */,
+                     GURL /* url */,
                      content::Referrer,
-                     gfx::Size);
+                     gfx::Size,
+                     int /* render_view_route_id of launcher */);
 
 // Notifies on removal of a <link rel=prerender> element from the document.
-IPC_MESSAGE_CONTROL1(PrerenderMsg_RemovedLinkPrerender,
-                     int /* id, assigned by the WebCore::PrerenderHandle */)
+IPC_MESSAGE_CONTROL1(PrerenderMsg_CancelPrerender,
+                     int /* id, assigned by WebKit */)
 
 // Notifies on unloading a <link rel=prerender> element from a frame.
-IPC_MESSAGE_CONTROL1(PrerenderMsg_UnloadedLinkPrerender,
-                     int /* id, assigned by the WebCore::PrerenderHandle */)
+IPC_MESSAGE_CONTROL1(PrerenderMsg_AbandonLinkPrerender,
+                     int /* id, assigned by WebKit */
 
 // Prerender View Host Messages
 // These are messages sent in relation to running prerenders.

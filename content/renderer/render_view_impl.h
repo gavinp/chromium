@@ -41,6 +41,7 @@
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebIconURL.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebNode.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebPageSerializerClient.h"
+#include "third_party/WebKit/Source/WebKit/chromium/public/WebPrerendererClient.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebPageVisibilityState.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebTextDirection.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebViewClient.h"
@@ -128,6 +129,7 @@ class WebMediaPlayerClient;
 class WebMouseEvent;
 class WebPeerConnectionHandler;
 class WebPeerConnectionHandlerClient;
+class WebPrerender;
 class WebSocketStreamHandle;
 class WebSpeechInputController;
 class WebSpeechInputListener;
@@ -167,6 +169,7 @@ class RenderViewImpl : public RenderWidget,
                        public WebKit::WebViewClient,
                        public WebKit::WebFrameClient,
                        public WebKit::WebPageSerializerClient,
+                       public WebKit::WebPrerendererClient,
                        public content::RenderView,
                        public webkit::npapi::WebPluginPageDelegate,
                        public webkit_media::WebMediaPlayerDelegate,
@@ -590,6 +593,10 @@ class RenderViewImpl : public RenderWidget,
       const WebKit::WebURL& frame_url,
       const WebKit::WebCString& data,
       PageSerializationStatus status) OVERRIDE;
+
+  // WebKit::WebPrerendererClient implementation -------------------------------
+
+  virtual void willAddPrerender(WebKit::WebPrerender* prerender) OVERRIDE;
 
   // content::RenderView implementation ----------------------------------------
 

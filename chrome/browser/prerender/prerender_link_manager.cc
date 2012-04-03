@@ -24,13 +24,13 @@ PrerenderLinkManager::PrerenderLinkManager(
 PrerenderLinkManager::~PrerenderLinkManager() {
 }
 
-void PrerenderLinkManager::OnNewLinkPrerenderImpl(
-    int prerender_id,
-    int child_id,
-    int render_view_route_id,
+void PrerenderLinkManager::OnAddPrerenderImpl(
+    const int prerender_id,
+    const int child_id,
     const GURL& orig_url,
     const content::Referrer& referrer,
-    const gfx::Size& ALLOW_UNUSED size) {
+    const gfx::Size& ALLOW_UNUSED size,
+    const int render_view_route_id) {
   // TODO(gavinp): Add tests to insure fragments work.
   url_canon::Replacements<char> replacements;
   replacements.ClearRef();
@@ -44,8 +44,8 @@ void PrerenderLinkManager::OnNewLinkPrerenderImpl(
   url_map_.insert(std::make_pair(url, child_and_prerender_id));
 }
 
-void PrerenderLinkManager::OnRemovedLinkPrerenderImpl(const int prerender_id,
-                                                      const int child_id) {
+void PrerenderLinkManager::OnCancelPrerenderImpl(const int prerender_id,
+                                                 const int child_id) {
   const ChildAndPrerenderIdPair child_and_prerender_id(child_id, prerender_id);
 
   PrerenderIdToUrlMap::iterator id_url_iter =
@@ -78,7 +78,7 @@ void PrerenderLinkManager::OnRemovedLinkPrerenderImpl(const int prerender_id,
     manager_->CancelAllPrerenders();
 }
 
-void PrerenderLinkManager::OnUnloadedLinkPrerenderImpl(
+void PrerenderLinkManager::OnAbandonPrerenderImpl(
     int prerender_id,
     int child_id) {
   // TODO(gavinp,cbentzel): Implement reasonable behaviour for
@@ -95,40 +95,40 @@ void PrerenderLinkManager::OnUnloadedLinkPrerenderImpl(
 }
 
 // static
-void PrerenderLinkManager::OnNewLinkPrerender(
+void PrerenderLinkManager::OnAddPrerender(
       Profile* profile,
       int prerender_id,
       int child_id,
-      int render_view_route_id,
       const GURL& url,
       const content::Referrer& referrer,
-      const gfx::Size& size) {
+      const gfx::Size& size,
+      int render_view_route_id) {
   if (prerender::PrerenderManager* prerender_manager =
       prerender::PrerenderManagerFactory::GetForProfile(profile)) {
-    prerender_manager->link_manager()->OnNewLinkPrerenderImpl(
+    prerender_manager->link_manager()->OnAddPrerenderImpl(
         prerender_id, child_id, render_view_route_id,
         url, referrer, size);
   }
 }
 
 // static
-void PrerenderLinkManager::OnRemovedLinkPrerender(Profile* profile,
-                                                  int prerender_id,
-                                                  int child_id) {
+void PrerenderLinkManager::OnCancelPrerender(Profile* profile,
+                                             int prerender_id,
+                                             int child_id) {
   if (prerender::PrerenderManager* prerender_manager =
       prerender::PrerenderManagerFactory::GetForProfile(profile))
-    prerender_manager->link_manager()->OnRemovedLinkPrerenderImpl(prerender_id,
-                                                                  child_id);
+    prerender_manager->link_manager()->OnCancelLinkPrerenderImpl(prerender_id,
+                                                                 child_id);
 }
 
 // static
-void PrerenderLinkManager::OnUnloadedLinkPrerender(Profile* profile,
-                                                   int prerender_id,
-                                                   int child_id) {
+void PrerenderLinkManager::OnAbandonPrerender(Profile* profile,
+                                              int prerender_id,
+                                              int child_id) {
   if (prerender::PrerenderManager* prerender_manager =
       prerender::PrerenderManagerFactory::GetForProfile(profile))
-    prerender_manager->link_manager()->OnUnloadedLinkPrerenderImpl(prerender_id,
-                                                                   child_id);
+    prerender_manager->link_manager()->OnAbandonPrerenderImpl(prerender_id,
+                                                              child_id);
 }
 
 }  // namespace prerender

@@ -258,27 +258,24 @@ void RendererWebKitPlatformSupportImpl::prefetchHostName(
       hostname_utf8.data(), hostname_utf8.length());
 }
 
-void RendererWebKitPlatformSupportImpl::newLinkPrerender(
-    int prerender_id,
-    WebKit::WebView* webView,
+void RendererWebKitPlatformSupportImpl::startPrerender(
+    const int prerender_id,
     const WebKit::WebURL& url,
     const WebKit::WebString& referrer,
     WebKit::WebReferrerPolicy policy,
-    const WebKit::WebSize& size) {
-  RenderViewImpl* render_view = RenderViewImpl::FromWebView(webView);
-  const int render_view_route_id = render_view->GetRoutingID();
+    const WebKit::WebSize& size,
+    const int requestor_id) {
   content::Referrer content_referrer(GURL(referrer), policy);
-  content::GetContentClient()->renderer()->NewLinkPrerender(
-      prerender_id, render_view_route_id, GURL(url), content_referrer, size);
+  content::GetContentClient()->renderer()->AddPrerender(
+      prerender_id, GURL(url), content_referrer, size, requestor_id);
 }
 
-void RendererWebKitPlatformSupportImpl::removedLinkPrerender(int prerender_id) {
-  content::GetContentClient()->renderer()->RemovedLinkPrerender(prerender_id);
+void RendererWebKitPlatformSupportImpl::cancelPrerender(int prerender_id) {
+  content::GetContentClient()->renderer()->CancelPrerender(prerender_id);
 }
 
-void RendererWebKitPlatformSupportImpl::unloadedLinkPrerender(
-    int prerender_id) {
-  content::GetContentClient()->renderer()->UnloadedLinkPrerender(prerender_id);
+void RendererWebKitPlatformSupportImpl::abandonPrerender(int prerender_id) {
+  content::GetContentClient()->renderer()->AbandonPrerender(prerender_id);
 }
 
 bool

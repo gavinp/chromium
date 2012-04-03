@@ -753,23 +753,22 @@ void ChromeContentRendererClient::PrefetchHostName(const char* hostname,
   net_predictor_->Resolve(hostname, length);
 }
 
-void ChromeContentRendererClient::NewLinkPrerender(
-    int prerender_id,
-    int render_view_route_id,
+void ChromeContentRendererClient::AddPrerender(
+    const int prerender_id,
     const GURL& url,
     const content::Referrer& referrer,
-    const gfx::Size& size) {
-  RenderThread::Get()->Send(new PrerenderMsg_NewLinkPrerender(
-      prerender_id, render_view_route_id, GURL(url), referrer, size));
+    const gfx::Size& size,
+    const int render_view_route_id) {
+  RenderThread::Get()->Send(new PrerenderMsg_AddPrerender(
+      prerender_id, url, referrer, size, render_view_route_id));
 }
 
-void ChromeContentRendererClient::RemovedLinkPrerender(int prerender_id) {
-  RenderThread::Get()->Send(new PrerenderMsg_RemovedLinkPrerender(
-      prerender_id));
+void ChromeContentRendererClient::CancelPrerender(int prerender_id) {
+  RenderThread::Get()->Send(new PrerenderMsg_CancelPrerender(prerender_id));
 }
 
-void ChromeContentRendererClient::UnloadedLinkPrerender(int prerender_id) {
-  RenderThread::Get()->Send(new PrerenderMsg_UnloadedLinkPrerender(
+void ChromeContentRendererClient::AbandonPrerender(int prerender_id) {
+  RenderThread::Get()->Send(new PrerenderMsg_AbandonPrerender(
       prerender_id));
 }
 

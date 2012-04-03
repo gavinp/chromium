@@ -167,13 +167,13 @@ class ChromeRenderMessageFilter : public content::BrowserMessageFilter {
                    const GURL& url,
                    const GURL& first_party_for_cookies,
                    const std::string& cookie);
-  void OnNewLinkPrerender(int prerender_id,
-                          int render_view_route_id,
-                          const GURL& url,
-                          const content::Referrer& referrer,
-                          const gfx::Size& size);
-  void OnRemovedLinkPrerender(int prerender_id);
-  void OnUnloadedLinkPrerender(int prerender_id);
+  void OnAddPrerender(int prerender_id,
+                      const GURL& url,
+                      const content::Referrer& referrer,
+                      const gfx::Size& size,
+                      int render_view_route_id);
+  void OnCancelPrerender(int prerender_id);
+  void OnAbandonPrerender(int prerender_id);
 
   int render_process_id_;
 
