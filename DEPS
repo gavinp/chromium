@@ -5,7 +5,7 @@ vars = {
   "sourceforge_url": "http://%(repo)s.svn.sourceforge.net/svnroot/%(repo)s",
   "webkit_trunk": "http://svn.webkit.org/repository/webkit/trunk",
   "nacl_trunk": "http://src.chromium.org/native_client/trunk",
-  "webkit_revision": "112724",
+  "webkit_revision": "113046",
   "chromium_git": "http://git.chromium.org/git",
   "swig_revision": "69281",
   "nacl_revision": "8134",
@@ -50,7 +50,7 @@ vars = {
   "ffmpeg_hash": "c4db435602131b218d0c39e85ccf18a4be195e60",
 
   "sfntly_revision": "128",
-  "skia_revision": "3568",
+  "skia_revision": "3583",
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling Skia
   # and V8 without interference from each other.
@@ -69,7 +69,7 @@ deps = {
     "/trunk/deps/support@20411",
 
   "src/googleurl":
-    (Var("googlecode_url") % "google-url") + "/trunk@169",
+    (Var("googlecode_url") % "google-url") + "/trunk@170",
 
   "src/seccompsandbox":
     (Var("googlecode_url") % "seccompsandbox") + "/trunk@178",
