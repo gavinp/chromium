@@ -110,18 +110,18 @@ void MockContentRendererClient::PrefetchHostName(
     const char* hostname, size_t length) {
 }
 
-void MockContentRendererClient::NewLinkPrerender(
+void MockContentRendererClient::AddPrerender(
     int prerender_id,
-    int render_view_route_id,
     const GURL& url,
     const content::Referrer& referrer,
-    const gfx::Size& size) {
+    const gfx::Size& size,
+    int render_view_route_id) {
 }
 
-void MockContentRendererClient::RemovedLinkPrerender(int prerender_id) {
+void MockContentRendererClient::CancelPrerender(int prerender_id) {
 }
 
-void MockContentRendererClient::UnloadedLinkPrerender(int prerender_id) {
+void MockContentRendererClient::AbandonPrerender(int prerender_id) {
 }
 
 bool MockContentRendererClient::ShouldOverridePageVisibilityState(

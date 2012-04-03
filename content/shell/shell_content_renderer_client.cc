@@ -116,19 +116,20 @@ void ShellContentRendererClient::PrefetchHostName(
     const char* hostname, size_t length) {
 }
 
-void ShellContentRendererClient::NewLinkPrerender(
+void ShellContentRendererClient::AddPrerender(
     int prerender_id,
-    int render_view_route_id,
     const GURL& url,
     const content::Referrer& referrer,
-    const gfx::Size& size) {
+    const gfx::Size& size,
+    int render_view_route_id) {
 }
 
-void ShellContentRendererClient::RemovedLinkPrerender(int prerender_id) {
+void ShellContentRendererClient::CancelPrerender(int prerender_id) {
 }
 
-void ShellContentRendererClient::UnloadedLinkPrerender(int prerender_id) {
+void ShellContentRendererClient::AbandonPrerender(int prerender_id) {
 }
+
 
 bool ShellContentRendererClient::ShouldOverridePageVisibilityState(
     const RenderView* render_view,
