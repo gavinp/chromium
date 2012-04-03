@@ -122,6 +122,10 @@ namespace sync_api {
 const int SyncManager::kDefaultNudgeDelayMilliseconds = 200;
 const int SyncManager::kPreferencesNudgeDelayMilliseconds = 2000;
 
+// Maximum count and size for traffic recorder.
+const unsigned int kMaxMessagesToRecord = 10;
+const unsigned int kMaxMessageSizeToRecord = 5 * 1024;
+
 //////////////////////////////////////////////////////////////////////////
 // SyncManager's implementation: SyncManager::SyncInternal
 class SyncManager::SyncInternal
@@ -142,6 +146,7 @@ class SyncManager::SyncInternal
         initialized_(false),
         testing_mode_(NON_TEST),
         observing_ip_address_changes_(false),
+        traffic_recorder_(kMaxMessagesToRecord, kMaxMessageSizeToRecord),
         encryptor_(NULL),
         unrecoverable_error_handler_(NULL),
         report_unrecoverable_error_function_(NULL),
@@ -176,6 +181,9 @@ class SyncManager::SyncInternal
     BindJsMessageHandler(
         "findNodesContainingString",
         &SyncManager::SyncInternal::FindNodesContainingString);
+    BindJsMessageHandler(
+        "getClientServerTraffic",
+        &SyncManager::SyncInternal::GetClientServerTraffic);
   }
 
   virtual ~SyncInternal() {
@@ -354,6 +362,8 @@ class SyncManager::SyncInternal
 
   TimeDelta GetNudgeDelayTimeDelta(const ModelType& model_type);
 
+  void NotifyCryptographerState(Cryptographer* cryptographer);
+
   // See SyncManager::Shutdown* for information.
   void StopSyncingForShutdown(const base::Closure& callback);
   void ShutdownOnSyncThread();
@@ -520,6 +530,7 @@ class SyncManager::SyncInternal
   JsArgList GetNodeDetailsById(const JsArgList& args);
   JsArgList GetChildNodeIds(const JsArgList& args);
   JsArgList FindNodesContainingString(const JsArgList& args);
+  JsArgList GetClientServerTraffic(const JsArgList& args);
 
   FilePath database_path_;
 
@@ -608,6 +619,8 @@ class SyncManager::SyncInternal
 
   // This is for keeping track of client events to send to the server.
   DebugInfoEventListener debug_info_event_listener_;
+
+  browser_sync::TrafficRecorder traffic_recorder_;
 
   Encryptor* encryptor_;
   UnrecoverableErrorHandler* unrecoverable_error_handler_;
@@ -961,7 +974,8 @@ bool SyncManager::SyncInternal::Init(
         model_safe_worker_registrar,
         extensions_activity_monitor,
         listeners,
-        &debug_info_event_listener_);
+        &debug_info_event_listener_,
+        &traffic_recorder_);
     context->set_account_name(credentials.email);
     // The SyncScheduler takes ownership of |context|.
     scheduler_.reset(new SyncScheduler(name_, context, new Syncer()));
@@ -1117,8 +1131,7 @@ void SyncManager::SyncInternal::UpdateCryptographerAndNigoriCallback(
       // Make sure the nigori node has the up to date encryption info.
       UpdateNigoriEncryptionState(cryptographer, &node);
 
-      allstatus_.SetCryptographerReady(cryptographer->is_ready());
-      allstatus_.SetCryptoHasPendingKeys(cryptographer->has_pending_keys());
+      NotifyCryptographerState(cryptographer);
       allstatus_.SetEncryptedTypes(cryptographer->GetEncryptedTypes());
 
       success = cryptographer->is_ready();
@@ -1130,6 +1143,17 @@ void SyncManager::SyncInternal::UpdateCryptographerAndNigoriCallback(
   if (success)
     RefreshEncryption();
   done_callback.Run();
+}
+
+void SyncManager::SyncInternal::NotifyCryptographerState(
+    Cryptographer * cryptographer) {
+  // TODO(lipalani): Explore the possibility of hooking this up to
+  // SyncManager::Observer and making |AllStatus| a listener for that.
+  allstatus_.SetCryptographerReady(cryptographer->is_ready());
+  allstatus_.SetCryptoHasPendingKeys(cryptographer->has_pending_keys());
+  debug_info_event_listener_.SetCryptographerReady(cryptographer->is_ready());
+  debug_info_event_listener_.SetCrytographerHasPendingKeys(
+      cryptographer->has_pending_keys());
 }
 
 void SyncManager::SyncInternal::StartSyncingNormally() {
@@ -1504,8 +1528,7 @@ void SyncManager::SyncInternal::FinishSetPassphrase(
     WriteTransaction* trans,
     WriteNode* nigori_node) {
   Cryptographer* cryptographer = trans->GetCryptographer();
-  allstatus_.SetCryptographerReady(cryptographer->is_ready());
-  allstatus_.SetCryptoHasPendingKeys(cryptographer->has_pending_keys());
+  NotifyCryptographerState(cryptographer);
 
   // It's possible we need to change the bootstrap token even if we failed to
   // set the passphrase (for example if we need to preserve the new GAIA
@@ -2051,8 +2074,7 @@ void SyncManager::SyncInternal::OnSyncEngineEvent(
                                                sync_pb::EncryptedData()));
       }
 
-      allstatus_.SetCryptographerReady(cryptographer->is_ready());
-      allstatus_.SetCryptoHasPendingKeys(cryptographer->has_pending_keys());
+      NotifyCryptographerState(cryptographer);
       allstatus_.SetEncryptedTypes(cryptographer->GetEncryptedTypes());
     }
 
@@ -2204,6 +2226,15 @@ JsArgList SyncManager::SyncInternal::GetRootNodeDetails(
   root.InitByRootLookup();
   ListValue return_args;
   return_args.Append(root.GetDetailsAsValue());
+  return JsArgList(&return_args);
+}
+
+JsArgList SyncManager::SyncInternal::GetClientServerTraffic(
+    const JsArgList& args) {
+  ListValue return_args;
+  ListValue* value = traffic_recorder_.ToValue();
+  if (value != NULL)
+    return_args.Append(value);
   return JsArgList(&return_args);
 }
 

@@ -4,8 +4,9 @@
 
 #include "chrome/browser/ui/gtk/browser_actions_toolbar_gtk.h"
 
-#include <algorithm>
 #include <gtk/gtk.h>
+
+#include <algorithm>
 #include <vector>
 
 #include "base/bind.h"
@@ -31,8 +32,8 @@
 #include "chrome/browser/ui/tab_contents/tab_contents_wrapper.h"
 #include "chrome/common/chrome_notification_types.h"
 #include "chrome/common/extensions/extension.h"
-#include "chrome/common/extensions/extension_manifest_constants.h"
 #include "chrome/common/extensions/extension_action.h"
+#include "chrome/common/extensions/extension_manifest_constants.h"
 #include "chrome/common/extensions/extension_resource.h"
 #include "content/public/browser/notification_details.h"
 #include "content/public/browser/notification_source.h"
@@ -374,21 +375,15 @@ class BrowserActionButton : public content::NotificationObserver,
 
   // Connect the accelerator for the browser action popup.
   void ConnectBrowserActionPopupAccelerator() {
-    // Iterate through all the keybindings and see if one is assigned to the
-    // browserAction.
-    const std::vector<Extension::ExtensionKeybinding>& commands =
-        extension_->keybindings();
-    for (size_t i = 0; i < commands.size(); ++i) {
-      if (commands[i].command_name() !=
-              extension_manifest_values::kBrowserActionKeybindingEvent)
-        continue;
-
+    const Extension::ExtensionKeybinding* command =
+        extension_->browser_action_command();
+    if (command) {
       // Found the browser action shortcut command, register it.
       keybinding_.reset(new ui::AcceleratorGtk(
-          commands[i].accelerator().key_code(),
-          commands[i].accelerator().IsShiftDown(),
-          commands[i].accelerator().IsCtrlDown(),
-          commands[i].accelerator().IsAltDown()));
+          command->accelerator().key_code(),
+          command->accelerator().IsShiftDown(),
+          command->accelerator().IsCtrlDown(),
+          command->accelerator().IsAltDown()));
 
       gfx::NativeWindow window =
           toolbar_->browser()->window()->GetNativeHandle();
@@ -407,7 +402,6 @@ class BrowserActionButton : public content::NotificationObserver,
       registrar_.Add(this,
                      chrome::NOTIFICATION_WINDOW_CLOSED,
                      content::Source<GtkWindow>(window));
-      break;
     }
   }
 

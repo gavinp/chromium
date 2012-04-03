@@ -37,8 +37,12 @@ bool EditSearchEngineController::IsURLValid(
   if (url.empty())
     return false;
 
-  // Use TemplateURLRef to extract the search placeholder.
-  TemplateURLRef template_ref(url, 0, 0);
+  // Convert |url| to a TemplateURLRef so we can check its validity even if it
+  // contains replacement strings.  We do this by constructing a dummy
+  // TemplateURL owner because |template_url_| might be NULL and we can't call
+  // TemplateURLRef::IsValid() when its owner is NULL.
+  TemplateURL t_url;
+  TemplateURLRef template_ref(&t_url, url);
   if (!template_ref.IsValid())
     return false;
 
@@ -51,7 +55,7 @@ bool EditSearchEngineController::IsURLValid(
 
   // Replace any search term with a placeholder string and make sure the
   // resulting URL is valid.
-  return GURL(template_ref.ReplaceSearchTerms(TemplateURL(), ASCIIToUTF16("x"),
+  return GURL(template_ref.ReplaceSearchTerms(ASCIIToUTF16("x"),
       TemplateURLRef::NO_SUGGESTIONS_AVAILABLE, string16())).is_valid();
 }
 
@@ -98,7 +102,7 @@ void EditSearchEngineController::AcceptAddOrEdit(
     TemplateURL* modifiable_url = const_cast<TemplateURL*>(template_url_);
     modifiable_url->set_short_name(title_input);
     modifiable_url->set_keyword(keyword_input);
-    modifiable_url->SetURL(url_string, 0, 0);
+    modifiable_url->SetURL(url_string);
     // TemplateURLService takes ownership of template_url_.
     template_url_service->Add(modifiable_url);
     content::RecordAction(UserMetricsAction("KeywordEditor_AddKeywordJS"));
@@ -130,9 +134,9 @@ std::string EditSearchEngineController::GetFixedUpURL(
   // scheme. As the scheme may be expanded (as happens with {google:baseURL})
   // we need to replace the search terms before testing for the scheme.
   TemplateURL t_url;
-  t_url.SetURL(url, 0, 0);
-  std::string expanded_url(t_url.url()->ReplaceSearchTerms(t_url,
-      ASCIIToUTF16("x"), TemplateURLRef::NO_SUGGESTIONS_AVAILABLE, string16()));
+  t_url.SetURL(url);
+  std::string expanded_url(t_url.url()->ReplaceSearchTerms(ASCIIToUTF16("x"),
+      TemplateURLRef::NO_SUGGESTIONS_AVAILABLE, string16()));
   url_parse::Parsed parts;
   std::string scheme(URLFixerUpper::SegmentURL(expanded_url, &parts));
   if (!parts.scheme.is_valid())

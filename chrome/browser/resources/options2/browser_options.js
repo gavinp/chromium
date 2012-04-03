@@ -107,10 +107,13 @@ cr.define('options', function() {
       };
 
       // Session restore.
+      // TODO(marja): clean up the options UI after the decision on the session
+      // restore changes has stabilized. For now, only the startup option is
+      // renamed to "continue where I left off", but the session related content
+      // settings are not disabled or overridden (because
+      // templateData.enable_restore_session_state is forced to false).
       this.sessionRestoreEnabled_ = templateData.enable_restore_session_state;
       if (this.sessionRestoreEnabled_) {
-        $('old-startup-last-text').hidden = true;
-        $('new-startup-last-text').hidden = false;
         $('startup-restore-session').onchange = function(event) {
           if (!BrowserOptions.getInstance().maybeShowSessionRestoreDialog_()) {
             // The dialog is not shown; handle the event normally.
@@ -404,7 +407,7 @@ cr.define('options', function() {
       if (!cr.isChromeOS) {
         $('cloudPrintConnectorSetupButton').onclick = function(event) {
           if ($('cloudPrintManageButton').style.display == 'none') {
-            // Disable the button, set it's text to the intermediate state.
+            // Disable the button, set its text to the intermediate state.
             $('cloudPrintConnectorSetupButton').textContent =
               localStrings.getString('cloudPrintConnectorEnablingButton');
             $('cloudPrintConnectorSetupButton').disabled = true;
@@ -1179,6 +1182,52 @@ cr.define('options', function() {
     },
 
     /**
+     * Show/hide mouse settings slider.
+     * @private
+     */
+    showMouseControls_: function(show) {
+      $('mouse-settings').hidden = !show;
+      this.updatePointerSettingsText_();
+    },
+
+    /**
+     * Show/hide touchpad settings slider.
+     * @private
+     */
+    showTouchpadControls_: function(show) {
+      $('touchpad-settings').hidden = !show;
+      this.updatePointerSettingsText_();
+    },
+
+    /**
+    * Update pointer settings buttons text content to say mouse settings,
+    * touchpad settings, or mouse/touchpad settings as appropriate. If neither
+    * is available, hides the button and shows "No mouse or touchpad" text.
+    * @private
+    */
+    updatePointerSettingsText_: function() {
+      var pointerSettingsButton = $('pointer-settings-button');
+      pointerSettingsButton.hidden = false;
+      if ($('touchpad-settings').hidden) {
+        if ($('mouse-settings').hidden) {
+          pointerSettingsButton.hidden = true;
+        } else {
+          pointerSettingsButton.textContent =
+              localStrings.getString('mouseSettingsButtonTitle');
+        }
+      } else {
+        if ($('mouse-settings').hidden) {
+          pointerSettingsButton.textContent =
+              localStrings.getString('touchpadSettingsButtonTitle');
+        } else {
+          pointerSettingsButton.textContent =
+              localStrings.getString('touchpadMouseSettingsButtonTitle');
+        }
+      }
+      $('no-pointing-devices').hidden = !pointerSettingsButton.hidden;
+    },
+
+    /**
      * Activate the bluetooth settings section on the System settings page.
      * @private
      */
@@ -1301,6 +1350,8 @@ cr.define('options', function() {
     'setupProxySettingsSection',
     'setVirtualKeyboardCheckboxState',
     'showBluetoothSettings',
+    'showMouseControls',
+    'showTouchpadControls',
     'updateAccountPicture',
     'updateAutoLaunchState',
     'updateDefaultBrowserState',

@@ -197,7 +197,6 @@
       # -faddress-sanitizer only works with clang, but asan=1 implies clang=1
       # See https://sites.google.com/a/chromium.org/dev/developers/testing/addresssanitizer
       'asan%': 0,
-      'asan_blacklist%': '<(PRODUCT_DIR)/../../third_party/asan/ignore.txt',
 
       # Use the provided profiled order file to link Chrome image with it.
       # This makes Chrome faster by better using CPU cache when executing code.
@@ -262,6 +261,9 @@
 
       # Enable plug-in installation by default.
       'enable_plugin_installation%': 1,
+
+      # Enable protector service by default.
+      'enable_protector_service%': 1,
 
       # Specifies whether to use canvas_skia.cc in place of platform
       # specific implementations of gfx::Canvas. Affects text drawing in the
@@ -368,9 +370,9 @@
           'webui_task_manager%': 1,
         }],
 
-        # For now one-click signin is enabled only for windows and mac
-        # since the UI is not yet complete for other platforms.
-        ['OS=="win" or OS=="mac"', {
+        # TODO(akalin): Enable this for all GTK/views platforms (except for
+        # ChromeOS).
+        ['OS=="win" or OS=="mac" or (OS=="linux" and use_aura==0)', {
           'enable_one_click_signin%': 1,
         }],
 
@@ -396,6 +398,12 @@
           'enable_plugin_installation%': 0,
         }, {
           'enable_plugin_installation%': 1,
+        }],
+
+        ['OS=="android"', {
+          'enable_protector_service%': 0,
+        }, {
+          'enable_protector_service%': 1,
         }],
 
         # linux_use_gold_binary: whether to use the binary checked into
@@ -483,12 +491,12 @@
     'notifications%': '<(notifications)',
     'clang_use_chrome_plugins%': '<(clang_use_chrome_plugins)',
     'asan%': '<(asan)',
-    'asan_blacklist%': '<(asan_blacklist)',
     'order_text_section%': '<(order_text_section)',
     'enable_register_protocol_handler%': '<(enable_register_protocol_handler)',
     'enable_web_intents%': '<(enable_web_intents)',
     'enable_web_intents_tag%': '<(enable_web_intents_tag)',
     'enable_plugin_installation%': '<(enable_plugin_installation)',
+    'enable_protector_service%': '<(enable_protector_service)',
     'enable_themes%': '<(enable_themes)',
     'linux_use_gold_binary%': '<(linux_use_gold_binary)',
     'linux_use_gold_flags%': '<(linux_use_gold_flags)',
@@ -1361,6 +1369,9 @@
       ['enable_plugin_installation==1', {
         'defines': ['ENABLE_PLUGIN_INSTALLATION=1'],
       }],
+      ['enable_protector_service==1', {
+        'defines': ['ENABLE_PROTECTOR_SERVICE=1'],
+      }],
       ['enable_themes==1', {
         'defines': ['ENABLE_THEMES=1'],
       }],
@@ -2084,7 +2095,6 @@
               '-faddress-sanitizer',
               '-fno-omit-frame-pointer',
               '-w',
-              '-mllvm', '-asan-blacklist=<(asan_blacklist)',
             ],
             'ldflags': [
               '-faddress-sanitizer',
@@ -2508,7 +2518,6 @@
               'OTHER_CFLAGS': [
                 '-faddress-sanitizer',
                 '-w',
-                '-mllvm', '-asan-blacklist=<(asan_blacklist)',
               ],
               'OTHER_LDFLAGS': [
                 '-faddress-sanitizer',

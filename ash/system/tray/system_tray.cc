@@ -41,7 +41,7 @@ namespace ash {
 
 namespace {
 
-const int kPaddingFromRightEdgeOfScreen = 16;
+const int kPaddingFromRightEdgeOfScreen = 15;
 const int kPaddingFromBottomOfScreen = 10;
 
 const int kAnimationDurationForPopupMS = 200;
@@ -55,6 +55,8 @@ const int kShadowHeight = 3;
 
 const int kLeftPadding = 4;
 const int kBottomLineHeight = 1;
+
+const int kTrayIconHeight = 29;
 
 const SkColor kShadowColor = SkColorSetARGB(25, 0, 0, 0);
 
@@ -88,7 +90,9 @@ class TrayItemContainer : public views::View {
   }
 
   virtual gfx::Size GetPreferredSize() OVERRIDE {
-    return child_->GetPreferredSize();
+    gfx::Size size = child_->GetPreferredSize();
+    size.set_height(kTrayIconHeight);
+    return size;
   }
 
   virtual void ChildPreferredSizeChanged(views::View* child) OVERRIDE {
@@ -448,7 +452,6 @@ SystemTray::SystemTray()
   set_border(views::Border::CreateEmptyBorder(0, 0,
         kPaddingFromBottomOfScreen, kPaddingFromRightEdgeOfScreen));
   set_notify_enter_exit_on_child(true);
-  set_focusable(true);
   SetLayoutManager(new views::BoxLayout(views::BoxLayout::kVertical, 0, 0, 0));
   AddChildView(container_);
 
@@ -553,6 +556,10 @@ void SystemTray::ShowItems(std::vector<SystemTrayItem*>& items,
   bubble_ = new internal::SystemTrayBubble(this, container_, items, detailed);
   bubble_->set_can_activate(activate);
   popup_ = views::BubbleDelegateView::CreateBubble(bubble_);
+  // If we have focus the shelf should be visible and we need to continue
+  // showing the shelf when the popup is shown.
+  if (GetWidget()->IsActive())
+    should_show_launcher_ = true;
   bubble_->SetAlignment(views::BubbleBorder::ALIGN_EDGE_TO_ANCHOR_EDGE);
   popup_->non_client_view()->frame_view()->set_background(NULL);
   popup_->non_client_view()->frame_view()->set_border(
@@ -571,19 +578,7 @@ void SystemTray::ShowItems(std::vector<SystemTrayItem*>& items,
   bubble_->Show();
 }
 
-bool SystemTray::OnKeyPressed(const views::KeyEvent& event) {
-  if (event.key_code() == ui::VKEY_SPACE ||
-      event.key_code() == ui::VKEY_RETURN) {
-    if (popup_ && bubble_ && !bubble_->detailed())
-      popup_->Hide();
-    else
-      ShowDefaultView();
-    return true;
-  }
-  return false;
-}
-
-bool SystemTray::OnMousePressed(const views::MouseEvent& event) {
+bool SystemTray::PerformAction(const views::Event& event) {
   // If we're already showing the default view, hide it; otherwise, show it
   // (and hide any popup that's currently shown).
   if (popup_ && bubble_ && !bubble_->detailed())
@@ -609,8 +604,8 @@ void SystemTray::OnMouseExited(const views::MouseEvent& event) {
 
 void SystemTray::AboutToRequestFocusFromTabTraversal(bool reverse) {
   views::View* v = GetNextFocusableView();
-  if (v && v->GetWidget())
-    v->GetWidget()->Activate();
+  if (v)
+    v->AboutToRequestFocusFromTabTraversal(reverse);
 }
 
 void SystemTray::GetAccessibleState(ui::AccessibleViewState* state) {
@@ -620,8 +615,11 @@ void SystemTray::GetAccessibleState(ui::AccessibleViewState* state) {
 }
 
 void SystemTray::OnPaintFocusBorder(gfx::Canvas* canvas) {
+  // The tray itself expands to the right and bottom edge of the screen to make
+  // sure clicking on the edges brings up the popup. However, the focus border
+  // should be only around the container.
   if (GetWidget() && GetWidget()->IsActive())
-    views::View::OnPaintFocusBorder(canvas);
+    canvas->DrawFocusRect(container_->bounds());
 }
 
 void SystemTray::OnWidgetClosing(views::Widget* widget) {

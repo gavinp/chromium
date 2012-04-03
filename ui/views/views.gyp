@@ -290,8 +290,6 @@
         'painter.h',
         'repeat_controller.cc',
         'repeat_controller.h',
-        'touchui/touch_mode_support.cc',
-        'touchui/touch_mode_support.h',
         'touchui/touch_selection_controller.cc',
         'touchui/touch_selection_controller.h',
         'view.cc',
@@ -651,6 +649,12 @@
               'AdditionalManifestFiles': 'examples\\views_examples.exe.manifest',
             },
           },
+        }],
+        ['use_aura==1', {
+          'dependencies': [
+            '../gfx/compositor/compositor.gyp:compositor',
+            '../gfx/compositor/compositor.gyp:compositor_test_support',
+          ],
         }],
       ],
     },  # target_name: views_examples_lib

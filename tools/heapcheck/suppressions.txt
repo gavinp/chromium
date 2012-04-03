@@ -699,14 +699,6 @@
    fun:::MessageLoopRelay::ProcessOnTargetThread
 }
 {
-   bug_57910
-   Heapcheck:Leak
-   fun:inflateInit2_
-   fun:remoting::DecompressorZlib::InitStream
-   fun:remoting::DecompressorZlib::Reset
-   fun:~DecompressorZlib
-}
-{
    bug_58474_a
    Heapcheck:Leak
    ...
@@ -855,17 +847,6 @@
    Heapcheck:Leak
    ...
    fun:GpuProcessHostUIShim::GetForRenderer
-}
-{
-   bug_75023
-   Heapcheck:Leak
-   ...
-   fun:::DefaultFocusManagerFactory::CreateFocusManager
-   fun:views::FocusManagerFactory::Create
-   fun:views::Widget::OnNativeWidgetCreated
-   fun:views::NativeWidgetAura::InitNativeWidget
-   fun:views::Widget::Init
-   fun:views::::NativeWidgetAuraTest_GetClientAreaScreenBounds_Test::TestBody
 }
 {
    bug_76354
@@ -1196,16 +1177,6 @@
    fun:chromeos::ProxyConfigServiceImplTest::CreateConfigService
 }
 {
-   bug_90154
-   Heapcheck:Leak
-   ...
-   fun:views::NativeWidgetGtk::InitNativeWidget
-   fun:views::Widget::Init
-   fun:NativeTabContentsViewGtk::InitNativeTabContentsView
-   fun:TabContentsViewViews::CreateView
-   fun:TabContents
-}
-{
    bug_90271
    Heapcheck:Leak
    ...
@@ -1256,12 +1227,6 @@
    Heapcheck:Leak
    ...
    fun:find_invisible_char
-}
-{
-   bug_90013_d
-   Heapcheck:Leak
-   ...
-   fun:views::View::*
 }
 # This one is the most scary
 {
@@ -1797,16 +1762,26 @@
    fun:SelectFileDialogExtensionTest_SelfDeleting_Test::TestBody
 }
 {
-   bug_119714_a
+   bug_121571_a
    Heapcheck:Leak
    ...
-   fun:*AudioInputControllerTest_CreateAndClose_Test*
+   fun:fileapi::FileSystem*URLRequestJobTest::TestRequestHelper
+   fun:fileapi::FileSystem*URLRequestJobTest::TestRequest
+   fun:fileapi::::FileSystem*URLRequestJobTest_InvalidURL_Test::TestBody
 }
 {
-   # This should be removed soon!  It's a pretty broad suppression.
-   bug_119714_b
+   bug_121571_b
    Heapcheck:Leak
    fun:MessageLoop::MessageLoop
-   fun:base::Thread::ThreadMain
-   fun:base::::ThreadFunc
+   fun:fileapi::FileSystem*URLRequestJobTest::FileSystem*URLRequestJobTest
+   fun:fileapi::::FileSystem*URLRequestJobTest_InvalidURL_Test::FileSystem*URLRequestJobTest_InvalidURL_Test
+   fun:testing::internal::TestFactoryImpl::CreateTest
+}
+{
+   bug_121571_c
+   Heapcheck:Leak
+   fun:MessageLoop::MessageLoop
+   fun:FileSystem*URLRequestJobTest
+   fun:FileSystem*URLRequestJobTest_InvalidURL_Test
+   fun:testing::internal::TestFactoryImpl::CreateTest
 }

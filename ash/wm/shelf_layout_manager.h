@@ -13,8 +13,13 @@
 #include "base/compiler_specific.h"
 #include "base/timer.h"
 #include "ui/aura/layout_manager.h"
+#include "ui/aura/window_observer.h"
 #include "ui/gfx/insets.h"
 #include "ui/gfx/rect.h"
+
+namespace aura {
+class RootWindow;
+}
 
 namespace views {
 class Widget;
@@ -32,7 +37,8 @@ class WorkspaceManager;
 // layout to the status area.
 // To respond to bounds changes in the status area StatusAreaLayoutManager works
 // closely with ShelfLayoutManager.
-class ASH_EXPORT ShelfLayoutManager : public aura::LayoutManager {
+class ASH_EXPORT ShelfLayoutManager : public aura::LayoutManager,
+                                      public aura::WindowObserver {
  public:
   enum VisibilityState {
     // Completely visible.
@@ -97,6 +103,7 @@ class ASH_EXPORT ShelfLayoutManager : public aura::LayoutManager {
 
   // The launcher is typically created after the layout manager.
   void SetLauncher(Launcher* launcher);
+  Launcher* launcher() { return launcher_; }
 
   // Stops any animations and sets the bounds of the launcher and status
   // widgets.
@@ -124,6 +131,11 @@ class ASH_EXPORT ShelfLayoutManager : public aura::LayoutManager {
   virtual void SetChildBounds(aura::Window* child,
                               const gfx::Rect& requested_bounds) OVERRIDE;
 
+  // Overriden from aura::WindowObserver:
+  virtual void OnWindowPropertyChanged(aura::Window* window,
+                                       const void* key,
+                                       intptr_t old) OVERRIDE;
+
  private:
   class AutoHideEventFilter;
   friend class ShelfLayoutManagerTest;
@@ -138,7 +150,9 @@ class ASH_EXPORT ShelfLayoutManager : public aura::LayoutManager {
   };
 
   struct State {
-    State() : visibility_state(VISIBLE), auto_hide_state(AUTO_HIDE_HIDDEN) {}
+    State() : visibility_state(VISIBLE),
+              auto_hide_state(AUTO_HIDE_HIDDEN),
+              is_screen_locked(false) {}
 
     // Returns true if the two states are considered equal. As
     // |auto_hide_state| only matters if |visibility_state| is |AUTO_HIDE|,
@@ -146,11 +160,13 @@ class ASH_EXPORT ShelfLayoutManager : public aura::LayoutManager {
     bool Equals(const State& other) const {
       return other.visibility_state == visibility_state &&
           (visibility_state != AUTO_HIDE ||
-           other.auto_hide_state == auto_hide_state);
+           other.auto_hide_state == auto_hide_state) &&
+          other.is_screen_locked == is_screen_locked;
     }
 
     VisibilityState visibility_state;
     AutoHideState auto_hide_state;
+    bool is_screen_locked;
   };
 
   // Sets the visibility of the shelf to |state|.
@@ -178,6 +194,11 @@ class ASH_EXPORT ShelfLayoutManager : public aura::LayoutManager {
 
   // Updates the hit test bounds override for launcher and status area.
   void UpdateHitTestBounds();
+
+  // The RootWindow is cached so that we don't invoke Shell::GetInstance() from
+  // our destructor. We avoid that as at the time we're deleted Shell is being
+  // deleted too.
+  aura::RootWindow* root_window_;
 
   // True when inside LayoutShelf method. Used to prevent calling LayoutShelf
   // again from SetChildBounds().

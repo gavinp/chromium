@@ -10,11 +10,15 @@
 #include "content/renderer/media/audio_message_filter.h"
 #include "webkit/plugins/ppapi/plugin_delegate.h"
 
+namespace media{
 class AudioParameters;
+}
 
 namespace base {
 class MessageLoopProxy;
 }
+
+namespace content {
 
 class PepperPlatformAudioOutputImpl
     : public webkit::ppapi::PluginDelegate::PlatformAudioOutput,
@@ -44,7 +48,7 @@ class PepperPlatformAudioOutputImpl
       webkit::ppapi::PluginDelegate::PlatformAudioOutputClient* client);
 
   // I/O thread backends to above functions.
-  void InitializeOnIOThread(const AudioParameters& params);
+  void InitializeOnIOThread(const media::AudioParameters& params);
   void StartPlaybackOnIOThread();
   void StopPlaybackOnIOThread();
   void ShutDownOnIOThread();
@@ -71,5 +75,7 @@ class PepperPlatformAudioOutputImpl
 
   DISALLOW_COPY_AND_ASSIGN(PepperPlatformAudioOutputImpl);
 };
+
+}  // namespace content
 
 #endif  // CONTENT_RENDERER_PEPPER_PEPPER_PLATFORM_AUDIO_OUTPUT_IMPL_H_

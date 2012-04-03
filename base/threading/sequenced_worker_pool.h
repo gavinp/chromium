@@ -26,6 +26,8 @@ class MessageLoopProxy;
 
 template <class T> class DeleteHelper;
 
+class SequencedTaskRunner;
+
 // A worker thread pool that enforces ordering between sets of tasks. It also
 // allows you to specify what should happen to your tasks on shutdown.
 //
@@ -152,6 +154,11 @@ class BASE_EXPORT SequencedWorkerPool : public TaskRunner {
   // will be created.
   SequenceToken GetNamedSequenceToken(const std::string& name);
 
+  // Returns a SequencedTaskRunner wrapper which posts to this
+  // SequencedWorkerPool using the given sequence token.
+  scoped_refptr<SequencedTaskRunner> GetSequencedTaskRunner(
+      SequenceToken token);
+
   // Posts the given task for execution in the worker pool. Tasks posted with
   // this function will execute in an unspecified order on a background thread.
   // Returns true if the task was posted. If your tasks have ordering
@@ -218,6 +225,10 @@ class BASE_EXPORT SequencedWorkerPool : public TaskRunner {
                                const Closure& task,
                                TimeDelta delay) OVERRIDE;
   virtual bool RunsTasksOnCurrentThread() const OVERRIDE;
+
+  // Returns true if the current thread is processing a task with the given
+  // sequence_token.
+  bool IsRunningSequenceOnCurrentThread(SequenceToken sequence_token) const;
 
   // Blocks until all pending tasks are complete. This should only be called in
   // unit tests when you want to validate something that should have happened.

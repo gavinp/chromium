@@ -24,11 +24,14 @@
 #include "chrome/browser/download/download_service_factory.h"
 #include "chrome/browser/extensions/extension_info_map.h"
 #include "chrome/browser/extensions/extension_protocols.h"
+#include "chrome/browser/extensions/extension_system.h"
+#include "chrome/browser/extensions/extension_system_factory.h"
 #include "chrome/browser/io_thread.h"
 #include "chrome/browser/net/chrome_cookie_notification_details.h"
 #include "chrome/browser/net/chrome_fraudulent_certificate_reporter.h"
 #include "chrome/browser/net/chrome_net_log.h"
 #include "chrome/browser/net/chrome_network_delegate.h"
+#include "chrome/browser/net/http_server_properties_manager.h"
 #include "chrome/browser/net/proxy_service_factory.h"
 #include "chrome/browser/notifications/desktop_notification_service_factory.h"
 #include "chrome/browser/policy/url_blacklist_manager.h"
@@ -194,7 +197,8 @@ void ProfileIOData::InitializeOnUIThread(Profile* profile) {
                  profile);
   params->cookie_monster_delegate =
       new ChromeCookieMonsterDelegate(profile_getter);
-  params->extension_info_map = profile->GetExtensionInfoMap();
+  params->extension_info_map =
+      ExtensionSystemFactory::GetForProfile(profile)->info_map();
 
 #if defined(ENABLE_NOTIFICATIONS)
   params->notification_service =
@@ -364,6 +368,16 @@ DesktopNotificationService* ProfileIOData::GetNotificationService() const {
   return notification_service_;
 }
 #endif
+
+chrome_browser_net::HttpServerPropertiesManager*
+    ProfileIOData::http_server_properties_manager() const {
+  return http_server_properties_manager_.get();
+}
+
+void ProfileIOData::set_http_server_properties_manager(
+    chrome_browser_net::HttpServerPropertiesManager* manager) const {
+  http_server_properties_manager_.reset(manager);
+}
 
 ProfileIOData::ResourceContext::ResourceContext(ProfileIOData* io_data)
     : io_data_(io_data) {

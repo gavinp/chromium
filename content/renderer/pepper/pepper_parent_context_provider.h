@@ -8,14 +8,17 @@
 
 #include "base/basictypes.h"
 
-class ContentGLContext;
+class WebGraphicsContext3DCommandBufferImpl;
+
+namespace content {
 
 // Defines the mechanism by which a Pepper 3D context fetches its
 // parent context for display to the screen.
 class PepperParentContextProvider {
  public:
   virtual ~PepperParentContextProvider();
-  virtual ContentGLContext* GetParentContextForPlatformContext3D() = 0;
+  virtual WebGraphicsContext3DCommandBufferImpl*
+      GetParentContextForPlatformContext3D() = 0;
 
  protected:
   PepperParentContextProvider();
@@ -23,5 +26,7 @@ class PepperParentContextProvider {
  private:
   DISALLOW_COPY_AND_ASSIGN(PepperParentContextProvider);
 };
+
+}  // namespace content
 
 #endif  // CONTENT_RENDERER_PEPPER_PEPPER_PARENT_CONTEXT_PROVIDER_H_

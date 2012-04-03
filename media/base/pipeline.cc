@@ -89,7 +89,6 @@ Pipeline::~Pipeline() {
 }
 
 void Pipeline::Start(scoped_ptr<FilterCollection> collection,
-                     const std::string& url,
                      const PipelineStatusCB& ended_cb,
                      const PipelineStatusCB& error_cb,
                      const NetworkEventCB& network_cb,
@@ -100,7 +99,7 @@ void Pipeline::Start(scoped_ptr<FilterCollection> collection,
   running_ = true;
   message_loop_->PostTask(FROM_HERE, base::Bind(
       &Pipeline::StartTask, this, base::Passed(&collection),
-      url, ended_cb, error_cb, network_cb, start_cb));
+      ended_cb, error_cb, network_cb, start_cb));
 }
 
 void Pipeline::Stop(const base::Closure& stop_cb) {
@@ -187,20 +186,6 @@ void Pipeline::SetVolume(float volume) {
   if (running_ && !tearing_down_) {
     message_loop_->PostTask(FROM_HERE, base::Bind(
         &Pipeline::VolumeChangedTask, this, volume));
-  }
-}
-
-Preload Pipeline::GetPreload() const {
-  base::AutoLock auto_lock(lock_);
-  return preload_;
-}
-
-void Pipeline::SetPreload(Preload preload) {
-  base::AutoLock auto_lock(lock_);
-  preload_ = preload;
-  if (running_ && !tearing_down_) {
-    message_loop_->PostTask(FROM_HERE, base::Bind(
-        &Pipeline::PreloadChangedTask, this, preload));
   }
 }
 
@@ -324,7 +309,6 @@ void Pipeline::ResetState() {
   total_bytes_      = 0;
   natural_size_.SetSize(0, 0);
   volume_           = 1.0f;
-  preload_          = AUTO;
   playback_rate_    = 0.0f;
   pending_playback_rate_ = 0.0f;
   status_           = PIPELINE_OK;
@@ -608,7 +592,6 @@ void Pipeline::OnUpdateStatistics(const PipelineStatistics& stats) {
 }
 
 void Pipeline::StartTask(scoped_ptr<FilterCollection> filter_collection,
-                         const std::string& url,
                          const PipelineStatusCB& ended_cb,
                          const PipelineStatusCB& error_cb,
                          const NetworkEventCB& network_cb,
@@ -616,7 +599,6 @@ void Pipeline::StartTask(scoped_ptr<FilterCollection> filter_collection,
   DCHECK_EQ(MessageLoop::current(), message_loop_);
   DCHECK_EQ(kCreated, state_);
   filter_collection_ = filter_collection.Pass();
-  url_ = url;
   ended_cb_ = ended_cb;
   error_cb_ = error_cb;
   network_cb_ = network_cb;
@@ -732,7 +714,6 @@ void Pipeline::InitializeTask(PipelineStatus last_stage_status) {
 
     // Initialization was successful, we are now considered paused, so it's safe
     // to set the initial playback rate and volume.
-    PreloadChangedTask(GetPreload());
     PlaybackRateChangedTask(GetPlaybackRate());
     VolumeChangedTask(GetVolume());
 
@@ -844,15 +825,6 @@ void Pipeline::VolumeChangedTask(float volume) {
     audio_renderer_->SetVolume(volume);
 }
 
-void Pipeline::PreloadChangedTask(Preload preload) {
-  DCHECK_EQ(MessageLoop::current(), message_loop_);
-  if (!running_ || tearing_down_)
-    return;
-
-  if (demuxer_)
-    demuxer_->SetPreload(preload);
-}
-
 void Pipeline::SeekTask(base::TimeDelta time,
                         const PipelineStatusCB& seek_cb) {
   DCHECK_EQ(MessageLoop::current(), message_loop_);
@@ -862,8 +834,8 @@ void Pipeline::SeekTask(base::TimeDelta time,
   if (state_ != kStarted && state_ != kEnded) {
     // TODO(scherkus): should we run the callback?  I'm tempted to say the API
     // will only execute the first Seek() request.
-    VLOG(1) << "Media pipeline has not started, ignoring seek to "
-            << time.InMicroseconds();
+    DVLOG(1) << "Media pipeline has not started, ignoring seek to "
+             << time.InMicroseconds() << " (current state: " << state_ << ")";
     return;
   }
 
@@ -1113,25 +1085,27 @@ void Pipeline::InitializeDemuxer() {
   DCHECK_EQ(MessageLoop::current(), message_loop_);
   DCHECK(IsPipelineOk());
 
-  filter_collection_->GetDemuxerFactory()->Build(
-      url_, base::Bind(&Pipeline::OnDemuxerBuilt, this));
-}
-
-void Pipeline::OnDemuxerBuilt(PipelineStatus status, Demuxer* demuxer) {
-  if (MessageLoop::current() != message_loop_) {
-    message_loop_->PostTask(FROM_HERE, base::Bind(
-        &Pipeline::OnDemuxerBuilt, this, status, make_scoped_refptr(demuxer)));
+  demuxer_ = filter_collection_->GetDemuxer();
+  if (!demuxer_) {
+    SetError(PIPELINE_ERROR_REQUIRED_FILTER_MISSING);
     return;
   }
 
-  demuxer_ = demuxer;
+  demuxer_->set_host(this);
+  demuxer_->Initialize(base::Bind(&Pipeline::OnDemuxerInitialized, this));
+}
+
+void Pipeline::OnDemuxerInitialized(PipelineStatus status) {
+  if (MessageLoop::current() != message_loop_) {
+    message_loop_->PostTask(FROM_HERE, base::Bind(
+        &Pipeline::OnDemuxerInitialized, this, status));
+    return;
+  }
+
   if (status != PIPELINE_OK) {
     SetError(status);
     return;
   }
-
-  CHECK(demuxer_) << "Null demuxer encountered despite PIPELINE_OK.";
-  demuxer_->set_host(this);
 
   {
     base::AutoLock auto_lock(lock_);

@@ -51,7 +51,6 @@
 #include "chrome/browser/extensions/crx_installer.h"
 #include "chrome/browser/extensions/default_apps_trial.h"
 #include "chrome/browser/extensions/extension_browser_event_router.h"
-#include "chrome/browser/extensions/extension_disabled_ui.h"
 #include "chrome/browser/extensions/extension_prefs.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_tab_helper.h"
@@ -291,10 +290,8 @@ GURL UrlForExtension(const Extension* extension, const GURL& override_url) {
   // For extensions lacking launch urls, determine a reasonable fallback.
   if (!url.is_valid()) {
     url = extension->options_url();
-    if (!url.is_valid()) {
-      url = GURL(std::string(chrome::kChromeUISettingsURL) +
-                 chrome::kExtensionsSubPage);
-    }
+    if (!url.is_valid())
+      url = GURL(chrome::kChromeUIExtensionsURL);
   }
 
   return url;
@@ -321,9 +318,7 @@ bool ParseCommaSeparatedIntegers(const std::string& str,
 }
 
 bool AllowPanels(const std::string& app_name) {
-  // TODO(yfriedman): remove OS_ANDROID clause when browser is excluded from
-  // Android build.
-#if (!defined(OS_CHROMEOS) || defined(USE_AURA)) && !defined(OS_ANDROID)
+#if (!defined(OS_CHROMEOS) || defined(USE_AURA))
   if (!PanelManager::ShouldUsePanels(
           web_app::GetExtensionIdFromApplicationName(app_name))) {
     return false;
@@ -384,8 +379,6 @@ Browser::Browser(Type type, Profile* profile)
 
   registrar_.Add(this, content::NOTIFICATION_SSL_VISIBLE_STATE_CHANGED,
                  content::NotificationService::AllSources());
-  registrar_.Add(this, chrome::NOTIFICATION_EXTENSION_UPDATE_DISABLED,
-                 content::Source<Profile>(profile_->GetOriginalProfile()));
   registrar_.Add(this, chrome::NOTIFICATION_EXTENSION_LOADED,
                  content::Source<Profile>(profile_->GetOriginalProfile()));
   registrar_.Add(this, chrome::NOTIFICATION_EXTENSION_UNLOADED,
@@ -1113,7 +1106,7 @@ gfx::Rect Browser::GetSavedWindowBounds() const {
 ui::WindowShowState Browser::GetSavedWindowShowState() const {
   // Only tabbed browsers use the command line or preference state, with the
   // exception of devtools.
-  bool show_state = !is_type_tabbed();
+  bool show_state = !is_type_tabbed() && !is_devtools();
 
 #if defined(USE_AURA)
   // Apps save state on aura.
@@ -2390,9 +2383,8 @@ void Browser::ShowAvatarMenu() {
 
 void Browser::ShowHistoryTab() {
   content::RecordAction(UserMetricsAction("ShowHistory"));
-  browser::NavigateParams params(GetSingletonTabNavigateParams(
-      GURL(std::string(chrome::kChromeUIUberURL) +
-           chrome::kChromeUIHistoryHost)));
+  browser::NavigateParams params(
+      GetSingletonTabNavigateParams(GURL(chrome::kChromeUIHistoryURL)));
   params.path_behavior = browser::NavigateParams::IGNORE_AND_NAVIGATE;
   ShowSingletonTabOverwritingNTP(params);
 }
@@ -2413,9 +2405,8 @@ void Browser::ShowDownloadsTab() {
 
 void Browser::ShowExtensionsTab() {
   content::RecordAction(UserMetricsAction("ShowExtensions"));
-  browser::NavigateParams params(GetSingletonTabNavigateParams(
-      GURL(std::string(chrome::kChromeUIUberURL) +
-           chrome::kChromeUIExtensionsHost)));
+  browser::NavigateParams params(
+      GetSingletonTabNavigateParams(GURL(chrome::kChromeUIExtensionsURL)));
   params.path_behavior = browser::NavigateParams::IGNORE_AND_NAVIGATE;
   ShowSingletonTabOverwritingNTP(params);
 }
@@ -2441,23 +2432,15 @@ void Browser::ShowBrokenPageTab(WebContents* contents) {
 }
 
 void Browser::ShowOptionsTab(const std::string& sub_page) {
-  std::string url;
-  if (sub_page == chrome::kExtensionsSubPage) {
-    url = std::string(chrome::kChromeUIUberURL) +
-        chrome::kChromeUIExtensionsHost;
+  std::string url = std::string(chrome::kChromeUISettingsURL) + sub_page;
 #if defined(OS_CHROMEOS)
-  } else if (sub_page.find(chrome::kInternetOptionsSubPage, 0) !=
-             std::string::npos) {
+  if (sub_page.find(chrome::kInternetOptionsSubPage, 0) != std::string::npos) {
     std::string::size_type loc = sub_page.find("?", 0);
     std::string network_page = loc != std::string::npos ?
         sub_page.substr(loc) : std::string();
-    url = std::string(chrome::kChromeUIUberURL) +
-        chrome::kChromeUISettingsHost + network_page;
-#endif
-  } else {
-    url = std::string(chrome::kChromeUIUberURL) +
-        chrome::kChromeUISettingsHost + '/' + sub_page;
+    url = std::string(chrome::kChromeUISettingsURL) + network_page;
   }
+#endif
   browser::NavigateParams params(GetSingletonTabNavigateParams(GURL(url)));
   params.path_behavior = browser::NavigateParams::IGNORE_AND_NAVIGATE;
   ShowSingletonTabOverwritingNTP(params);
@@ -2490,8 +2473,8 @@ void Browser::OpenInstantConfirmDialog() {
 void Browser::OpenAboutChromeDialog() {
   content::RecordAction(UserMetricsAction("AboutChrome"));
 #if !defined(OS_WIN)
-  GURL url = GURL(chrome::kChromeUIUberURL);
-  browser::NavigateParams params(GetSingletonTabNavigateParams(url));
+  browser::NavigateParams params(
+      GetSingletonTabNavigateParams(GURL(chrome::kChromeUIUberURL)));
   params.path_behavior = browser::NavigateParams::IGNORE_AND_NAVIGATE;
   ShowSingletonTabOverwritingNTP(params);
 #else
@@ -4431,21 +4414,6 @@ void Browser::Observe(int type,
         UpdateToolbar(false);
       break;
 
-    case chrome::NOTIFICATION_EXTENSION_UPDATE_DISABLED: {
-      // Show the UI if the extension was disabled for escalated permissions.
-      Profile* profile = content::Source<Profile>(source).ptr();
-      if (profile_->IsSameProfile(profile)) {
-        ExtensionService* service = profile->GetExtensionService();
-        DCHECK(service);
-        const Extension* extension =
-            content::Details<const Extension>(details).ptr();
-        if (service->extension_prefs()->DidExtensionEscalatePermissions(
-                extension->id()))
-          extensions::ShowExtensionDisabledUI(service, profile_, extension);
-      }
-      break;
-    }
-
     case chrome::NOTIFICATION_EXTENSION_UNLOADED: {
       if (window()->GetLocationBar())
         window()->GetLocationBar()->UpdatePageActions();
@@ -4676,9 +4644,6 @@ void Browser::ShowFirstRunBubble() {
 // Browser, protected:
 
 BrowserWindow* Browser::CreateBrowserWindow() {
-  // TODO(yfriedman): remove OS_ANDROID clause when browser is excluded from
-  // Android build.
-#if !defined(OS_ANDROID)
   bool create_panel = false;
 #if defined(USE_ASH)
   if (CommandLine::ForCurrentProcess()->HasSwitch(
@@ -4689,7 +4654,6 @@ BrowserWindow* Browser::CreateBrowserWindow() {
 #endif
   if (create_panel)
     return PanelManager::GetInstance()->CreatePanel(this);
-#endif  // OS_ANDROID
 
   return BrowserWindow::CreateBrowserWindow(this);
 }
@@ -5694,9 +5658,6 @@ void Browser::UpdateBookmarkBarState(BookmarkBarStateChangeReason reason) {
 }
 
 void Browser::ShowSyncSetup(SyncPromoUI::Source source) {
-  // TODO(yfriedman): remove OS_ANDROID clause when browser is excluded from
-  // Android build.
-#if !defined(OS_ANDROID)
   ProfileSyncService* service =
       ProfileSyncServiceFactory::GetInstance()->GetForProfile(
           profile()->GetOriginalProfile());
@@ -5715,7 +5676,6 @@ void Browser::ShowSyncSetup(SyncPromoUI::Source source) {
     LoginUIServiceFactory::GetForProfile(
         profile()->GetOriginalProfile())->ShowLoginUI(false);
   }
-#endif
 }
 
 void Browser::ToggleSpeechInput() {

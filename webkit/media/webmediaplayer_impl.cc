@@ -221,15 +221,18 @@ void WebMediaPlayerImpl::load(const WebKit::WebURL& url) {
   if (BuildMediaStreamCollection(url, media_stream_client_,
                                  message_loop_factory_.get(),
                                  filter_collection_.get())) {
-    StartPipeline(gurl);
+    StartPipeline();
     return;
   }
 
   // Media source pipelines can start immediately.
+  scoped_refptr<media::FFmpegVideoDecoder> video_decoder;
   if (BuildMediaSourceCollection(url, GetClient()->sourceURL(), proxy_,
                                  message_loop_factory_.get(),
-                                 filter_collection_.get())) {
-    StartPipeline(gurl);
+                                 filter_collection_.get(),
+                                 &video_decoder)) {
+    proxy_->set_video_decoder(video_decoder);
+    StartPipeline();
     return;
   }
 
@@ -364,7 +367,7 @@ void WebMediaPlayerImpl::setVisible(bool visible) {
 
 #define COMPILE_ASSERT_MATCHING_ENUM(webkit_name, chromium_name) \
     COMPILE_ASSERT(static_cast<int>(WebKit::WebMediaPlayer::webkit_name) == \
-                   static_cast<int>(media::chromium_name), \
+                   static_cast<int>(webkit_media::chromium_name), \
                    mismatching_enums)
 COMPILE_ASSERT_MATCHING_ENUM(None, NONE);
 COMPILE_ASSERT_MATCHING_ENUM(MetaData, METADATA);
@@ -373,7 +376,11 @@ COMPILE_ASSERT_MATCHING_ENUM(Auto, AUTO);
 void WebMediaPlayerImpl::setPreload(WebKit::WebMediaPlayer::Preload preload) {
   DCHECK_EQ(main_loop_, MessageLoop::current());
 
-  pipeline_->SetPreload(static_cast<media::Preload>(preload));
+  if (proxy_ && proxy_->data_source()) {
+    // XXX: Why do I need to use webkit_media:: prefix? clang complains!
+    proxy_->data_source()->SetPreload(
+        static_cast<webkit_media::Preload>(preload));
+  }
 }
 
 bool WebMediaPlayerImpl::totalBytesKnown() {
@@ -815,22 +822,30 @@ void WebMediaPlayerImpl::DataSourceInitialized(
   DCHECK_EQ(main_loop_, MessageLoop::current());
 
   if (status != media::PIPELINE_OK) {
+    DVLOG(1) << "DataSourceInitialized status: " << status;
     SetNetworkState(WebKit::WebMediaPlayer::FormatError);
     Repaint();
     return;
   }
 
+  // TODO(scherkus): this is leftover from removing DemuxerFactory -- instead
+  // our DataSource should report this information. See http://crbug.com/120426
+  bool local_source = !gurl.SchemeIs("http") && !gurl.SchemeIs("https");
+
+  scoped_refptr<media::FFmpegVideoDecoder> video_decoder;
   BuildDefaultCollection(proxy_->data_source(),
+                         local_source,
                          message_loop_factory_.get(),
-                         filter_collection_.get());
-  StartPipeline(gurl);
+                         filter_collection_.get(),
+                         &video_decoder);
+  proxy_->set_video_decoder(video_decoder);
+  StartPipeline();
 }
 
-void WebMediaPlayerImpl::StartPipeline(const GURL& gurl) {
+void WebMediaPlayerImpl::StartPipeline() {
   started_ = true;
   pipeline_->Start(
       filter_collection_.Pass(),
-      gurl.spec(),
       base::Bind(&WebMediaPlayerProxy::PipelineEndedCallback, proxy_.get()),
       base::Bind(&WebMediaPlayerProxy::PipelineErrorCallback, proxy_.get()),
       base::Bind(&WebMediaPlayerProxy::NetworkEventCallback, proxy_.get()),
@@ -841,16 +856,18 @@ void WebMediaPlayerImpl::StartPipeline(const GURL& gurl) {
 void WebMediaPlayerImpl::SetNetworkState(
     WebKit::WebMediaPlayer::NetworkState state) {
   DCHECK_EQ(main_loop_, MessageLoop::current());
-  // Always notify to ensure client has the latest value.
+  DVLOG(1) << "SetNetworkState: " << state;
   network_state_ = state;
+  // Always notify to ensure client has the latest value.
   GetClient()->networkStateChanged();
 }
 
 void WebMediaPlayerImpl::SetReadyState(
     WebKit::WebMediaPlayer::ReadyState state) {
   DCHECK_EQ(main_loop_, MessageLoop::current());
-  // Always notify to ensure client has the latest value.
+  DVLOG(1) << "SetReadyState: " << state;
   ready_state_ = state;
+  // Always notify to ensure client has the latest value.
   GetClient()->readyStateChanged();
 }
 

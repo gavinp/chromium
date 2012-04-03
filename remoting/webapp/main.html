@@ -16,7 +16,7 @@ found in the LICENSE file.
     <link rel="stylesheet" href="main.css">
     <link rel="stylesheet" href="menu_button.css">
     <link rel="stylesheet" href="toolbar.css">
-    <script src="ask_pin_dialog.js"></script>
+    <script src="host_setup_dialog.js"></script>
     <script src="client_plugin_async.js"></script>
     <script src="client_plugin_v1.js"></script>
     <script src="client_screen.js"></script>
@@ -79,110 +79,156 @@ found in the LICENSE file.
     </header>
 
     <div data-ui-mode="home" hidden>
-      <section>
-        <div i18n-content="DESCRIPTION_HOME"
-             i18n-value-1="<a href='https://chrome.google.com/remotedesktop'>chrome.google.com/remotedesktop</a>"></div>
-      </section>
+      <p id="webapp-description"
+           i18n-content="DESCRIPTION_HOME"
+           i18n-value-1="<a href='https://chrome.google.com/remotedesktop'>chrome.google.com/remotedesktop</a>"></p>
 
       <section>
         <h2 i18n-content="MODE_IT2ME"></h2>
-        <div>
-          <div class="section-row">
-            <div class="box-spacer">
-              <div i18n-content="HOME_SHARE_DESCRIPTION"></div>
-              <div id="chrome-os-no-share"
-                   i18n-content="HOME_SHARE_DESCRIPTION_CHROME_OS"
-                   class="small-print"></div>
+        <div id="it2me-first-run">
+          <div>
+            <p class="infographic-description"
+               i18n-content="IT2ME_FIRST_RUN"></p>
+            <button id="get-started-it2me" i18n-content="GET_STARTED"></button>
+          </div>
+          <div class="infographic">
+            <img src="infographic_remote_assistance.png">
+          </div>
+        </div>
+        <div id="it2me-content">
+          <div>
+            <div class="section-row">
+              <div class="box-spacer">
+                <div i18n-content="HOME_SHARE_DESCRIPTION"></div>
+                <div id="chrome-os-no-share"
+                     i18n-content="HOME_SHARE_DESCRIPTION_CHROME_OS"
+                     class="small-print"></div>
+              </div>
+              <div>
+                <button id="share-button"
+                        i18n-content="HOME_SHARE_BUTTON"
+                        class="kd-button-share"
+                        type="button">
+                </button>
+              </div>
             </div>
+          </div>
+          <div class="section-row">
+            <div i18n-content="HOME_ACCESS_DESCRIPTION"
+                 class="box-spacer"></div>
             <div>
-              <button id="share-button"
-                      i18n-content="HOME_SHARE_BUTTON"
-                      class="kd-button-share"
+              <button id="access-mode-button"
+                      i18n-content="HOME_ACCESS_BUTTON"
                       type="button">
               </button>
             </div>
           </div>
-        </div>
-        <div class="section-row">
-          <div i18n-content="HOME_ACCESS_DESCRIPTION" class="box-spacer"></div>
-          <div>
-            <button id="access-mode-button"
-                    i18n-content="HOME_ACCESS_BUTTON"
-                    type="button">
-            </button>
-          </div>
-        </div>
+        </div> <!-- it2me-content -->
       </section> <!-- Remote Assistance -->
 
-      <section id="host-list-div" class="host-list-container" hidden>
+      <section id="host-list-div" class="host-list-container">
         <h2 i18n-content="MODE_ME2ME"></h2>
-        <div id="host-list"></div>
-        <div id="host-list-error" class="error-state"></div>
-        <div id="daemon-control" data-daemon-state="enabled disabled" hidden>
-          <table class="host-list-table">
-            <!-- TODO(jamiewalch): Rewrite this using flex boxes and apply the
-                 host-offline style if the daemon is not running -->
-            <tr>
-              <td class="host-list-main-icon">
-                <img src="icon_host.png">
-              </td>
-              <td class="host-list-label">
-                <span id="this-computer-name"
-                      data-daemon-state="enabled">
-                  My computer <!-- Placeholder until daemon mode is finished -->
-                </span>
-                <span i18n-content="HOME_DAEMON_START_MESSAGE"
-                      data-daemon-state="disabled">
-                </span>
-              </td>
-              <td class="mode-select-button-column">
-                <button type="button"
-                        id="stop-daemon"
-                        i18n-content="HOME_DAEMON_STOP_BUTTON"
-                        data-daemon-state="enabled">
-                </button>
-                <button type="button"
-                        id="start-daemon"
-                        i18n-content="HOME_DAEMON_START_BUTTON"
-                        data-daemon-state="disabled">
-                </button>
-              </td>
-            </tr>
-          </table>
-          <div data-daemon-state="enabled">
-            <span i18n-content="HOME_DAEMON_ACTIVE_MESSAGE"></span>
-            <a id="change-daemon-pin"
-               href="#"
-               i18n-content="HOME_DAEMON_CHANGE_PIN_LINK"></a>
+        <div id="me2me-first-run">
+          <div>
+            <p class="infographic-description"
+               i18n-content="ME2ME_FIRST_RUN"></p>
+            <button id="get-started-me2me" i18n-content="GET_STARTED"></button>
           </div>
-        </div> <!-- daemon-control -->
+          <div class="infographic">
+            <img src="infographic_my_computers.png">
+          </div>
+        </div>
+        <div id="me2me-content">
+          <div id="host-list" hidden></div>
+          <div id="host-list-error" class="error-state" hidden></div>
+          <div id="daemon-control" data-daemon-state="enabled disabled" hidden>
+            <div id="daemon-controller-ui" class="section-row">
+              <img src="icon_host.png" class="host-list-main-icon">
+              <div class="box-spacer"
+                   i18n-content="HOME_DAEMON_START_MESSAGE"
+                   data-daemon-state="disabled"></div>
+              <div id="this-computer-name"
+                   class="box-spacer"
+                   data-daemon-state="enabled">
+                My computer
+              </div>
+              <button type="button"
+                      id="stop-daemon"
+                      i18n-content="HOME_DAEMON_STOP_BUTTON"
+                      data-daemon-state="enabled">
+              </button>
+              <button type="button"
+                      id="start-daemon"
+                      i18n-content="HOME_DAEMON_START_BUTTON"
+                      data-daemon-state="disabled">
+              </button>
+            </div>
+            <div data-daemon-state="enabled">
+              <span i18n-content="HOME_DAEMON_ACTIVE_MESSAGE"></span>
+              <a id="change-daemon-pin"
+                 href="#"
+                 i18n-content="HOME_DAEMON_CHANGE_PIN_LINK"></a>
+            </div>
+          </div> <!-- daemon-control -->
+        </div> <!-- me2me-content -->
       </section> <!-- host-list-div -->
     </div> <!-- home -->
 
     <div id="dialog-screen"
-         data-ui-mode="home.host home.client home.auth home.history home.confirm-host-delete home.ask-pin"
+         data-ui-mode="home.host home.client home.auth home.history home.confirm-host-delete home.host-setup"
          hidden></div>
 
     <div id="dialog-container"
-         data-ui-mode="home.host home.client home.auth home.history home.confirm-host-delete home.ask-pin"
+         data-ui-mode="home.host home.client home.auth home.history home.confirm-host-delete home.host-setup"
          hidden>
 
       <div class="box-spacer"></div>
 
-      <div id="ask-pin-dialog" data-ui-mode="home.ask-pin" hidden>
-        <p i18n-content="ASK_PIN_DIALOG_DESCRIPTION"></p>
-        <form id="ask-pin-form" action="">
-          <label for="daemon-pin-input"
-                 i18n-content="ASK_PIN_DIALOG_LABEL"></label>
-          <input id="daemon-pin-entry" type="password">
-          <br>
-          <label for="daemon-pin-confirm"
-                 i18n-content="ASK_PIN_DIALOG_CONFIRM_LABEL"></label>
-          <input id="daemon-pin-confirm" type="password">
-          <button id="daemon-pin-ok" type="submit" i18n-content="OK"></button>
-          <img id="start-daemon-spinner" src="spinner.gif" hidden>
+      <div id="host-setup-dialog"
+           class="kd-modaldialog"
+           data-ui-mode="home.host-setup">
+        <p class="message" i18n-content="HOST_SETUP_DIALOG_DESCRIPTION"></p>
+        <form id="ask-pin-form"
+              data-ui-mode="home.host-setup.ask-pin"
+              action="">
+          <div>
+            <label for="daemon-pin-input"
+                   i18n-content="ASK_PIN_DIALOG_LABEL"
+                   class="box-spacer"></label>
+            <input id="daemon-pin-entry" type="password">
+          </div>
+          <div>
+            <label for="daemon-pin-confirm"
+                   i18n-content="ASK_PIN_DIALOG_CONFIRM_LABEL"></label>
+            <input id="daemon-pin-confirm" type="password">
+          </div>
+          <div class="button-row">
+            <div class="box-spacer"></div>
+            <button id="daemon-pin-ok" type="submit" i18n-content="OK">
+            </button>
+            <button id="daemon-pin-cancel" type="button" i18n-content="CANCEL">
+            </button>
+          </div>
         </form>
-      </div> <!-- ask-pin-dialog -->
+        <div data-ui-mode="home.host-setup.processing" hidden>
+          <img src="spinner.gif">
+          <span id="host-setup-processing-message"></span>
+        </div>
+        <div data-ui-mode="home.host-setup.done" hidden>
+          <div id="host-setup-done-message" class="message"></div>
+          <div class="button-row">
+            <div class="box-spacer"></div>
+            <button id="host-config-done-dismiss" i18n-content="OK"></button>
+          </div>
+        </div>
+        <div data-ui-mode="home.host-setup.error" hidden>
+          <div id="host-setup-error-message" class="error-state"></div>
+          <div class="button-row">
+            <div class="box-spacer"></div>
+            <button id="host-config-error-dismiss" i18n-content="OK"></button>
+          </div>
+        </div>
+      </div> <!-- host-setup-dialog -->
 
       <div id="auth-dialog"
            data-ui-mode="home.auth"

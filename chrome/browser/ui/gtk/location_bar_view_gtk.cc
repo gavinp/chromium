@@ -1187,10 +1187,8 @@ void LocationBarViewGtk::ShowStarBubble(const GURL& url,
 }
 
 void LocationBarViewGtk::ShowChromeToMobileBubble() {
-  Profile* profile = browser_->profile();
-  ChromeToMobileServiceFactory::GetForProfile(profile)->
-      RequestMobileListUpdate();
-  ChromeToMobileBubbleGtk::Show(GTK_IMAGE(chrome_to_mobile_image_), profile);
+  ChromeToMobileBubbleGtk::Show(GTK_IMAGE(chrome_to_mobile_image_),
+                                browser_->profile());
 }
 
 void LocationBarViewGtk::SetStarred(bool starred) {
@@ -1224,8 +1222,7 @@ void LocationBarViewGtk::UpdateChromeToMobileIcon() {
 
   Profile* profile = browser_->profile();
   bool enabled = !toolbar_model_->input_in_progress() &&
-      profile->IsSyncAccessible() &&
-      !ChromeToMobileServiceFactory::GetForProfile(profile)->mobiles().empty();
+      ChromeToMobileServiceFactory::GetForProfile(profile)->HasDevices();
   gtk_widget_set_visible(chrome_to_mobile_view_.get(), enabled);
   command_updater_->UpdateCommandEnabled(IDC_CHROME_TO_MOBILE_PAGE, enabled);
 }
@@ -1709,21 +1706,15 @@ void LocationBarViewGtk::PageActionViewGtk::ConnectPageActionAccelerator() {
       extensions->GetByID(page_action_->extension_id());
   window_ = owner_->browser()->window()->GetNativeHandle();
 
-  // Iterate through all the keybindings and see if one is assigned to the
-  // pageAction.
-  const std::vector<Extension::ExtensionKeybinding>& commands =
-      extension->keybindings();
-  for (size_t i = 0; i < commands.size(); ++i) {
-    if (commands[i].command_name() !=
-        extension_manifest_values::kPageActionKeybindingEvent)
-      continue;
-
+  const Extension::ExtensionKeybinding* command =
+      extension->page_action_command();
+  if (command) {
     // Found the browser action shortcut command, register it.
     keybinding_.reset(new ui::AcceleratorGtk(
-        commands[i].accelerator().key_code(),
-        commands[i].accelerator().IsShiftDown(),
-        commands[i].accelerator().IsCtrlDown(),
-        commands[i].accelerator().IsAltDown()));
+        command->accelerator().key_code(),
+        command->accelerator().IsShiftDown(),
+        command->accelerator().IsCtrlDown(),
+        command->accelerator().IsAltDown()));
 
     accel_group_ = gtk_accel_group_new();
     gtk_window_add_accel_group(window_, accel_group_);
@@ -1740,7 +1731,6 @@ void LocationBarViewGtk::PageActionViewGtk::ConnectPageActionAccelerator() {
     registrar_.Add(this,
                    chrome::NOTIFICATION_WINDOW_CLOSED,
                    content::Source<GtkWindow>(window_));
-    break;
   }
 }
 

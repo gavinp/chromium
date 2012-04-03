@@ -76,8 +76,8 @@ class InstantTest : public InProcessBrowserTest {
         test_server()->host_port_pair().host().c_str(),
         test_server()->host_port_pair().port(),
         page.c_str());
-    template_url->SetURL(url, 0, 0);
-    template_url->SetInstantURL(url, 0, 0);
+    template_url->SetURL(url);
+    template_url->SetInstantURL(url);
     template_url->set_keyword(ASCIIToUTF16("foo"));
     template_url->set_short_name(ASCIIToUTF16("foo"));
 
@@ -283,9 +283,8 @@ IN_PROC_BROWSER_TEST_F(InstantTest, MAYBE(OnChangeEvent)) {
       GetDefaultSearchProvider();
   EXPECT_TRUE(default_turl);
   EXPECT_TRUE(default_turl->url());
-  EXPECT_EQ(default_turl->url()->ReplaceSearchTerms(
-                *default_turl, ASCIIToUTF16("defghi"), 0, string16()),
-            loader()->url().spec());
+  EXPECT_EQ(default_turl->url()->ReplaceSearchTerms(ASCIIToUTF16("defghi"), 0,
+      string16()), loader()->url().spec());
 
   // Check that the value is reflected and onchange is called.
   EXPECT_EQ("true 0 0 1 true d false def false 3 3",

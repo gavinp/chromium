@@ -776,6 +776,7 @@ class GDataFileSystemTest : public testing::Test {
 
     ReadOnlyFindFileDelegate delegate;
     file_system_->LoadRootFeedFromCache(
+        GDataFileSystem::FEED_CHUNK_INITIAL,
         FilePath(FILE_PATH_LITERAL("gdata")),
         false,     // load_from_server
         base::Bind(&GDataFileSystemTest::OnExpectToFindFile,
@@ -893,6 +894,40 @@ class MockFindFileDelegate : public gdata::FindFileDelegate {
                             const FilePath&,
                             GDataFileBase*));
 };
+
+void AsyncInitializationCallback(int* counter,
+                                 int expected_counter,
+                                 const FilePath& expected_file_path,
+                                 MessageLoop* message_loop,
+                                 base::PlatformFileError error,
+                                 const FilePath& directory_path,
+                                 GDataFileBase* file) {
+  LOG(INFO) << "here";
+  ASSERT_EQ(base::PLATFORM_FILE_OK, error);
+  EXPECT_EQ(expected_file_path, directory_path);
+  EXPECT_FALSE(file == NULL);
+
+  (*counter)++;
+  if (*counter >= expected_counter)
+    message_loop->Quit();
+}
+
+TEST_F(GDataFileSystemTest, DuplicatedAsyncInitialization) {
+  int counter = 0;
+  FindFileCallback callback = base::Bind(
+      &AsyncInitializationCallback,
+      &counter,
+      2,
+      FilePath(FILE_PATH_LITERAL("gdata")),
+      &message_loop_);
+
+  file_system_->FindFileByPathAsync(
+      FilePath(FILE_PATH_LITERAL("gdata")), callback);
+  file_system_->FindFileByPathAsync(
+      FilePath(FILE_PATH_LITERAL("gdata")), callback);
+  message_loop_.Run();  // Wait to get our result
+  EXPECT_EQ(2, counter);
+}
 
 TEST_F(GDataFileSystemTest, SearchRootDirectory) {
   MockFindFileDelegate mock_find_file_delegate;
@@ -1056,7 +1091,7 @@ TEST_F(GDataFileSystemTest, FilePathTests) {
 
 TEST_F(GDataFileSystemTest, CachedFeedLoading) {
   TestLoadMetadataFromCache(FILE_PATH_LITERAL("cached_feeds.json"),
-      FilePath(FILE_PATH_LITERAL("GCache/v1/meta/last_feed.json")));
+      FilePath(FILE_PATH_LITERAL("GCache/v1/meta/first_feed.json")));
 
   // Test first feed elements.
   FindAndTestFilePath(FilePath(FILE_PATH_LITERAL("gdata/Feed 1 File.txt")));

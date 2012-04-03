@@ -214,7 +214,7 @@ void ToolbarView::Init() {
   app_menu_->set_id(VIEW_ID_APP_MENU);
 
   // Add any necessary badges to the menu item based on the system state.
-  if (IsUpgradeRecommended() || ShouldShowIncompatibilityWarning()) {
+  if (ShouldShowUpgradeRecommended() || ShouldShowIncompatibilityWarning()) {
     UpdateAppMenuState();
   }
   LoadImages();
@@ -290,7 +290,7 @@ SkBitmap ToolbarView::GetAppMenuIcon(views::CustomButton::ButtonState state) {
   int error_badge_id = GlobalErrorServiceFactory::GetForProfile(
       browser_->profile())->GetFirstBadgeResourceID();
 
-  bool add_badge = IsUpgradeRecommended() ||
+  bool add_badge = ShouldShowUpgradeRecommended() ||
                    ShouldShowIncompatibilityWarning() || error_badge_id;
   if (!add_badge)
     return icon;
@@ -301,7 +301,7 @@ SkBitmap ToolbarView::GetAppMenuIcon(views::CustomButton::ButtonState state) {
   SkBitmap badge;
   // Only one badge can be active at any given time. The Upgrade notification
   // is deemed most important, then the DLL conflict badge.
-  if (IsUpgradeRecommended()) {
+  if (ShouldShowUpgradeRecommended()) {
     badge = *tp->GetBitmapNamed(
         UpgradeDetector::GetInstance()->GetIconResourceID(
             UpgradeDetector::UPGRADE_ICON_TYPE_BADGE));
@@ -693,8 +693,14 @@ void ToolbarView::RemovePaneFocus() {
 ////////////////////////////////////////////////////////////////////////////////
 // ToolbarView, private:
 
-bool ToolbarView::IsUpgradeRecommended() {
+bool ToolbarView::ShouldShowUpgradeRecommended() {
+#if defined(OS_CHROMEOS)
+  // In chromeos, the update recommendation is shown in the system tray. So it
+  // should not be displayed in the wrench menu.
+  return false;
+#else
   return (UpgradeDetector::GetInstance()->notify_upgrade());
+#endif
 }
 
 bool ToolbarView::ShouldShowIncompatibilityWarning() {
@@ -707,17 +713,7 @@ bool ToolbarView::ShouldShowIncompatibilityWarning() {
 }
 
 int ToolbarView::PopupTopSpacing() const {
-  // TODO(beng): For some reason GetWidget() returns NULL here in some
-  //             unidentified circumstances on ChromeOS. This means GetWidget()
-  //             succeeded but we were (probably) unable to locate a
-  //             NativeWidgetGtk* on it using
-  //             NativeWidget::GetNativeWidgetForNativeView.
-  //             I am throwing in a NULL check for now to stop the hurt, but
-  //             it's possible the crash may just show up somewhere else.
-  const views::Widget* widget = GetWidget();
-  DCHECK(widget) << "If you hit this please talk to beng";
-  return widget && widget->ShouldUseNativeFrame() ?
-      0 : kPopupTopSpacingNonGlass;
+  return GetWidget()->ShouldUseNativeFrame() ? 0 : kPopupTopSpacingNonGlass;
 }
 
 void ToolbarView::LoadImages() {
@@ -775,7 +771,7 @@ void ToolbarView::ShowCriticalNotification() {
 
 void ToolbarView::UpdateAppMenuState() {
   string16 accname_app = l10n_util::GetStringUTF16(IDS_ACCNAME_APP);
-  if (IsUpgradeRecommended()) {
+  if (ShouldShowUpgradeRecommended()) {
     accname_app = l10n_util::GetStringFUTF16(
         IDS_ACCNAME_APP_UPGRADE_RECOMMENDED, accname_app);
   }

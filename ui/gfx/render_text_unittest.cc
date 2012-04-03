@@ -911,24 +911,61 @@ TEST_F(RenderTextTest, MoveLeftRightByWordInChineseText) {
   render_text->MoveCursor(WORD_BREAK, CURSOR_RIGHT, false);
   EXPECT_EQ(6U, render_text->cursor_position());
 }
+#endif
 
-TEST_F(RenderTextTest, StringWidthTest) {
+TEST_F(RenderTextTest, StringSizeSanity) {
+  scoped_ptr<RenderText> render_text(RenderText::CreateRenderText());
+  render_text->SetText(UTF8ToUTF16("Hello World"));
+  const Size string_size = render_text->GetStringSize();
+  EXPECT_GT(string_size.width(), 0);
+  EXPECT_GT(string_size.height(), 0);
+}
+
+TEST_F(RenderTextTest, StringSizeBoldWidth) {
   scoped_ptr<RenderText> render_text(RenderText::CreateRenderText());
   render_text->SetText(UTF8ToUTF16("Hello World"));
 
-  // Check that width is valid
-  int width = render_text->GetStringSize().width();
-  EXPECT_GT(width, 0);
+  const int plain_width = render_text->GetStringSize().width();
+  EXPECT_GT(plain_width, 0);
 
   // Apply a bold style and check that the new width is greater.
   StyleRange bold;
   bold.font_style |= gfx::Font::BOLD;
   render_text->set_default_style(bold);
   render_text->ApplyDefaultStyle();
-  EXPECT_GT(render_text->GetStringSize().width(), width);
+
+  const int bold_width = render_text->GetStringSize().width();
+  EXPECT_GT(bold_width, plain_width);
 }
 
-#endif
+TEST_F(RenderTextTest, StringSizeHeight) {
+  struct {
+    string16 text;
+  } cases[] = {
+    { WideToUTF16(L"Hello World!") },  // English
+    { WideToUTF16(L"\x6328\x62f6") },  // Japanese
+    { WideToUTF16(L"\x0915\x093f") },  // Hindi
+    { WideToUTF16(L"\x05e0\x05b8") },  // Hebrew
+  };
+
+  Font default_font;
+  Font larger_font = default_font.DeriveFont(24, default_font.GetStyle());
+  EXPECT_GT(larger_font.GetHeight(), default_font.GetHeight());
+
+  for (size_t i = 0; i < ARRAYSIZE_UNSAFE(cases); i++) {
+    scoped_ptr<RenderText> render_text(RenderText::CreateRenderText());
+    render_text->SetFontList(FontList(default_font));
+    render_text->SetText(cases[i].text);
+
+    const int height1 = render_text->GetStringSize().height();
+    EXPECT_GT(height1, 0);
+
+    // Check that setting the larger font increases the height.
+    render_text->SetFontList(FontList(larger_font));
+    const int height2 = render_text->GetStringSize().height();
+    EXPECT_GT(height2, height1);
+  }
+}
 
 TEST_F(RenderTextTest, CursorBoundsInReplacementMode) {
   scoped_ptr<RenderText> render_text(RenderText::CreateRenderText());

@@ -139,6 +139,10 @@ IN_PROC_BROWSER_TEST_F(BrowserInitTest, OpenURLsPopup) {
   BrowserList::RemoveObserver(&observer);
 }
 
+// We don't do non-process-startup browser launches on ChromeOS.
+// Session restore for process-startup browser launches is tested
+// in session_restore_uitest.
+#if !defined(OS_CHROMEOS)
 // Verify that startup URLs are honored when the process already exists but has
 // no tabbed browser windows (eg. as if the process is running only due to a
 // background application.
@@ -169,7 +173,7 @@ IN_PROC_BROWSER_TEST_F(BrowserInitTest,
   ASSERT_TRUE(launch.Launch(browser()->profile(), std::vector<GURL>(), false));
 
   // This should have created a new browser window.  |browser()| is still
-  // around at this point, even though we've closed it's window.
+  // around at this point, even though we've closed its window.
   Browser* new_browser = NULL;
   ASSERT_NO_FATAL_FAILURE(FindOneOtherBrowser(&new_browser));
 
@@ -332,6 +336,8 @@ IN_PROC_BROWSER_TEST_F(BrowserInitTest, OpenAppShortcutPanel) {
 
 #endif  // !defined(OS_MACOSX)
 
+#endif  // !defined(OS_CHROMEOS)
+
 IN_PROC_BROWSER_TEST_F(BrowserInitTest, ReadingWasRestartedAfterRestart) {
   // Tests that BrowserInit::WasRestarted reads and resets the preference
   // kWasRestarted correctly.
@@ -354,6 +360,7 @@ IN_PROC_BROWSER_TEST_F(BrowserInitTest, ReadingWasRestartedAfterNormalStart) {
   EXPECT_FALSE(BrowserInit::WasRestarted());
 }
 
+#if !defined(OS_CHROMEOS)
 IN_PROC_BROWSER_TEST_F(BrowserInitTest, StartupURLsForTwoProfiles) {
   Profile* default_profile = browser()->profile();
 
@@ -400,7 +407,7 @@ IN_PROC_BROWSER_TEST_F(BrowserInitTest, StartupURLsForTwoProfiles) {
   // urls1 were opened in a browser for default_profile, and urls2 were opened
   // in a browser for other_profile.
   Browser* new_browser = NULL;
-  // |browser()| is still around at this point, even though we've closed it's
+  // |browser()| is still around at this point, even though we've closed its
   // window. Thus the browser count for default_profile is 2.
   ASSERT_EQ(2u, BrowserList::GetBrowserCount(default_profile));
   new_browser = FindOneOtherBrowserForProfile(default_profile, browser());
@@ -672,3 +679,4 @@ IN_PROC_BROWSER_TEST_F(BrowserInitTest, ProfilesLaunchedAfterCrash) {
   EXPECT_EQ(1U, new_browser->GetTabContentsWrapperAt(0)->infobar_tab_helper()->
             infobar_count());
 }
+#endif  // !OS_CHROMEOS

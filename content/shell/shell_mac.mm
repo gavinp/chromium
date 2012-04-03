@@ -16,6 +16,7 @@
 #include "content/public/browser/web_contents_view.h"
 #include "content/shell/resource.h"
 #include "googleurl/src/gurl.h"
+#import "ui/base/cocoa/underlay_opengl_hosting_window.h"
 
 // Receives notification that the window is closing so that it can start the
 // tear-down process. Is responsible for deleting itself when done.
@@ -142,13 +143,14 @@ void Shell::PlatformSetIsLoading(bool loading) {
 
 void Shell::PlatformCreateWindow(int width, int height) {
   NSRect initial_window_bounds = NSMakeRect(0, 0, width, height);
-  window_ = [[NSWindow alloc] initWithContentRect:initial_window_bounds
-                                        styleMask:(NSTitledWindowMask |
-                                                   NSClosableWindowMask |
-                                                   NSMiniaturizableWindowMask |
-                                                   NSResizableWindowMask )
-                                          backing:NSBackingStoreBuffered
-                                            defer:NO];
+  window_ = [[UnderlayOpenGLHostingWindow alloc]
+      initWithContentRect:initial_window_bounds
+                styleMask:(NSTitledWindowMask |
+                           NSClosableWindowMask |
+                           NSMiniaturizableWindowMask |
+                           NSResizableWindowMask )
+                  backing:NSBackingStoreBuffered
+                    defer:NO];
   [window_ setTitle:kWindowTitle];
   NSView* content = [window_ contentView];
 
@@ -213,6 +215,10 @@ void Shell::PlatformSetContents() {
 
 void Shell::PlatformResizeSubViews() {
   // Not needed; subviews are bound.
+}
+
+void Shell::Close() {
+  [window_ performClose:nil];
 }
 
 void Shell::ActionPerformed(int control) {

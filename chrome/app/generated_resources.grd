@@ -215,6 +215,12 @@ are declared in build/common.gypi.
       <message name="IDS_WEBSITE_SETTINGS_PERMISSION_BLOCK" desc="The label used in the permissions dropdowns for the option that denies a permissions. ">
         Block
       </message>
+      <message name="IDS_WEBSITE_SETTINGS_PERMISSION_ASK" desc="The label used in the permissions dropdowns for the option that makes the browser asks for permission. ">
+        Ask
+      </message>
+      <message name="IDS_WEBSITE_SETTINGS_PERMISSION_DEFAULT" desc="The label used in the permissions dropdowns for the global browser wide default. ">
+        Global default
+      </message>
       <message name="IDS_WEBSITE_SETTINGS_TYPE_POPUPS" desc="The label used for popups permissions controls in the Website Settings popup.">
         Popups
       </message>
@@ -2316,10 +2322,6 @@ are declared in build/common.gypi.
       <message name="IDS_SHOW_ALL_DOWNLOADS"
                desc="Link label shown at the corner of the download shelf">
         Show all downloads...
-      </message>
-      <message name="IDS_DOWNLOAD_STATUS_INTERRUPTED"
-               desc="The download experienced an error and was interrupted, size downloaded/total.">
-        <ph name="DOWNLOAD_RECEIVED">$1<ex>54kB</ex></ph>/<ph name="DOWNLOAD_TOTAL">$2<ex>154MB</ex></ph>, Interrupted
       </message>
       <!-- Download Error Messages-->
       <!-- *_STATUS_*: Short message in the download on the shelf.-->
@@ -4489,9 +4491,16 @@ Update checks have repeatedly failed for the extension "<ph name="EXTENSION_NAME
       <message name="IDS_EXTENSIONS_VISIT_WEBSITE" desc="The link for visiting the extension's gallery page.">
         View in Web Store
       </message>
-      <message name="IDS_EXTENSIONS_RELOAD" desc="The link for reloading extensions.">
-        Reload
-      </message>
+      <if expr="is_macosx">
+        <message name="IDS_EXTENSIONS_RELOAD" desc="The link for reloading extensions.">
+          Reload (⌘R)
+        </message>
+      </if>
+      <if expr="not is_macosx">
+        <message name="IDS_EXTENSIONS_RELOAD" desc="The link for reloading extensions.">
+          Reload (Ctrl+R)
+        </message>
+      </if>
       <message name="IDS_EXTENSIONS_OPTIONS_LINK" desc="The button text for the options button.">
         Options
       </message>
@@ -5533,16 +5542,7 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </message>
 
       <!-- Instant -->
-      <message name="IDS_INSTANT_OPT_IN_ENABLE" desc="Button shown in the omnibox dropdown for enabling instant">
-        Enable...
-      </message>
-      <message name="IDS_INSTANT_OPT_IN_NO_THANKS" desc="Button shown in the omnibox dropdodown for not enabling instant">
-        No thanks
-      </message>
-      <message name="IDS_INSTANT_OPT_IN_LABEL" desc="Label shown in the omnibox dropdown for enabling instant">
-        Enable Instant for faster searching?
-      </message>
-      <message name="IDS_INSTANT_OPT_IN_MESSAGE" desc="Message shown in the instant opt-in dialog">
+      <message name="IDS_INSTANT_OPT_IN_MESSAGE" desc="Message shown in the instant confirm dialog">
 With Instant enabled and if supported by your default search engine, search results appear instantly as you type queries in the omnibox, and in-line predictions help guide your search.
 
 Because search results are requested even while you're typing your query, your default search engine may be logging these as search queries.
@@ -5983,6 +5983,9 @@ Because search results are requested even while you're typing your query, your d
       </message>
       <message name="IDS_TOOLTIP_LOCATION_ICON" desc="The tooltip for location icon in the omnibox">
         View site information
+      </message>
+      <message name="IDS_TOOLTIP_NEW_TAB" desc="The tooltip for the new tab button">
+        New tab
       </message>
 
       <!--Accessible name/action strings-->
@@ -14079,6 +14082,9 @@ Some features may be unavailable.  Please check that the profile exists and you 
       <message name="IDS_OPTIONS_POINTER_OVERLAY_TITLE" desc="The title for 'Pointer settings' overlay.">
         Pointer settings
       </message>
+      <message name="IDS_OPTIONS_NO_POINTING_DEVICES" desc="Text shown when there is neither a touchpad nor a mouse.">
+        No mouse or touchpad was detected.
+      </message>
       <message name="IDS_OPTIONS_POINTER_MOUSE_OVERLAY_TITLE" desc="The title for 'Pointer settings' overlay for Mouse only.">
         Mouse settings
       </message>
@@ -15718,8 +15724,8 @@ Battery full
       <message name="IDS_APP_LIST_CONTEXT_MENU_UNPIN" desc="Title text for the 'unpin' context menu item of an app list item.">
         Unpin from Launcher
       </message>
-      <message name="IDS_LAUNCHER_CONTEXT_MENU_SHELF_VISIBILITY" desc="Title of the menu in the launcher context menu for choosing shelf visibility">
-        Shelf visibility
+      <message name="IDS_LAUNCHER_CONTEXT_MENU_LAUNCHER_VISIBILITY" desc="Title of the menu in the launcher context menu for choosing launcher visibility">
+        Launcher visibility
       </message>
       <message name="IDS_LAUNCHER_CONTEXT_MENU_AUTO_HIDE_SHELF" desc="Title of the menu item in the context menu for always auto-hiding the shelf">
         Auto-hide

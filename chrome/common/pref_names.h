@@ -40,7 +40,6 @@ extern const char kGlobalDefaultCharset[];
 extern const char kDefaultCharset[];
 extern const char kAcceptLanguages[];
 extern const char kStaticEncodings[];
-extern const char kPopupWhitelistedHosts[];
 extern const char kShowBookmarkBar[];
 extern const char kBookmarkEditorExpandedNodes[];
 extern const char kWebKitGlobalStandardFontFamily[];
@@ -156,8 +155,6 @@ extern const char kUrlWhitelist[];
 extern const char kInstantConfirmDialogShown[];
 extern const char kInstantEnabled[];
 extern const char kInstantEnabledOnce[];
-extern const char kInstantEnabledTime[];
-extern const char kInstantPromo[];
 extern const char kMultipleProfilePrefMigration[];
 extern const char kNetworkPredictionEnabled[];
 extern const char kDefaultAppsInstallState[];
@@ -168,6 +165,7 @@ extern const char kAudioVolumePercent[];
 extern const char kTapToClickEnabled[];
 extern const char kNaturalScroll[];
 extern const char kPrimaryMouseButtonRight[];
+extern const char kMouseSensitivity[];
 extern const char kTouchpadSensitivity[];
 extern const char kUse24HourClock[];
 extern const char kDisableGData[];
@@ -295,7 +293,6 @@ extern const char kDesktopNotificationAllowedOrigins[];  // OBSOLETE
 extern const char kDesktopNotificationDeniedOrigins[];  // OBSOLETE
 extern const char kDesktopNotificationPosition[];
 extern const char kDefaultContentSettings[];
-extern const char kPerHostContentSettings[];  // OBSOLETE
 extern const char kContentSettingsVersion[];
 extern const char kContentSettingsPatterns[];  // OBSOLETE
 extern const char kContentSettingsPatternPairs[];
@@ -672,15 +669,23 @@ extern const char kWebIntentsEnabled[];
 
 #if defined(USE_AURA)
 extern const char kPinnedLauncherApps[];
-
-extern const char kMaximumSecondsBetweenDoubleClick[];
-extern const char kMaximumTouchDownDurationInSecondsForClick[];
-extern const char kMaximumTouchMoveInPixelsForClick[];
-extern const char kMinFlickSpeedSquared[];
-extern const char kMinimumTouchDownDurationInSecondsForClick[];
-
+extern const char kAlwaysAutoHideShelf[];
 extern const char kShelfAutoHideBehavior[];
 
+extern const char kLongPressTimeInSeconds[];
+extern const char kMaxSecondsBetweenDoubleClick[];
+extern const char kMaxSeparationForGestureTouchesInPixels[];
+extern const char kMaxTouchDownDurationInSecondsForClick[];
+extern const char kMaxTouchMoveInPixelsForClick[];
+extern const char kMinDistanceForPinchScrollInPixels[];
+extern const char kMinFlickSpeedSquared[];
+extern const char kMinPinchUpdateDistanceInPixels[];
+extern const char kMinRailBreakVelocity[];
+extern const char kMinScrollDeltaSquared[];
+extern const char kMinTouchDownDurationInSecondsForClick[];
+extern const char kPointsBufferedForVelocity[];
+extern const char kRailBreakProportion[];
+extern const char kRailStartProportion[];
 #endif
 
 extern const char kInManagedMode[];

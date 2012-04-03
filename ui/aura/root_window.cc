@@ -355,6 +355,11 @@ void RootWindow::OnWindowTransformed(Window* window, bool contained_mouse) {
   }
 }
 
+void RootWindow::OnKeyboardMappingChanged() {
+  FOR_EACH_OBSERVER(RootWindowObserver, observers_,
+                    OnKeyboardMappingChanged(this));
+}
+
 void RootWindow::AddRootWindowObserver(RootWindowObserver* observer) {
   observers_.AddObserver(observer);
 }
@@ -861,7 +866,7 @@ void RootWindow::SynthesizeMouseMoveEvent() {
   layer()->transform().TransformPoint(orig_mouse_location);
 
   // TODO(derat|oshima): Don't use mouse_button_flags_ as it's
-  // is currently broken. See/ crbug.com/107931.
+  // currently broken. See/ crbug.com/107931.
   MouseEvent event(ui::ET_MOUSE_MOVED,
                    orig_mouse_location,
                    orig_mouse_location,

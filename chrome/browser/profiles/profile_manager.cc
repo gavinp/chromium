@@ -18,6 +18,8 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/extensions/default_apps_trial.h"
 #include "chrome/browser/extensions/extension_service.h"
+#include "chrome/browser/extensions/extension_system.h"
+#include "chrome/browser/extensions/extension_system_factory.h"
 #include "chrome/browser/managed_mode.h"
 #include "chrome/browser/prefs/pref_service.h"
 #include "chrome/browser/prefs/scoped_user_pref_update.h"
@@ -217,8 +219,11 @@ ProfileManager::ProfileManager(const FilePath& user_data_dir)
     : user_data_dir_(user_data_dir),
       logged_in_(false),
       will_import_(false),
+#if !defined(OS_ANDROID)
+      ALLOW_THIS_IN_INITIALIZER_LIST(
+          browser_list_observer_(this)),
+#endif
       shutdown_started_(false) {
-  BrowserList::AddObserver(this);
 #if defined(OS_CHROMEOS)
   registrar_.Add(
       this,
@@ -240,7 +245,6 @@ ProfileManager::ProfileManager(const FilePath& user_data_dir)
 }
 
 ProfileManager::~ProfileManager() {
-  BrowserList::RemoveObserver(this);
 #if defined(OS_WIN)
   if (profile_shortcut_manager_.get())
     profile_info_cache_->RemoveObserver(profile_shortcut_manager_.get());
@@ -586,20 +590,36 @@ void ProfileManager::OnImportFinished(Profile* profile) {
       content::NotificationService::NoDetails());
 }
 
-void ProfileManager::OnBrowserAdded(const Browser* browser) {}
+#if !defined(OS_ANDROID)
+ProfileManager::BrowserListObserver::BrowserListObserver(
+    ProfileManager* manager)
+    : profile_manager_(manager) {
+  BrowserList::AddObserver(this);
+}
 
-void ProfileManager::OnBrowserRemoved(const Browser* browser) {}
+ProfileManager::BrowserListObserver::~BrowserListObserver() {
+  BrowserList::RemoveObserver(this);
+}
 
-void ProfileManager::OnBrowserSetLastActive(const Browser* browser) {
+void ProfileManager::BrowserListObserver::OnBrowserAdded(
+    const Browser* browser) {}
+
+void ProfileManager::BrowserListObserver::OnBrowserRemoved(
+    const Browser* browser) {}
+
+void ProfileManager::BrowserListObserver::OnBrowserSetLastActive(
+    const Browser* browser) {
   Profile* last_active = browser->GetProfile();
   PrefService* local_state = g_browser_process->local_state();
   DCHECK(local_state);
   // Only keep track of profiles that we are managing; tests may create others.
-  if (profiles_info_.find(last_active->GetPath()) != profiles_info_.end()) {
+  if (profile_manager_->profiles_info_.find(
+      last_active->GetPath()) != profile_manager_->profiles_info_.end()) {
     local_state->SetString(prefs::kProfileLastUsed,
                            last_active->GetPath().BaseName().MaybeAsASCII());
   }
 }
+#endif  // !defined(OS_ANDROID)
 
 void ProfileManager::DoFinalInit(Profile* profile, bool go_off_the_record) {
   DoFinalInitForServices(profile, go_off_the_record);
@@ -619,9 +639,9 @@ void ProfileManager::DoFinalInit(Profile* profile, bool go_off_the_record) {
 }
 
 void ProfileManager::DoFinalInitForServices(Profile* profile,
-                                         bool go_off_the_record) {
+                                            bool go_off_the_record) {
   const CommandLine& command_line = *CommandLine::ForCurrentProcess();
-  profile->InitExtensions(!go_off_the_record);
+  ExtensionSystemFactory::GetForProfile(profile)->Init(!go_off_the_record);
   if (!command_line.HasSwitch(switches::kDisableWebResources))
     profile->InitPromoResources();
 }

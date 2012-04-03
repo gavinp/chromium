@@ -11,6 +11,7 @@
 #include "media/base/message_loop_factory.h"
 #include "media/base/pipeline.h"
 #include "media/filters/chunk_demuxer.h"
+#include "media/filters/ffmpeg_video_decoder.h"
 #include "media/filters/video_renderer_base.h"
 #include "testing/gmock/include/gmock/gmock.h"
 
@@ -55,6 +56,7 @@ class PipelineIntegrationTestBase {
   base::MD5Context md5_context_;
   scoped_ptr<MessageLoopFactory> message_loop_factory_;
   scoped_refptr<Pipeline> pipeline_;
+  scoped_refptr<FFmpegVideoDecoder> decoder_;
   scoped_refptr<VideoRendererBase> renderer_;
   bool ended_;
   PipelineStatus pipeline_status_;
@@ -66,7 +68,7 @@ class PipelineIntegrationTestBase {
   void OnError(PipelineStatus status);
   void QuitAfterCurrentTimeTask(const base::TimeDelta& quit_time);
   scoped_ptr<FilterCollection> CreateFilterCollection(
-      scoped_ptr<DemuxerFactory> demuxer_factory);
+      const scoped_refptr<Demuxer>& demuxer);
   void OnVideoRendererPaint();
 
   MOCK_METHOD1(OnSetOpaque, void(bool));

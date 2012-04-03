@@ -292,16 +292,16 @@ class NetLogSpdyGoAwayParameter : public NetLog::EventParameters {
   DISALLOW_COPY_AND_ASSIGN(NetLogSpdyGoAwayParameter);
 };
 
-SSLClientSocket::NextProto g_default_protocol = SSLClientSocket::kProtoUnknown;
+NextProto g_default_protocol = kProtoUnknown;
 size_t g_init_max_concurrent_streams = 10;
 size_t g_max_concurrent_stream_limit = 256;
 bool g_enable_ping_based_connection_checking = true;
+const char* g_allow_spdy_proxy_push_across_origins = NULL;
 
 }  // namespace
 
 // static
-void SpdySession::set_default_protocol(
-    SSLClientSocket::NextProto default_protocol) {
+void SpdySession::set_default_protocol(NextProto default_protocol) {
   g_default_protocol = default_protocol;
 }
 
@@ -322,12 +322,18 @@ void SpdySession::set_init_max_concurrent_streams(size_t value) {
 }
 
 // static
+void SpdySession::set_allow_spdy_proxy_push_across_origins(const char* value) {
+  g_allow_spdy_proxy_push_across_origins = value;
+}
+
+// static
 void SpdySession::ResetStaticSettingsToInit() {
   // WARNING: These must match the initializers above.
-  g_default_protocol = SSLClientSocket::kProtoUnknown;
+  g_default_protocol = kProtoUnknown;
   g_init_max_concurrent_streams = 10;
   g_max_concurrent_stream_limit = 256;
   g_enable_ping_based_connection_checking = true;
+  g_allow_spdy_proxy_push_across_origins = NULL;
 }
 
 SpdySession::SpdySession(const HostPortProxyPair& host_port_proxy_pair,
@@ -375,7 +381,11 @@ SpdySession::SpdySession(const HostPortProxyPair& host_port_proxy_pair,
       trailing_ping_delay_time_(
           base::TimeDelta::FromSeconds(kTrailingPingDelayTimeSeconds)),
       hung_interval_(
-          base::TimeDelta::FromSeconds(kHungIntervalSeconds)) {
+          base::TimeDelta::FromSeconds(kHungIntervalSeconds)),
+      allow_spdy_proxy_push_across_origins_(
+          HostPortPair::FromString(
+              std::string(g_allow_spdy_proxy_push_across_origins == NULL ?
+                          "" : g_allow_spdy_proxy_push_across_origins))) {
   DCHECK(HttpStreamFactory::spdy_enabled());
   net_log_.BeginEvent(
       NetLog::TYPE_SPDY_SESSION,
@@ -421,16 +431,15 @@ net::Error SpdySession::InitializeWithSocket(
 
   state_ = CONNECTED;
   connection_.reset(connection);
+  connection_->AddLayeredPool(this);
   is_secure_ = is_secure;
   certificate_error_code_ = certificate_error_code;
 
-  SSLClientSocket::NextProto protocol = g_default_protocol;
+  NextProto protocol = g_default_protocol;
   if (is_secure_) {
     SSLClientSocket* ssl_socket = GetSSLClientSocket();
-
-    SSLClientSocket::NextProto protocol_negotiated =
-        ssl_socket->protocol_negotiated();
-    if (protocol_negotiated != SSLClientSocket::kProtoUnknown) {
+    NextProto protocol_negotiated = ssl_socket->protocol_negotiated();
+    if (protocol_negotiated != kProtoUnknown) {
       protocol = protocol_negotiated;
     }
 
@@ -442,10 +451,10 @@ net::Error SpdySession::InitializeWithSocket(
     }
   }
 
-  DCHECK(protocol >= SSLClientSocket::kProtoSPDY2);
-  DCHECK(protocol <= SSLClientSocket::kProtoSPDY3);
-  int version = (protocol == SSLClientSocket::kProtoSPDY3) ? 3 : 2;
-  flow_control_ = (protocol >= SSLClientSocket::kProtoSPDY21);
+  DCHECK(protocol >= kProtoSPDY2);
+  DCHECK(protocol <= kProtoSPDY3);
+  int version = (protocol == kProtoSPDY3) ? 3 : 2;
+  flow_control_ = (protocol >= kProtoSPDY21);
 
   buffered_spdy_framer_.reset(new BufferedSpdyFramer(version));
   buffered_spdy_framer_->set_visitor(this);
@@ -468,8 +477,7 @@ bool SpdySession::VerifyDomainAuthentication(const std::string& domain) {
 
   SSLInfo ssl_info;
   bool was_npn_negotiated;
-  SSLClientSocket::NextProto protocol_negotiated =
-      SSLClientSocket::kProtoUnknown;
+  NextProto protocol_negotiated = kProtoUnknown;
   if (!GetSSLInfo(&ssl_info, &was_npn_negotiated, &protocol_negotiated))
     return true;   // This is not a secure session, so all domains are okay.
 
@@ -625,7 +633,7 @@ bool SpdySession::NeedsCredentials() const {
   if (!is_secure_)
     return false;
   SSLClientSocket* ssl_socket = GetSSLClientSocket();
-  if (ssl_socket->protocol_negotiated() < SSLClientSocket::kProtoSPDY3)
+  if (ssl_socket->protocol_negotiated() < kProtoSPDY3)
     return false;
   return ssl_socket->WasDomainBoundCertSent();
 }
@@ -1177,7 +1185,7 @@ Value* SpdySession::GetInfoAsValue() const {
 
   dict->SetBoolean("is_secure", is_secure_);
 
-  SSLClientSocket::NextProto proto = SSLClientSocket::kProtoUnknown;
+  NextProto proto = kProtoUnknown;
   if (is_secure_) {
     proto = GetSSLClientSocket()->protocol_negotiated();
   }
@@ -1216,6 +1224,18 @@ int SpdySession::GetLocalAddress(IPEndPoint* address) const {
     return ERR_SOCKET_NOT_CONNECTED;
 
   return connection_->socket()->GetLocalAddress(address);
+}
+
+bool SpdySession::CloseOneIdleConnection() {
+  if (spdy_session_pool_ && num_active_streams() == 0) {
+    bool ret = HasOneRef();
+    // Will remove a reference to this.
+    RemoveFromPool();
+    // Since the underlying socket is only returned when |this| is destroyed
+    // we should only return true if RemoveFromPool() removed the last ref.
+    return ret;
+  }
+  return false;
 }
 
 void SpdySession::ActivateStream(SpdyStream* stream) {
@@ -1279,9 +1299,9 @@ scoped_refptr<SpdyStream> SpdySession::GetActivePushStream(
 
 bool SpdySession::GetSSLInfo(SSLInfo* ssl_info,
                              bool* was_npn_negotiated,
-                             SSLClientSocket::NextProto* protocol_negotiated) {
+                             NextProto* protocol_negotiated) {
   if (!is_secure_) {
-    *protocol_negotiated = SSLClientSocket::kProtoUnknown;
+    *protocol_negotiated = kProtoUnknown;
     return false;
   }
   SSLClientSocket* ssl_socket = GetSSLClientSocket();
@@ -1435,15 +1455,20 @@ void SpdySession::OnSynStream(
     return;
   }
 
-  scoped_refptr<SpdyStream> associated_stream =
-      active_streams_[associated_stream_id];
-  GURL associated_url(associated_stream->GetUrl());
-  if (associated_url.GetOrigin() != gurl.GetOrigin()) {
-    ResetStream(stream_id, REFUSED_STREAM,
-                base::StringPrintf(
-                    "Rejected Cross Origin Push Stream %d",
-                    associated_stream_id));
-    return;
+  // Check that the SYN advertises the same origin as its associated stream.
+  // Bypass this check if and only if this session is with a SPDY proxy that
+  // is trusted explicitly via the allow_spdy_proxy_push_across_origins switch.
+  if (!allow_spdy_proxy_push_across_origins_.Equals(host_port_pair())) {
+    scoped_refptr<SpdyStream> associated_stream =
+        active_streams_[associated_stream_id];
+    GURL associated_url(associated_stream->GetUrl());
+    if (associated_url.GetOrigin() != gurl.GetOrigin()) {
+      ResetStream(stream_id, REFUSED_STREAM,
+                  base::StringPrintf(
+                      "Rejected Cross Origin Push Stream %d",
+                      associated_stream_id));
+      return;
+    }
   }
 
   // There should not be an existing pushed stream with the same path.

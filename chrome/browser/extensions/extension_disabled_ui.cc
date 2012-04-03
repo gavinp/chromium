@@ -188,7 +188,7 @@ ExtensionDisabledGlobalError::ExtensionDisabledGlobalError(
 }
 
 ExtensionDisabledGlobalError::~ExtensionDisabledGlobalError() {
-  HISTOGRAM_ENUMERATION("Extension.DisabledUIUserResponse",
+  HISTOGRAM_ENUMERATION("Extensions.DisabledUIUserResponse",
                         user_response_, EXTENSION_DISABLED_UI_BUCKET_BOUNDARY);
 }
 
@@ -293,9 +293,8 @@ void ExtensionDisabledGlobalError::Observe(
 
 namespace extensions {
 
-void ShowExtensionDisabledUI(ExtensionService* service,
-                             Profile* profile,
-                             const Extension* extension) {
+void AddExtensionDisabledError(ExtensionService* service,
+                               const Extension* extension) {
   GlobalErrorServiceFactory::GetForProfile(service->profile())->
       AddGlobalError(new ExtensionDisabledGlobalError(service, extension));
 }

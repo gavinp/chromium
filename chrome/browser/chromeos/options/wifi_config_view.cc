@@ -10,6 +10,7 @@
 #include "chrome/browser/chromeos/cros/cros_library.h"
 #include "chrome/browser/chromeos/cros/network_library.h"
 #include "chrome/browser/chromeos/cros/onc_constants.h"
+#include "chrome/browser/chromeos/enrollment_dialog_view.h"
 #include "chrome/browser/chromeos/login/user_manager.h"
 #include "grit/chromium_strings.h"
 #include "grit/generated_resources.h"
@@ -24,6 +25,7 @@
 #include "ui/views/controls/textfield/textfield.h"
 #include "ui/views/layout/grid_layout.h"
 #include "ui/views/layout/layout_constants.h"
+#include "ui/views/widget/widget.h"
 
 namespace chromeos {
 
@@ -569,11 +571,8 @@ void WifiConfigView::ButtonPressed(views::Button* sender,
   }
 }
 
-void WifiConfigView::ItemChanged(views::Combobox* combo_box,
-                                 int prev_index, int new_index) {
-  if (new_index == prev_index)
-    return;
-  if (combo_box == security_combobox_) {
+void WifiConfigView::OnSelectedIndexChanged(views::Combobox* combobox) {
+  if (combobox == security_combobox_) {
     bool passphrase_enabled = PassphraseActive();
     passphrase_label_->SetEnabled(passphrase_enabled);
     passphrase_textfield_->SetEnabled(passphrase_enabled &&
@@ -581,9 +580,9 @@ void WifiConfigView::ItemChanged(views::Combobox* combo_box,
     if (!passphrase_enabled)
       passphrase_textfield_->SetText(string16());
     RefreshShareCheckbox();
-  } else if (combo_box == user_cert_combobox_) {
+  } else if (combobox == user_cert_combobox_) {
     RefreshShareCheckbox();
-  } else if (combo_box == eap_method_combobox_) {
+  } else if (combobox == eap_method_combobox_) {
     RefreshEapFields();
   }
   UpdateDialogButtons();
@@ -667,6 +666,9 @@ bool WifiConfigView::Login() {
         wifi->SetPassphrase(passphrase);
     }
     bool share_default = (wifi->profile_type() != PROFILE_USER);
+    wifi->SetEnrollmentDelegate(
+        EnrollmentDialogView::CreateEnrollmentDelegate(
+            GetWidget()->GetNativeWindow()));
     cros->ConnectToWifiNetwork(wifi, GetShareNetwork(share_default));
     // Connection failures are responsible for updating the UI, including
     // reopening dialogs.

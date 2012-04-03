@@ -25,6 +25,7 @@
 #include "ppapi/cpp/rect.h"
 // TODO(wez): Remove this when crbug.com/86353 is complete.
 #include "ppapi/cpp/private/var_private.h"
+#include "remoting/base/constants.h"
 #include "remoting/base/util.h"
 #include "remoting/client/client_config.h"
 #include "remoting/client/chromoting_client.h"
@@ -37,7 +38,7 @@
 #include "remoting/client/rectangle_update_decoder.h"
 #include "remoting/protocol/connection_to_host.h"
 #include "remoting/protocol/host_stub.h"
-#include "remoting/protocol/key_event_tracker.h"
+#include "remoting/protocol/input_event_tracker.h"
 
 // Windows defines 'PostMessage', so we have to undef it.
 #if defined(PostMessage)
@@ -99,6 +100,10 @@ static logging::LogMessageHandlerFunction g_logging_old_handler = NULL;
 static base::LazyInstance<base::Lock>::Leaky
     g_logging_lock = LAZY_INSTANCE_INITIALIZER;
 
+// String sent in the "hello" message to the plugin to describe features.
+const char ChromotingInstance::kApiFeatures[] =
+    "highQualityScaling injectKeyEvent sendClipboardItem";
+
 bool ChromotingInstance::ParseAuthMethods(const std::string& auth_methods_str,
                                           ClientConfig* config) {
   if (auth_methods_str == "v1_token") {
@@ -140,6 +145,7 @@ ChromotingInstance::ChromotingInstance(PP_Instance pp_instance)
   // Send hello message.
   scoped_ptr<base::DictionaryValue> data(new base::DictionaryValue());
   data->SetInteger("apiVersion", kApiVersion);
+  data->SetString("apiFeatures", kApiFeatures);
   data->SetInteger("apiMinVersion", kApiMinMessagingVersion);
   PostChromotingMessage("hello", data.Pass());
 }
@@ -248,6 +254,30 @@ void ChromotingInstance::HandleMessage(const pp::Var& message) {
     OnIncomingIq(iq);
   } else if (method == "releaseAllKeys") {
     ReleaseAllKeys();
+  } else if (method == "injectKeyEvent") {
+    int usb_keycode = 0;
+    bool is_pressed = false;
+    if (!data->GetInteger("usb_keycode", &usb_keycode) ||
+        !data->GetBoolean("pressed", &is_pressed)) {
+      LOG(ERROR) << "Invalid injectKeyEvent.";
+      return;
+    }
+
+    protocol::KeyEvent event;
+    event.set_usb_keycode(usb_keycode);
+    event.set_pressed(is_pressed);
+    // Even though new hosts will ignore keycode, it's a required field.
+    event.set_keycode(0);
+    InjectKeyEvent(event);
+  } else if (method == "sendClipboardItem") {
+    std::string mime_type;
+    std::string item;
+    if (!data->GetString("mimeType", &mime_type) ||
+        !data->GetString("item", &item)) {
+      LOG(ERROR) << "Invalid sendClipboardItem() data.";
+      return;
+    }
+    SendClipboardItem(mime_type, item);
   }
 }
 
@@ -338,10 +368,10 @@ void ChromotingInstance::Connect(const ClientConfig& config) {
   mouse_input_filter_.reset(
       new MouseInputFilter(host_connection_->input_stub()));
   mouse_input_filter_->set_input_size(view_->get_view_size());
-  key_event_tracker_.reset(
-      new protocol::KeyEventTracker(mouse_input_filter_.get()));
+  input_tracker_.reset(
+      new protocol::InputEventTracker(mouse_input_filter_.get()));
   input_handler_.reset(
-      new PepperInputHandler(key_event_tracker_.get()));
+      new PepperInputHandler(input_tracker_.get()));
 
   LOG(INFO) << "Connecting to " << config.host_jid
             << ". Local jid: " << config.local_jid << ".";
@@ -378,7 +408,7 @@ void ChromotingInstance::Disconnect() {
   }
 
   input_handler_.reset();
-  key_event_tracker_.reset();
+  input_tracker_.reset();
   mouse_input_filter_.reset();
   host_connection_.reset();
 
@@ -390,9 +420,18 @@ void ChromotingInstance::OnIncomingIq(const std::string& iq) {
 }
 
 void ChromotingInstance::ReleaseAllKeys() {
-  if (key_event_tracker_.get()) {
-    key_event_tracker_->ReleaseAllKeys();
-  }
+  if (input_tracker_.get())
+    input_tracker_->ReleaseAll();
+}
+
+void ChromotingInstance::InjectKeyEvent(const protocol::KeyEvent& event) {
+  if (input_tracker_.get())
+    input_tracker_->InjectKeyEvent(event);
+}
+
+void ChromotingInstance::SendClipboardItem(const std::string& mime_type,
+                                           const std::string& item) {
+  // TODO(simonmorris): Plumb this in to a ClipboardStub.
 }
 
 ChromotingStats* ChromotingInstance::GetStats() {
@@ -440,6 +479,14 @@ void ChromotingInstance::SendPerfStats() {
   data->SetDouble("renderLatency", stats->video_paint_ms()->Average());
   data->SetDouble("roundtripLatency", stats->round_trip_ms()->Average());
   PostChromotingMessage("onPerfStats", data.Pass());
+}
+
+void ChromotingInstance::InjectClipboardEvent(
+    const protocol::ClipboardEvent& event) {
+  scoped_ptr<base::DictionaryValue> data(new base::DictionaryValue());
+  data->SetString("mimeType", event.mime_type());
+  data->SetString("item", event.data());
+  PostChromotingMessage("injectClipboardItem", data.Pass());
 }
 
 // static

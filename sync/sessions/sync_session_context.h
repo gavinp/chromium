@@ -27,6 +27,7 @@
 #include "base/time.h"
 #include "sync/engine/model_safe_worker.h"
 #include "sync/engine/syncer_types.h"
+#include "sync/engine/traffic_recorder.h"
 #include "sync/sessions/debug_info_getter.h"
 
 namespace syncable {
@@ -55,7 +56,8 @@ class SyncSessionContext {
                      ModelSafeWorkerRegistrar* model_safe_worker_registrar,
                      ExtensionsActivityMonitor* extensions_activity_monitor,
                      const std::vector<SyncEngineEventListener*>& listeners,
-                     DebugInfoGetter* debug_info_getter);
+                     DebugInfoGetter* debug_info_getter,
+                     browser_sync::TrafficRecorder* traffic_recorder);
 
   // Empty constructor for unit tests.
   SyncSessionContext();
@@ -123,6 +125,10 @@ class SyncSessionContext {
   // new throttled types this will remain constant through out the sync cycle.
   syncable::ModelTypeSet GetThrottledTypes() const;
 
+  browser_sync::TrafficRecorder* traffic_recorder() {
+    return traffic_recorder_;
+  }
+
  private:
   typedef std::map<syncable::ModelType, base::TimeTicks> UnthrottleTimes;
 
@@ -176,6 +182,8 @@ class SyncSessionContext {
   // This is a map from throttled data types to the time at which they can be
   // unthrottled.
   UnthrottleTimes unthrottle_times_;
+
+  browser_sync::TrafficRecorder* traffic_recorder_;
 
   DISALLOW_COPY_AND_ASSIGN(SyncSessionContext);
 };

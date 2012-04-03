@@ -60,7 +60,6 @@
                 # up actual Chromium functionality into this .dll.
                 'chrome_resources.gyp:chrome_resources',
                 'chrome_version_resources',
-                'installer_util_strings',
                 '../content/content.gyp:content_worker',
                 '../crypto/crypto.gyp:crypto',
                 '../printing/printing.gyp:printing',
@@ -269,7 +268,6 @@
                 'app/nibs/ImportProgressDialog.xib',
                 'app/nibs/InfoBar.xib',
                 'app/nibs/InfoBarContainer.xib',
-                'app/nibs/InstantOptIn.xib',
                 'app/nibs/MainMenu.xib',
                 'app/nibs/Notification.xib',
                 'app/nibs/OneClickSigninBubble.xib',

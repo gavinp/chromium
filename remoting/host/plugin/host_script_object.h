@@ -16,26 +16,23 @@
 #include "base/synchronization/waitable_event.h"
 #include "base/string16.h"
 #include "base/threading/platform_thread.h"
+#include "base/threading/thread.h"
 #include "base/time.h"
 #include "remoting/base/plugin_message_loop_proxy.h"
 #include "remoting/host/chromoting_host_context.h"
 #include "remoting/host/host_key_pair.h"
 #include "remoting/host/host_status_observer.h"
 #include "remoting/host/log_to_server.h"
+#include "remoting/host/plugin/daemon_controller.h"
 #include "remoting/host/plugin/host_plugin_utils.h"
 #include "remoting/host/ui_strings.h"
 #include "third_party/npapi/bindings/npapi.h"
 #include "third_party/npapi/bindings/npfunctions.h"
 #include "third_party/npapi/bindings/npruntime.h"
 
-namespace base {
-class SequencedWorkerPool;
-}  // namespace base
-
 namespace remoting {
 
 class ChromotingHost;
-class DaemonController;
 class DesktopEnvironment;
 class It2MeHostUserInterface;
 class MutableHostConfig;
@@ -117,6 +114,11 @@ class HostNPScriptObject : public HostStatusObserver {
   //////////////////////////////////////////////////////////
   // Plugin methods for Me2Me host.
 
+  // Returns host name. No arguments.
+  bool GetHostName(const NPVariant* args,
+                   uint32_t arg_count,
+                   NPVariant* result);
+
   // Generates new key pair to use for the host. The specified
   // callback is called when when the key is generated. The key is
   // returned in format understood by the host (PublicKeyInfo
@@ -128,6 +130,7 @@ class HostNPScriptObject : public HostStatusObserver {
 
   // Set the PIN for Me2Me. Args are:
   //   string pin
+  //   function(number) done_callback
   bool SetDaemonPin(const NPVariant* args,
                     uint32_t arg_count,
                     NPVariant* result);
@@ -142,11 +145,13 @@ class HostNPScriptObject : public HostStatusObserver {
 
   // Start the daemon process with the specified config. Args are:
   //   string config
+  //   function(number) done_callback
   bool StartDaemon(const NPVariant* args,
                    uint32_t arg_count,
                    NPVariant* result);
 
-  // Stop the daemon process. No arguments.
+  // Stop the daemon process. Args are:
+  //   function(number) done_callback
   bool StopDaemon(const NPVariant* args, uint32_t arg_count, NPVariant* result);
 
   //////////////////////////////////////////////////////////
@@ -201,7 +206,14 @@ class HostNPScriptObject : public HostStatusObserver {
   // Helpers for GenerateKeyPair().
   void DoGenerateKeyPair(NPObject* callback);
   void InvokeGenerateKeyPairCallback(NPObject* callback,
-                                         const std::string& result);
+                                     const std::string& private_key,
+                                     const std::string& public_key);
+
+
+  // Callback handler for SetConfigAndStart(), Stop() and SetPin() in
+  // DaemonController.
+  void InvokeAsyncResultCallback(NPObject* callback,
+                                 DaemonController::AsyncResult result);
 
   // Callback handler for DaemonController::GetConfig().
   void InvokeGetDaemonConfigCallback(NPObject* callback,
@@ -283,7 +295,11 @@ class HostNPScriptObject : public HostStatusObserver {
   //////////////////////////////////////////////////////////
   // Me2Me host state.
   scoped_ptr<DaemonController> daemon_controller_;
-  scoped_refptr<base::SequencedWorkerPool> worker_pool_;
+
+  // TODO(sergeyu): Replace this thread with
+  // SequencedWorkerPool. Problem is that SequencedWorkerPool relies
+  // on MessageLoopProxy::current().
+  base::Thread worker_thread_;
 
   DISALLOW_COPY_AND_ASSIGN(HostNPScriptObject);
 };

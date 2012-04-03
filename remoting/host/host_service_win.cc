@@ -24,8 +24,9 @@
 #include "base/utf_string_conversions.h"
 #include "base/win/wrapped_window_proc.h"
 
-#include "remoting/host/host_service_resource.h"
 #include "remoting/base/scoped_sc_handle_win.h"
+#include "remoting/host/branding.h"
+#include "remoting/host/host_service_resource.h"
 #include "remoting/host/wts_console_observer_win.h"
 #include "remoting/host/wts_session_process_launcher_win.h"
 
@@ -33,8 +34,6 @@ using base::StringPrintf;
 
 namespace {
 
-// Service name.
-const char kServiceName[] = "chromoting";
 // TODO(alexeypa): investigate and migrate this over to Chrome's i18n framework.
 const char kMuiStringFormat[] = "@%ls,-%d";
 const char kServiceDependencies[] = "";
@@ -103,7 +102,7 @@ HostService::HostService() :
   console_session_id_(kInvalidSession),
   message_loop_(NULL),
   run_routine_(&HostService::RunAsService),
-  service_name_(ASCIIToUTF16(kServiceName)),
+  service_name_(UTF8ToUTF16(kWindowsServiceName)),
   service_status_handle_(0),
   shutting_down_(false),
   stopped_event_(true, false) {
@@ -569,6 +568,15 @@ int main(int argc, char** argv) {
   // This object instance is required by Chrome code (for example,
   // FilePath, LazyInstance, MessageLoop).
   base::AtExitManager exit_manager;
+
+  // Write logs to the application profile directory.
+  FilePath debug_log = remoting::GetConfigDir().
+      Append(FILE_PATH_LITERAL("debug.log"));
+  InitLogging(debug_log.value().c_str(),
+              logging::LOG_ONLY_TO_FILE,
+              logging::DONT_LOCK_LOG_FILE,
+              logging::APPEND_TO_OLD_LOG_FILE,
+              logging::DISABLE_DCHECK_FOR_NON_OFFICIAL_RELEASE_BUILDS);
 
   const CommandLine* command_line = CommandLine::ForCurrentProcess();
 

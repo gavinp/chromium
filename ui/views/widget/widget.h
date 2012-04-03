@@ -146,7 +146,7 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
     InitParams();
     explicit InitParams(Type type);
 
-    // If |parent_widget| is non-null, it's native view is returned, otherwise
+    // If |parent_widget| is non-null, its native view is returned, otherwise
     // |parent| is returned.
     gfx::NativeView GetParent() const;
 
@@ -255,10 +255,6 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   static int GetLocalizedContentsHeight(int row_resource_id);
   static gfx::Size GetLocalizedContentsSize(int col_resource_id,
                                             int row_resource_id);
-
-  // Enable/Disable debug paint.
-  static void SetDebugPaintEnabled(bool enabled);
-  static bool IsDebugPaintEnabled();
 
   // Returns true if the specified type requires a NonClientView.
   static bool RequiresNonClientView(InitParams::Type type);

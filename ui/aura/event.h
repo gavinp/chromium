@@ -47,6 +47,10 @@ class AURA_EXPORT Event {
   const base::TimeDelta& time_stamp() const { return time_stamp_; }
   int flags() const { return flags_; }
 
+  // This is only intended to be used externally by classes that are modifying
+  // events in EventFilter::PreHandleKeyEvent().
+  void set_flags(int flags) { flags_ = flags; }
+
   // The following methods return true if the respective keys were pressed at
   // the time the event was created.
   bool IsShiftDown() const { return (flags_ & ui::EF_SHIFT_DOWN) != 0; }
@@ -62,7 +66,6 @@ class AURA_EXPORT Event {
   Event(const base::NativeEvent& native_event, ui::EventType type, int flags);
   Event(const Event& copy);
   void set_type(ui::EventType type) { type_ = type; }
-  void set_flags(int flags) { flags_ = flags; }
   void set_delete_native_event(bool delete_native_event) {
     delete_native_event_ = delete_native_event;
   }
@@ -250,6 +253,11 @@ class AURA_EXPORT KeyEvent : public Event {
   ui::KeyboardCode key_code() const { return key_code_; }
   bool is_char() const { return is_char_; }
 
+  // This is only intended to be used externally by classes that are modifying
+  // events in EventFilter::PreHandleKeyEvent().  set_character() should also be
+  // called.
+  void set_key_code(ui::KeyboardCode key_code) { key_code_ = key_code; }
+
  private:
   ui::KeyboardCode key_code_;
   // True if this is a translated character event (vs. a raw key down). Both
@@ -258,6 +266,26 @@ class AURA_EXPORT KeyEvent : public Event {
 
   uint16 character_;
   uint16 unmodified_character_;
+};
+
+// A key event which is translated by an input method (IME).
+// For example, if an IME receives a KeyEvent(ui::VKEY_SPACE), and it does not
+// consume the key, the IME usually generates and dispatches a
+// TranslatedKeyEvent(ui::VKEY_SPACE) event. If the IME receives a KeyEvent and
+// it does consume the event, it might dispatch a
+// TranslatedKeyEvent(ui::VKEY_PROCESSKEY) event as defined in the DOM spec.
+class AURA_EXPORT TranslatedKeyEvent : public aura::KeyEvent {
+ public:
+  TranslatedKeyEvent(const base::NativeEvent& native_event, bool is_char);
+
+  // Used for synthetic events such as a VKEY_PROCESSKEY key event.
+  TranslatedKeyEvent(bool is_press,
+                     ui::KeyboardCode key_code,
+                     int flags);
+
+  // Changes the type() of the object from ET_TRANSLATED_KEY_* to ET_KEY_* so
+  // that RenderWidgetHostViewAura and NativeWidgetAura could handle the event.
+  void ConvertToKeyEvent();
 };
 
 class AURA_EXPORT DropTargetEvent : public LocatedEvent {

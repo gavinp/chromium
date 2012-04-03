@@ -54,10 +54,9 @@ void Combobox::SetSelectedIndex(int index) {
 }
 
 void Combobox::SelectionChanged() {
-  int prev_selected_index = selected_index_;
   selected_index_ = native_wrapper_->GetSelectedIndex();
   if (listener_)
-    listener_->ItemChanged(this, prev_selected_index, selected_index_);
+    listener_->OnSelectedIndexChanged(this);
   if (GetWidget()) {
     GetWidget()->NotifyAccessibilityEvent(
         this, ui::AccessibilityTypes::EVENT_VALUE_CHANGED, false);
@@ -132,7 +131,7 @@ void Combobox::GetAccessibleState(ui::AccessibleViewState* state) {
   state->name = accessible_name_;
   state->value = model_->GetItemAt(selected_index_);
   state->index = selected_index_;
-  state->count = model()->GetItemCount();
+  state->count = model_->GetItemCount();
 }
 
 void Combobox::ViewHierarchyChanged(bool is_add, View* parent, View* child) {

@@ -81,8 +81,9 @@ class BrowserNonClientFrameViewAura : public BrowserNonClientFrameView,
   // theme image, or the bitmap for |fallback_bitmap_id| if not.
   SkBitmap* GetCustomBitmap(int bitmap_id, int fallback_bitmap_id) const;
 
-  // Window controls.
-  views::ImageButton* maximize_button_;
+  // Window controls. The |size_button_| either toggles maximized or toggles
+  // minimized. The exact behavior is determined by |size_button_minimizes_|.
+  views::ImageButton* size_button_;
   views::ImageButton* close_button_;
 
   // For popups, the window icon.
@@ -91,9 +92,9 @@ class BrowserNonClientFrameViewAura : public BrowserNonClientFrameView,
   // Painter for the frame header.
   scoped_ptr<ash::FramePainter> frame_painter_;
 
-  // Set to false for Panels where maximize is undesired. (maximize button is
-  // still used for minimizing).
-  bool allow_maximize_;
+  // If true the |size_button_| minimizes, otherwise it toggles between
+  // maximized and restored.
+  bool size_button_minimizes_;
 
   DISALLOW_COPY_AND_ASSIGN(BrowserNonClientFrameViewAura);
 };

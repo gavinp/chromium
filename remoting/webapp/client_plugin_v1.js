@@ -141,10 +141,20 @@ remoting.ClientPluginV1.prototype.isSupportedVersion = function() {
 };
 
 /**
- * @return {boolean} True if the plugin supports high-quality scaling.
+ * @param {remoting.ClientPlugin.Feature} feature The feature to test for.
+ * @return {boolean} True if the plugin supports the named feature.
  */
-remoting.ClientPluginV1.prototype.isHiQualityScalingSupported = function() {
-  return this.plugin.apiVersion >= 3;
+remoting.ClientPluginV1.prototype.hasFeature = function(feature) {
+  if (feature == remoting.ClientPlugin.Feature.HIGH_QUALITY_SCALING)
+    return this.plugin.apiVersion >= 3;
+  return false;
+};
+
+/**
+ * @return {boolean} True if the plugin supports the injectKeyEvent API.
+ */
+remoting.ClientPluginV1.prototype.isInjectKeyEventSupported = function() {
+  return false;
 };
 
 /**
@@ -217,4 +227,25 @@ remoting.ClientPluginV1.prototype.getPerfStats = function() {
            decodeLatency: this.plugin.videoDecodeLatency,
            renderLatency: this.plugin.videoRenderLatency,
            roundtripLatency: this.plugin.roundTripLatency };
+};
+
+/**
+ * This dummy method exists only so that this class implements ClientPlugin.
+ *
+ * @param {string} mimeType The MIME type of the clipboard item.
+ * @param {string} item The clipboard item.
+ */
+remoting.ClientPluginV1.prototype.sendClipboardItem = function(mimeType, item) {
+  return;
+};
+
+/**
+ * This dummy method exists only so that this class implements ClientPlugin.
+ *
+ * @param {number} usbKeycode The USB-style code of the key to inject.
+ * @param {boolean} pressed True to inject a key press, False for a release.
+ */
+remoting.ClientPluginV1.prototype.injectKeyEvent =
+    function(usbKeycode, pressed) {
+  return;
 };

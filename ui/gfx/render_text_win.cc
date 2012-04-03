@@ -116,6 +116,18 @@ void QueryLinkedFontsFromRegistry(const gfx::Font& font,
   key.Close();
 }
 
+// Changes |font| to have the specified |font_size| and |font_style| if it does
+// not already. Only considers bold and italic styles, since the underlined
+// style has no effect on glyph shaping.
+void DeriveFontIfNecessary(int font_size, int font_style, gfx::Font* font) {
+  const int kStyleMask = (gfx::Font::BOLD | gfx::Font::ITALIC);
+  const int current_style = (font->GetStyle() & kStyleMask);
+  const int target_style = (font_style & kStyleMask);
+  const int current_size = font->GetFontSize();
+  if (current_style != target_style || current_size != font_size)
+    *font = font->DeriveFont(font_size - current_size, font_style);
+}
+
 }  // namespace
 
 namespace gfx {
@@ -167,7 +179,6 @@ std::map<std::string, std::vector<Font> > RenderTextWin::cached_linked_fonts_;
 
 RenderTextWin::RenderTextWin()
     : RenderText(),
-      string_width_(0),
       needs_layout_(false) {
   memset(&script_control_, 0, sizeof(script_control_));
   memset(&script_state_, 0, sizeof(script_state_));
@@ -190,8 +201,7 @@ base::i18n::TextDirection RenderTextWin::GetTextDirection() {
 
 Size RenderTextWin::GetStringSize() {
   EnsureLayout();
-  // TODO(msw): Use the largest font instead of the default font?
-  return Size(string_width_, GetFont().GetHeight());
+  return string_size_;
 }
 
 SelectionModel RenderTextWin::FindCursorPosition(const Point& point) {
@@ -507,7 +517,7 @@ void RenderTextWin::DrawVisualText(Canvas* canvas) {
 void RenderTextWin::ItemizeLogicalText() {
   STLDeleteContainerPointers(runs_.begin(), runs_.end());
   runs_.clear();
-  string_width_ = 0;
+  string_size_ = Size();
   if (text().empty())
     return;
 
@@ -546,6 +556,7 @@ void RenderTextWin::ItemizeLogicalText() {
     run->range.set_start(run_break);
     run->font = GetFont();
     run->font_style = style->font_style;
+    DeriveFontIfNecessary(run->font.GetFontSize(), run->font_style, &run->font);
     run->foreground = style->foreground;
     run->strike = style->strike;
     run->diagonal_strike = style->diagonal_strike;
@@ -576,7 +587,8 @@ void RenderTextWin::LayoutVisualText() {
     const wchar_t* run_text = &(text()[run->range.start()]);
     bool tried_fallback = false;
     size_t linked_font_index = 0;
-    const std::vector<gfx::Font>* linked_fonts = NULL;
+    const std::vector<Font>* linked_fonts = NULL;
+    const int font_size = run->font.GetFontSize();
 
     // Select the font desired for glyph generation.
     SelectObject(cached_hdc_, run->font.GetNativeFont());
@@ -632,6 +644,7 @@ void RenderTextWin::LayoutVisualText() {
 
         // Try the next linked font.
         run->font = linked_fonts->at(linked_font_index++);
+        DeriveFontIfNecessary(font_size, run->font_style, &run->font);
         ScriptFreeCache(&run->script_cache);
         SelectObject(cached_hdc_, run->font.GetNativeFont());
       } else if (hr == USP_E_SCRIPT_NOT_IN_FONT) {
@@ -655,6 +668,7 @@ void RenderTextWin::LayoutVisualText() {
         // TODO(msw): support RenderText's font_list().
         if (ChooseFallbackFont(cached_hdc_, run->font, run_text, run_length,
                                &run->font)) {
+          DeriveFontIfNecessary(font_size, run->font_style, &run->font);
           ScriptFreeCache(&run->script_cache);
           SelectObject(cached_hdc_, run->font.GetNativeFont());
         }
@@ -665,6 +679,8 @@ void RenderTextWin::LayoutVisualText() {
       }
     }
     DCHECK(SUCCEEDED(hr));
+    string_size_.set_height(std::max(string_size_.height(),
+                                     run->font.GetHeight()));
 
     if (run->glyph_count > 0) {
       run->advance_widths.reset(new int[run->glyph_count]);
@@ -707,7 +723,7 @@ void RenderTextWin::LayoutVisualText() {
     run->width = abc.abcA + abc.abcB + abc.abcC;
     preceding_run_widths += run->width;
   }
-  string_width_ = preceding_run_widths;
+  string_size_.set_width(preceding_run_widths);
 }
 
 const std::vector<Font>* RenderTextWin::GetLinkedFonts(const Font& font) const {

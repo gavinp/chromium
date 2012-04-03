@@ -51,9 +51,13 @@ remoting.init = function() {
     document.getElementById('current-email').innerText = email;
   }
 
+  remoting.showOrHideIt2MeUi();
+  remoting.showOrHideMe2MeUi();
+
   // The plugin's onFocus handler sends a paste command to |window|, because
   // it can't send one to the plugin element itself.
   window.addEventListener('paste', pluginGotPaste_, false);
+  window.addEventListener('copy', pluginGotCopy_, false);
 
   if (isHostModeSupported_()) {
     var noShare = document.getElementById('chrome-os-no-share');
@@ -83,7 +87,8 @@ remoting.initDaemonUi = function () {
   remoting.daemonPlugin = new remoting.DaemonPlugin();
   remoting.daemonPlugin.updateDom();
   remoting.setMode(getAppStartupMode_());
-  remoting.askPinDialog = new remoting.AskPinDialog(remoting.daemonPlugin);
+  remoting.hostSetupDialog =
+      new remoting.HostSetupDialog(remoting.daemonPlugin);
 };
 
 /**
@@ -136,14 +141,29 @@ remoting.clearOAuth2 = function() {
  * Callback function called when the browser window gets a paste operation.
  *
  * @param {Event} eventUncast
- * @return {boolean}
+ * @return {void} Nothing.
  */
 function pluginGotPaste_(eventUncast) {
   var event = /** @type {remoting.ClipboardEvent} */ eventUncast;
   if (event && event.clipboardData) {
     remoting.clipboard.toHost(event.clipboardData);
   }
-  return false;
+}
+
+/**
+ * Callback function called when the browser window gets a copy operation.
+ *
+ * @param {Event} eventUncast
+ * @return {void} Nothing.
+ */
+function pluginGotCopy_(eventUncast) {
+  var event = /** @type {remoting.ClipboardEvent} */ eventUncast;
+  if (event && event.clipboardData) {
+    if (remoting.clipboard.toOs(event.clipboardData)) {
+      // The default action may overwrite items that we added to clipboardData.
+      event.preventDefault();
+    }
+  }
 }
 
 /**

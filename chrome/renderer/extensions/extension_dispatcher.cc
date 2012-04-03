@@ -24,6 +24,7 @@
 #include "chrome/renderer/extensions/experimental.socket_custom_bindings.h"
 #include "chrome/renderer/extensions/extension_custom_bindings.h"
 #include "chrome/renderer/extensions/extension_groups.h"
+#include "chrome/renderer/extensions/extension_request_sender.h"
 #include "chrome/renderer/extensions/file_browser_handler_custom_bindings.h"
 #include "chrome/renderer/extensions/file_browser_private_custom_bindings.h"
 #include "chrome/renderer/extensions/i18n_custom_bindings.h"
@@ -81,6 +82,9 @@ namespace {
 
 static const int64 kInitialExtensionIdleHandlerDelayMs = 5*1000;
 static const int64 kMaxExtensionIdleHandlerDelayMs = 5*60*1000;
+static const char kEventDispatchFunction[] = "Event.dispatchJSON";
+static const char kOnUnloadEvent[] =
+    "experimental.extension.onBackgroundPageUnloadingSoon";
 
 class ChromeHiddenNativeHandler : public NativeHandler {
  public:
@@ -153,6 +157,7 @@ ExtensionDispatcher::ExtensionDispatcher()
   }
 
   user_script_slave_.reset(new UserScriptSlave(&extensions_));
+  request_sender_.reset(new ExtensionRequestSender(this, &v8_context_set_));
   PopulateSourceMap();
   PopulateLazyBindingsMap();
 }
@@ -165,7 +170,10 @@ bool ExtensionDispatcher::OnControlMessageReceived(
   bool handled = true;
   IPC_BEGIN_MESSAGE_MAP(ExtensionDispatcher, message)
     IPC_MESSAGE_HANDLER(ExtensionMsg_MessageInvoke, OnMessageInvoke)
+    IPC_MESSAGE_HANDLER(ExtensionMsg_DispatchOnConnect, OnDispatchOnConnect)
     IPC_MESSAGE_HANDLER(ExtensionMsg_DeliverMessage, OnDeliverMessage)
+    IPC_MESSAGE_HANDLER(ExtensionMsg_DispatchOnDisconnect,
+                        OnDispatchOnDisconnect)
     IPC_MESSAGE_HANDLER(ExtensionMsg_SetFunctionNames, OnSetFunctionNames)
     IPC_MESSAGE_HANDLER(ExtensionMsg_Loaded, OnLoaded)
     IPC_MESSAGE_HANDLER(ExtensionMsg_Unloaded, OnUnloaded)
@@ -175,7 +183,8 @@ bool ExtensionDispatcher::OnControlMessageReceived(
     IPC_MESSAGE_HANDLER(ExtensionMsg_UpdatePermissions, OnUpdatePermissions)
     IPC_MESSAGE_HANDLER(ExtensionMsg_UpdateUserScripts, OnUpdateUserScripts)
     IPC_MESSAGE_HANDLER(ExtensionMsg_UsingWebRequestAPI, OnUsingWebRequestAPI)
-    IPC_MESSAGE_HANDLER(ExtensionMsg_ShouldClose, OnShouldClose)
+    IPC_MESSAGE_HANDLER(ExtensionMsg_ShouldUnload, OnShouldUnload)
+    IPC_MESSAGE_HANDLER(ExtensionMsg_Unload, OnUnload)
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP()
 
@@ -247,10 +256,23 @@ void ExtensionDispatcher::OnMessageInvoke(const std::string& extension_id,
   const Extension* extension = extensions_.GetByID(extension_id);
   // Tell the browser process that the event is dispatched and we're idle.
   if (extension && extension->has_lazy_background_page() &&
-      function_name == "Event.dispatchJSON") { // may always be true
+      function_name == kEventDispatchFunction) {
     RenderThread::Get()->Send(
         new ExtensionHostMsg_ExtensionEventAck(extension_id));
   }
+}
+
+void ExtensionDispatcher::OnDispatchOnConnect(
+    int target_port_id,
+    const std::string& channel_name,
+    const std::string& tab_json,
+    const std::string& source_extension_id,
+    const std::string& target_extension_id) {
+  MiscellaneousBindings::DispatchOnConnect(
+      v8_context_set_.GetAll(),
+      target_port_id, channel_name, tab_json,
+      source_extension_id, target_extension_id,
+      NULL);  // All render views.
 }
 
 void ExtensionDispatcher::OnDeliverMessage(int target_port_id,
@@ -259,6 +281,14 @@ void ExtensionDispatcher::OnDeliverMessage(int target_port_id,
       v8_context_set_.GetAll(),
       target_port_id,
       message,
+      NULL);  // All render views.
+}
+
+void ExtensionDispatcher::OnDispatchOnDisconnect(int port_id,
+                                                bool connection_error) {
+  MiscellaneousBindings::DispatchOnDisconnect(
+      v8_context_set_.GetAll(),
+      port_id, connection_error,
       NULL);  // All render views.
 }
 
@@ -361,7 +391,8 @@ void ExtensionDispatcher::RegisterNativeHandlers(ModuleSystem* module_system,
   module_system->RegisterNativeHandler("miscellaneous_bindings",
       scoped_ptr<NativeHandler>(MiscellaneousBindings::Get(this)));
   module_system->RegisterNativeHandler("schema_generated_bindings",
-      scoped_ptr<NativeHandler>(new SchemaGeneratedBindings(this)));
+      scoped_ptr<NativeHandler>(
+          new SchemaGeneratedBindings(this, request_sender_.get())));
 
   // Custom bindings.
   module_system->RegisterNativeHandler("app",
@@ -422,6 +453,8 @@ void ExtensionDispatcher::PopulateSourceMap() {
                              IDR_EXPERIMENTAL_OFFSCREENTABS_CUSTOM_BINDINGS_JS);
   source_map_.RegisterSource("experimental.socket",
                              IDR_EXPERIMENTAL_SOCKET_CUSTOM_BINDINGS_JS);
+  source_map_.RegisterSource("experimental.webRequest",
+                             IDR_EXPERIMENTAL_WEBREQUEST_CUSTOM_BINDINGS_JS);
   source_map_.RegisterSource("extension", IDR_EXTENSION_CUSTOM_BINDINGS_JS);
   source_map_.RegisterSource("fileBrowserHandler",
                              IDR_FILE_BROWSER_HANDLER_CUSTOM_BINDINGS_JS);
@@ -534,8 +567,6 @@ void ExtensionDispatcher::DidCreateScriptContext(
     case Feature::BLESSED_EXTENSION_CONTEXT:
     case Feature::UNBLESSED_EXTENSION_CONTEXT:
     case Feature::CONTENT_SCRIPT_CONTEXT: {
-      module_system->Require("json_schema");
-      module_system->Require("event_bindings");
       module_system->Require("miscellaneous_bindings");
       module_system->Require("schema_generated_bindings");
       module_system->Require("apitest");
@@ -732,10 +763,25 @@ void ExtensionDispatcher::OnUsingWebRequestAPI(
   webrequest_other_ = other;
 }
 
-void ExtensionDispatcher::OnShouldClose(const std::string& extension_id,
-                                        int sequence_id) {
+void ExtensionDispatcher::OnShouldUnload(const std::string& extension_id,
+                                         int sequence_id) {
   RenderThread::Get()->Send(
-      new ExtensionHostMsg_ShouldCloseAck(extension_id, sequence_id));
+      new ExtensionHostMsg_ShouldUnloadAck(extension_id, sequence_id));
+}
+
+void ExtensionDispatcher::OnUnload(const std::string& extension_id) {
+  // Dispatch the unload event. This doesn't go through the standard event
+  // dispatch machinery because it requires special handling. We need to let
+  // the browser know when we are starting and stopping the event dispatch, so
+  // that it still considers the extension idle despite any activity the unload
+  // event creates.
+  ListValue args;
+  args.Set(0, Value::CreateStringValue(kOnUnloadEvent));
+  args.Set(1, Value::CreateStringValue("[]"));
+  v8_context_set_.DispatchChromeHiddenMethod(
+      extension_id, kEventDispatchFunction, args, NULL, GURL());
+
+  RenderThread::Get()->Send(new ExtensionHostMsg_UnloadAck(extension_id));
 }
 
 Feature::Context ExtensionDispatcher::ClassifyJavaScriptContext(
@@ -755,4 +801,47 @@ Feature::Context ExtensionDispatcher::ClassifyJavaScriptContext(
     return Feature::WEB_PAGE_CONTEXT;
 
   return Feature::UNSPECIFIED_CONTEXT;
+}
+
+void ExtensionDispatcher::OnExtensionResponse(int request_id,
+                                              bool success,
+                                              const std::string& response,
+                                              const std::string& error) {
+  request_sender_->HandleResponse(request_id, success, response, error);
+}
+
+bool ExtensionDispatcher::CheckCurrentContextAccessToExtensionAPI(
+    const std::string& function_name) const {
+  ChromeV8Context* context = v8_context_set().GetCurrent();
+  if (!context) {
+    DLOG(ERROR) << "Not in a v8::Context";
+    return false;
+  }
+
+  const ::Extension* extension = NULL;
+  if (!context->extension_id().empty()) {
+    extension = extensions()->GetByID(context->extension_id());
+  }
+
+  if (!extension || !extension->HasAPIPermission(function_name)) {
+    static const char kMessage[] =
+        "You do not have permission to use '%s'. Be sure to declare"
+        " in your manifest what permissions you need.";
+    std::string error_msg = base::StringPrintf(kMessage, function_name.c_str());
+    v8::ThrowException(
+        v8::Exception::Error(v8::String::New(error_msg.c_str())));
+    return false;
+  }
+
+  if (!IsExtensionActive(extension->id()) &&
+      ExtensionAPI::GetInstance()->IsPrivileged(function_name)) {
+    static const char kMessage[] =
+        "%s can only be used in an extension process.";
+    std::string error_msg = base::StringPrintf(kMessage, function_name.c_str());
+    v8::ThrowException(
+        v8::Exception::Error(v8::String::New(error_msg.c_str())));
+    return false;
+  }
+
+  return true;
 }

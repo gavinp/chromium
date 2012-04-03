@@ -12,6 +12,7 @@
 #include "ash/system/tray/system_tray.h"
 #include "ash/wm/workspace/workspace_manager.h"
 #include "base/auto_reset.h"
+#include "ui/aura/client/activation_client.h"
 #include "ui/aura/event.h"
 #include "ui/aura/event_filter.h"
 #include "ui/aura/root_window.h"
@@ -105,16 +106,19 @@ ShelfLayoutManager::AutoHideEventFilter::PreHandleGestureEvent(
 // ShelfLayoutManager, public:
 
 ShelfLayoutManager::ShelfLayoutManager(views::Widget* status)
-    : in_layout_(false),
+    : root_window_(Shell::GetInstance()->GetRootWindow()),
+      in_layout_(false),
       auto_hide_behavior_(SHELF_AUTO_HIDE_BEHAVIOR_DEFAULT),
       shelf_height_(status->GetWindowScreenBounds().height()),
       launcher_(NULL),
       status_(status),
       workspace_manager_(NULL),
       window_overlaps_shelf_(false) {
+  root_window_->AddObserver(this);
 }
 
 ShelfLayoutManager::~ShelfLayoutManager() {
+  root_window_->RemoveObserver(this);
 }
 
 void ShelfLayoutManager::SetAutoHideBehavior(ShelfAutoHideBehavior behavior) {
@@ -256,13 +260,22 @@ void ShelfLayoutManager::SetChildBounds(aura::Window* child,
     LayoutShelf();
 }
 
+void ShelfLayoutManager::OnWindowPropertyChanged(aura::Window* window,
+                                                 const void* key,
+                                                 intptr_t old) {
+  if (key == aura::client::kRootWindowActiveWindowKey)
+    UpdateAutoHideStateNow();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // ShelfLayoutManager, private:
 
 void ShelfLayoutManager::SetState(VisibilityState visibility_state) {
+  ShellDelegate* delegate = Shell::GetInstance()->delegate();
   State state;
   state.visibility_state = visibility_state;
   state.auto_hide_state = CalculateAutoHideState(visibility_state);
+  state.is_screen_locked = delegate && delegate->IsScreenLocked();
 
   if (state_.Equals(state))
     return;  // Nothing changed.
@@ -372,7 +385,8 @@ void ShelfLayoutManager::UpdateShelfBackground(
 }
 
 bool ShelfLayoutManager::GetLauncherPaintsBackground() const {
-  return window_overlaps_shelf_ || state_.visibility_state == AUTO_HIDE;
+  return (!state_.is_screen_locked && window_overlaps_shelf_) ||
+      state_.visibility_state == AUTO_HIDE;
 }
 
 void ShelfLayoutManager::UpdateAutoHideStateNow() {
@@ -385,10 +399,16 @@ ShelfLayoutManager::AutoHideState ShelfLayoutManager::CalculateAutoHideState(
     return AUTO_HIDE_HIDDEN;
 
   Shell* shell = Shell::GetInstance();
+  if (shell->GetAppListTargetVisibility())
+    return AUTO_HIDE_SHOWN;
+
   if (shell->tray() && shell->tray()->should_show_launcher())
     return AUTO_HIDE_SHOWN;
 
   if (launcher_ && launcher_->IsShowingMenu())
+    return AUTO_HIDE_SHOWN;
+
+  if (launcher_widget()->IsActive() || status_->IsActive())
     return AUTO_HIDE_SHOWN;
 
   aura::RootWindow* root = launcher_widget()->GetNativeView()->GetRootWindow();

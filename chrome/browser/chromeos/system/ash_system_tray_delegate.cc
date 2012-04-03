@@ -186,6 +186,11 @@ class SystemTrayDelegate : public ash::SystemTrayDelegate,
     if (audiohandler)
       audiohandler->RemoveVolumeObserver(this);
     DBusThreadManager::Get()->GetPowerManagerClient()->RemoveObserver(this);
+    NetworkLibrary* crosnet = CrosLibrary::Get()->GetNetworkLibrary();
+    if (crosnet) {
+      crosnet->RemoveNetworkManagerObserver(this);
+      crosnet->RemoveCellularDataPlanObserver(this);
+    }
     input_method::InputMethodManager::GetInstance()->RemoveObserver(this);
     system::TimezoneSettings::GetInstance()->RemoveObserver(this);
     if (SystemKeyEventListener::GetInstance())
@@ -511,11 +516,9 @@ class SystemTrayDelegate : public ash::SystemTrayDelegate,
   }
 
   virtual void AddBluetoothDevice() OVERRIDE {
-    // Opening the device dialog does not actually start the discovery process.
-    // So make an explicit call to start it.
+    // Open the Bluetooth device dialog, which automatically starts the
+    // discovery process.
     GetAppropriateBrowser()->OpenAddBluetoothDeviceDialog();
-    bluetooth_adapter_->SetDiscovering(true,
-                                       base::Bind(&BluetoothDiscoveryFailure));
   }
 
   virtual void ToggleAirplaneMode() OVERRIDE {
@@ -606,12 +609,8 @@ class SystemTrayDelegate : public ash::SystemTrayDelegate,
   // Returns the last active browser. If there is no such browser, creates a new
   // browser window with an empty tab and returns it.
   Browser* GetAppropriateBrowser() {
-    Browser* browser = BrowserList::GetLastActive();
-    if (!browser) {
-      browser = Browser::OpenEmptyWindow(
-          ProfileManager::GetDefaultProfileOrOffTheRecord());
-    }
-    return browser;
+    return Browser::GetOrCreateTabbedBrowser(
+        ProfileManager::GetDefaultProfileOrOffTheRecord());
   }
 
   void SetProfile(Profile* profile) {

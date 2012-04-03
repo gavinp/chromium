@@ -7,10 +7,10 @@
 #include "base/bind.h"
 #include "base/synchronization/waitable_event.h"
 #include "content/common/child_thread.h"
-#include "content/common/gpu/client/command_buffer_proxy.h"
 #include "content/common/gpu/client/gpu_channel_host.h"
 #include "content/common/gpu/client/webgraphicscontext3d_command_buffer_impl.h"
 #include "gpu/command_buffer/client/gles2_implementation.h"
+#include "gpu/ipc/command_buffer_proxy.h"
 
 RendererGpuVideoDecoderFactories::~RendererGpuVideoDecoderFactories() {}
 RendererGpuVideoDecoderFactories::RendererGpuVideoDecoderFactories(
@@ -37,14 +37,14 @@ void RendererGpuVideoDecoderFactories::AsyncGetContext(
     WebGraphicsContext3DCommandBufferImpl* wgc3dcbi,
     base::WaitableEvent* waiter) {
   wgc3dcbi->makeContextCurrent();
-  context_ = wgc3dcbi->context()->AsWeakPtr();
+  context_ = wgc3dcbi->AsWeakPtr();
   if (waiter)
     waiter->Signal();
 }
 
 media::VideoDecodeAccelerator*
 RendererGpuVideoDecoderFactories::CreateVideoDecodeAccelerator(
-    media::VideoDecodeAccelerator::Profile profile,
+    media::VideoCodecProfile profile,
     media::VideoDecodeAccelerator::Client* client) {
   DCHECK_NE(MessageLoop::current(), message_loop_);
   media::VideoDecodeAccelerator* vda = NULL;
@@ -57,7 +57,7 @@ RendererGpuVideoDecoderFactories::CreateVideoDecodeAccelerator(
 }
 
 void RendererGpuVideoDecoderFactories::AsyncCreateVideoDecodeAccelerator(
-      media::VideoDecodeAccelerator::Profile profile,
+      media::VideoCodecProfile profile,
       media::VideoDecodeAccelerator::Client* client,
       media::VideoDecodeAccelerator** vda,
       base::WaitableEvent* waiter) {

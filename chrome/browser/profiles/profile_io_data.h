@@ -29,6 +29,10 @@ class Profile;
 class ProtocolHandlerRegistry;
 class TransportSecurityPersister;
 
+namespace chrome_browser_net {
+class HttpServerPropertiesManager;
+}
+
 namespace net {
 class CookieStore;
 class FraudulentCertificateReporter;
@@ -107,6 +111,9 @@ class ProfileIOData {
   net::TransportSecurityState* transport_security_state() const {
     return transport_security_state_.get();
   }
+
+  chrome_browser_net::HttpServerPropertiesManager*
+      http_server_properties_manager() const;
 
  protected:
   class AppRequestContext : public ChromeURLRequestContext {
@@ -203,6 +210,9 @@ class ProfileIOData {
     return job_factory_.get();
   }
 
+  void set_http_server_properties_manager(
+      chrome_browser_net::HttpServerPropertiesManager* manager) const;
+
   ChromeURLRequestContext* main_request_context() const {
     return main_request_context_;
   }
@@ -264,6 +274,7 @@ class ProfileIOData {
   mutable BooleanPrefMember enable_referrers_;
   mutable BooleanPrefMember clear_local_state_on_exit_;
   mutable BooleanPrefMember safe_browsing_enabled_;
+  // TODO(marja): Remove session_startup_pref_ if no longer needed.
   mutable IntegerPrefMember session_startup_pref_;
 
   // Pointed to by NetworkDelegate.
@@ -279,6 +290,8 @@ class ProfileIOData {
   mutable scoped_ptr<net::ProxyService> proxy_service_;
   mutable scoped_ptr<net::TransportSecurityState> transport_security_state_;
   mutable scoped_ptr<net::URLRequestJobFactory> job_factory_;
+  mutable scoped_ptr<chrome_browser_net::HttpServerPropertiesManager>
+      http_server_properties_manager_;
 
   // Pointed to by ResourceContext.
 

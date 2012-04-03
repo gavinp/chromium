@@ -8,7 +8,7 @@
 class IndexedDBLayoutTest : public InProcessBrowserLayoutTest {
  public:
   IndexedDBLayoutTest() : InProcessBrowserLayoutTest(
-      FilePath().AppendASCII("storage").AppendASCII("indexeddb")) {
+      FilePath(), FilePath().AppendASCII("storage").AppendASCII("indexeddb")) {
   }
 
   virtual void SetUpInProcessBrowserTestFixture() OVERRIDE {
@@ -44,7 +44,6 @@ static const char* kComplexTests[] = {
 
 static const char* kIndexTests[] = {
   "deleteIndex.html",
-  "index-basics-workers.html",
   "index-count.html",
   "index-cursor.html",  // Locally takes ~6s compared to <1 for the others.
   "index-get-key-argument-required.html",
@@ -93,6 +92,13 @@ IN_PROC_BROWSER_TEST_F(IndexedDBLayoutTest, BasicTests) {
 
 IN_PROC_BROWSER_TEST_F(IndexedDBLayoutTest, ComplexTests) {
   RunLayoutTests(kComplexTests);
+}
+
+// Frequently times out, sometimes due to webkit assertion failure.
+// http://crbug.com/120924
+IN_PROC_BROWSER_TEST_F(IndexedDBLayoutTest, FAILS_IndexBasicsWorkersTest) {
+  RunLayoutTest("deleteIndex.html");
+  RunLayoutTest("index-basics-workers.html");
 }
 
 IN_PROC_BROWSER_TEST_F(IndexedDBLayoutTest, IndexTests) {

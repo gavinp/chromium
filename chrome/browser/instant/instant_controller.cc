@@ -14,7 +14,6 @@
 #include "chrome/browser/instant/instant_delegate.h"
 #include "chrome/browser/instant/instant_field_trial.h"
 #include "chrome/browser/instant/instant_loader.h"
-#include "chrome/browser/instant/promo_counter.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/prefs/pref_service.h"
 #include "chrome/browser/profiles/profile.h"
@@ -69,31 +68,11 @@ void InstantController::RegisterUserPrefs(PrefService* prefs) {
   prefs->RegisterBooleanPref(prefs::kInstantEnabledOnce,
                              false,
                              PrefService::SYNCABLE_PREF);
-  prefs->RegisterInt64Pref(prefs::kInstantEnabledTime,
-                           false,
-                           PrefService::SYNCABLE_PREF);
-  PromoCounter::RegisterUserPrefs(prefs, prefs::kInstantPromo);
 }
 
 // static
 void InstantController::RecordMetrics(Profile* profile) {
-  if (!IsEnabled(profile))
-    return;
-
-  PrefService* service = profile->GetPrefs();
-  if (service) {
-    int64 enable_time = service->GetInt64(prefs::kInstantEnabledTime);
-    if (!enable_time) {
-      service->SetInt64(prefs::kInstantEnabledTime,
-                        base::Time::Now().ToInternalValue());
-    } else {
-      base::TimeDelta delta =
-          base::Time::Now() - base::Time::FromInternalValue(enable_time);
-      // Histogram from 1 hour to 30 days.
-      UMA_HISTOGRAM_CUSTOM_COUNTS("Instant.EnabledTime.Predictive",
-                                  delta.InHours(), 1, 30 * 24, 50);
-    }
-  }
+  UMA_HISTOGRAM_ENUMERATION("Instant.Status", IsEnabled(profile), 2);
 }
 
 // static
@@ -105,19 +84,18 @@ bool InstantController::IsEnabled(Profile* profile) {
 
 // static
 void InstantController::Enable(Profile* profile) {
-  PromoCounter* promo_counter = profile->GetInstantPromoCounter();
-  if (promo_counter)
-    promo_counter->Hide();
-
   PrefService* service = profile->GetPrefs();
   if (!service)
     return;
 
+  base::Histogram* histogram = base::LinearHistogram::FactoryGet(
+      "Instant.Preference" + InstantFieldTrial::GetGroupName(profile), 1, 2, 3,
+      base::Histogram::kUmaTargetedHistogramFlag);
+  histogram->Add(1);
+
   service->SetBoolean(prefs::kInstantEnabledOnce, true);
   service->SetBoolean(prefs::kInstantEnabled, true);
   service->SetBoolean(prefs::kInstantConfirmDialogShown, true);
-  service->SetInt64(prefs::kInstantEnabledTime,
-                    base::Time::Now().ToInternalValue());
 }
 
 // static
@@ -126,19 +104,10 @@ void InstantController::Disable(Profile* profile) {
   if (!service || !IsEnabled(profile))
     return;
 
-  int64 enable_time = service->GetInt64(prefs::kInstantEnabledTime);
-  if (enable_time) {
-    base::TimeDelta delta =
-        base::Time::Now() - base::Time::FromInternalValue(enable_time);
-    // Histogram from 1 minute to 10 days.
-    UMA_HISTOGRAM_CUSTOM_COUNTS("Instant.TimeToDisable.Predictive",
-                                delta.InMinutes(), 1, 60 * 24 * 10, 50);
-  }
-
-  base::Histogram* histogram = base::Histogram::FactoryGet(
-      "Instant.OptOut" + InstantFieldTrial::GetGroupName(profile), 1, 1000000,
-      50, base::Histogram::kUmaTargetedHistogramFlag);
-  histogram->Add(1);
+  base::Histogram* histogram = base::LinearHistogram::FactoryGet(
+      "Instant.Preference" + InstantFieldTrial::GetGroupName(profile), 1, 2, 3,
+      base::Histogram::kUmaTargetedHistogramFlag);
+  histogram->Add(0);
 
   service->SetBoolean(prefs::kInstantEnabledOnce, true);
   service->SetBoolean(prefs::kInstantEnabled, false);

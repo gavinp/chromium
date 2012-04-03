@@ -9,6 +9,8 @@
 
 #include "base/basictypes.h"
 #include "base/callback.h"
+#include "chrome/browser/chromeos/dbus/dbus_client_implementation_type.h"
+#include "chrome/browser/chromeos/dbus/flimflam_client_helper.h"
 
 namespace base {
 
@@ -30,26 +32,18 @@ namespace chromeos {
 // initializes the DBusThreadManager instance.
 class FlimflamNetworkClient {
  public:
-  // An enum to describe whether or not a DBus method call succeeded.
-  enum CallStatus {
-    FAILURE,
-    SUCCESS,
-  };
-
-  // A callback to handle PropertyChanged signals.
-  typedef base::Callback<void(const std::string& name,
-                              const base::Value& value)> PropertyChangedHandler;
-
-  // A callback to handle responses of methods with DictionaryValue results.
-  typedef base::Callback<void(
-      CallStatus call_status,
-      const base::DictionaryValue& result)> DictionaryValueCallback;
+  typedef FlimflamClientHelper::PropertyChangedHandler PropertyChangedHandler;
+  typedef FlimflamClientHelper::DictionaryValueCallback DictionaryValueCallback;
+  typedef FlimflamClientHelper::CallStatus CallStatus;
+  static const CallStatus FAILURE = FlimflamClientHelper::FAILURE;
+  static const CallStatus SUCCESS = FlimflamClientHelper::SUCCESS;
 
   virtual ~FlimflamNetworkClient();
 
   // Factory function, creates a new instance which is owned by the caller.
   // For normal usage, access the singleton via DBusThreadManager::Get().
-  static FlimflamNetworkClient* Create(dbus::Bus* bus);
+  static FlimflamNetworkClient* Create(DBusClientImplementationType type,
+                                       dbus::Bus* bus);
 
   // Sets PropertyChanged signal handler.
   virtual void SetPropertyChangedHandler(

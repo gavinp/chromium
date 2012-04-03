@@ -22,6 +22,7 @@
 #include "base/synchronization/condition_variable.h"
 #include "base/synchronization/lock.h"
 #include "base/threading/platform_thread.h"
+#include "base/threading/sequenced_worker_pool_task_runner.h"
 #include "base/threading/simple_thread.h"
 #include "base/time.h"
 #include "base/tracked_objects.h"
@@ -63,8 +64,17 @@ class SequencedWorkerPool::Worker : public SimpleThread {
   // SimpleThread implementation. This actually runs the background thread.
   virtual void Run() OVERRIDE;
 
+  void set_running_sequence(SequenceToken token) {
+    running_sequence_ = token;
+  }
+
+  SequenceToken running_sequence() const {
+    return running_sequence_;
+  }
+
  private:
   scoped_refptr<SequencedWorkerPool> worker_pool_;
+  SequenceToken running_sequence_;
 
   DISALLOW_COPY_AND_ASSIGN(Worker);
 };
@@ -95,6 +105,8 @@ class SequencedWorkerPool::Inner {
                 const Closure& task);
 
   bool RunsTasksOnCurrentThread() const;
+
+  bool IsRunningSequenceOnCurrentThread(SequenceToken sequence_token) const;
 
   void FlushForTesting();
 
@@ -354,6 +366,15 @@ bool SequencedWorkerPool::Inner::RunsTasksOnCurrentThread() const {
   return ContainsKey(threads_, PlatformThread::CurrentId());
 }
 
+bool SequencedWorkerPool::Inner::IsRunningSequenceOnCurrentThread(
+    SequenceToken sequence_token) const {
+  AutoLock lock(lock_);
+  ThreadMap::const_iterator found = threads_.find(PlatformThread::CurrentId());
+  if (found == threads_.end())
+    return false;
+  return found->second->running_sequence().Equals(sequence_token);
+}
+
 void SequencedWorkerPool::Inner::FlushForTesting() {
   AutoLock lock(lock_);
   while (!IsIdle())
@@ -435,7 +456,12 @@ void SequencedWorkerPool::Inner::ThreadLoop(Worker* this_worker) {
           if (new_thread_id)
             FinishStartingAdditionalThread(new_thread_id);
 
+          this_worker->set_running_sequence(
+              SequenceToken(task.sequence_token_id));
+
           task.task.Run();
+
+          this_worker->set_running_sequence(SequenceToken());
 
           // Make sure our task is erased outside the lock for the same reason
           // we do this with delete_these_oustide_lock.
@@ -733,6 +759,11 @@ SequencedWorkerPool::SequenceToken SequencedWorkerPool::GetNamedSequenceToken(
   return inner_->GetNamedSequenceToken(name);
 }
 
+scoped_refptr<SequencedTaskRunner> SequencedWorkerPool::GetSequencedTaskRunner(
+    SequenceToken token) {
+  return new SequencedWorkerPoolTaskRunner(this, token);
+}
+
 bool SequencedWorkerPool::PostWorkerTask(
     const tracked_objects::Location& from_here,
     const Closure& task) {
@@ -794,6 +825,11 @@ bool SequencedWorkerPool::PostDelayedTask(
 
 bool SequencedWorkerPool::RunsTasksOnCurrentThread() const {
   return inner_->RunsTasksOnCurrentThread();
+}
+
+bool SequencedWorkerPool::IsRunningSequenceOnCurrentThread(
+    SequenceToken sequence_token) const {
+  return inner_->IsRunningSequenceOnCurrentThread(sequence_token);
 }
 
 void SequencedWorkerPool::FlushForTesting() {

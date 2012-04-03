@@ -57,6 +57,10 @@
         'audio/android/audio_manager_android.h',
         'audio/android/audio_track_output_android.cc',
         'audio/android/audio_track_output_android.h',
+        'audio/android/opensles_input.cc',
+        'audio/android/opensles_input.h',
+        'audio/android/opensles_output.cc',
+        'audio/android/opensles_output.h',
         'audio/cross_process_notification.cc',
         'audio/cross_process_notification.h',
         'audio/cross_process_notification_win.cc',
@@ -130,8 +134,6 @@
         'base/decrypt_config.h',
         'base/demuxer.cc',
         'base/demuxer.h',
-        'base/demuxer_factory.cc',
-        'base/demuxer_factory.h',
         'base/demuxer_stream.cc',
         'base/demuxer_stream.h',
         'base/djb2.cc',
@@ -160,7 +162,6 @@
         'base/pipeline.cc',
         'base/pipeline.h',
         'base/pipeline_status.h',
-        'base/preload.h',
         'base/seekable_buffer.cc',
         'base/seekable_buffer.h',
         'base/state_matrix.cc',
@@ -190,18 +191,12 @@
         'filters/chunk_demuxer.cc',
         'filters/chunk_demuxer.h',
         'filters/chunk_demuxer_client.h',
-        'filters/chunk_demuxer_factory.cc',
-        'filters/chunk_demuxer_factory.h',
         'filters/dummy_demuxer.cc',
         'filters/dummy_demuxer.h',
-        'filters/dummy_demuxer_factory.cc',
-        'filters/dummy_demuxer_factory.h',
         'filters/ffmpeg_audio_decoder.cc',
         'filters/ffmpeg_audio_decoder.h',
         'filters/ffmpeg_demuxer.cc',
         'filters/ffmpeg_demuxer.h',
-        'filters/ffmpeg_demuxer_factory.cc',
-        'filters/ffmpeg_demuxer_factory.h',
         'filters/ffmpeg_h264_bitstream_converter.cc',
         'filters/ffmpeg_h264_bitstream_converter.h',
         'filters/ffmpeg_glue.cc',
@@ -293,14 +288,10 @@
             'filters/chunk_demuxer.cc',
             'filters/chunk_demuxer.h',
             'filters/chunk_demuxer_client.h',
-            'filters/chunk_demuxer_factory.cc',
-            'filters/chunk_demuxer_factory.h',
             'filters/ffmpeg_audio_decoder.cc',
             'filters/ffmpeg_audio_decoder.h',
             'filters/ffmpeg_demuxer.cc',
             'filters/ffmpeg_demuxer.h',
-            'filters/ffmpeg_demuxer_factory.cc',
-            'filters/ffmpeg_demuxer_factory.h',
             'filters/ffmpeg_h264_bitstream_converter.cc',
             'filters/ffmpeg_h264_bitstream_converter.h',
             'filters/ffmpeg_glue.cc',
@@ -325,6 +316,11 @@
           'sources':[
             'audio/android/audio_track_output_stub_android.cc',
           ],
+          'link_settings': {
+            'libraries': [
+              '-lOpenSLES',
+            ],
+          },
         }],
         ['OS=="linux" or OS=="freebsd" or OS=="solaris"', {
           'link_settings': {
@@ -817,7 +813,7 @@
         },
       ],
     }],
-    ['OS!="mac"', {
+    ['OS == "win" or toolkit_uses_gtk == 1', {
       'targets': [
         {
           'target_name': 'shader_bench',

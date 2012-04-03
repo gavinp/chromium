@@ -218,12 +218,12 @@ CommandBufferProxy* GpuChannelHost::CreateViewCommandBuffer(
 
 GpuVideoDecodeAcceleratorHost* GpuChannelHost::CreateVideoDecoder(
     int command_buffer_route_id,
-    media::VideoDecodeAccelerator::Profile profile,
+    media::VideoCodecProfile profile,
     media::VideoDecodeAccelerator::Client* client) {
   AutoLock lock(context_lock_);
   ProxyMap::iterator it = proxies_.find(command_buffer_route_id);
   DCHECK(it != proxies_.end());
-  CommandBufferProxy* proxy = it->second;
+  CommandBufferProxyImpl* proxy = it->second;
   return proxy->CreateVideoDecoder(profile, client);
 }
 
@@ -267,7 +267,8 @@ CommandBufferProxy* GpuChannelHost::CreateOffscreenCommandBuffer(
 #endif
 }
 
-void GpuChannelHost::DestroyCommandBuffer(CommandBufferProxy* command_buffer) {
+void GpuChannelHost::DestroyCommandBuffer(
+    CommandBufferProxy* command_buffer) {
 #if defined(ENABLE_GPU)
   AutoLock lock(context_lock_);
   int route_id = command_buffer->GetRouteID();

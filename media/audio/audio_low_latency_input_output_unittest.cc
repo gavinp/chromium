@@ -29,6 +29,10 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
+using base::win::ScopedCOMInitializer;
+
+namespace media {
+
 #if defined(OS_LINUX) || defined(OS_OPENBSD)
 typedef AudioManagerLinux AudioManagerAnyPlatform;
 #elif defined(OS_MACOSX)
@@ -39,9 +43,6 @@ typedef AudioManagerWin AudioManagerAnyPlatform;
 typedef AudioManagerAndroid AudioManagerAnyPlatform;
 #endif
 
-using base::win::ScopedCOMInitializer;
-
-namespace {
 // Limits the number of delay measurements we can store in an array and
 // then write to file at end of the WASAPIAudioInputOutputFullDuplex test.
 static const size_t kMaxDelayMeasurements = 1000;
@@ -121,8 +122,6 @@ class AudioLowLatencyInputOutputTest : public testing::Test {
 
   DISALLOW_COPY_AND_ASSIGN(AudioLowLatencyInputOutputTest);
 };
-
-}  // namespace
 
 // This audio source/sink implementation should be used for manual tests
 // only since delay measurements are stored on an output text file.
@@ -311,7 +310,11 @@ class StreamWrapper {
       : com_init_(ScopedCOMInitializer::kMTA),
         audio_manager_(audio_manager),
         format_(AudioParameters::AUDIO_PCM_LOW_LATENCY),
+#if defined(OS_ANDROID)
+        channel_layout_(CHANNEL_LAYOUT_MONO),
+#else
         channel_layout_(CHANNEL_LAYOUT_STEREO),
+#endif
         bits_per_sample_(16) {
     // Use native/mixing sample rate and N*10ms frame size as default,
     // where N is platform dependent.
@@ -339,6 +342,8 @@ class StreamWrapper {
       // ensure glitch-free output audio.
       samples_per_packet_ = 3 * (sample_rate_ / 100);
     }
+#elif defined(OS_ANDROID)
+      samples_per_packet_ = (sample_rate_ / 100);
 #endif
   }
 
@@ -457,3 +462,5 @@ TEST_F(AudioLowLatencyInputOutputTest, DISABLED_FullDuplexDelayMeasurement) {
   aos->Close();
   ais->Close();
 }
+
+}  // namespace media

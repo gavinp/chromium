@@ -186,11 +186,6 @@ bool PathProvider(int key, FilePath* result) {
       cur = cur.Append(FILE_PATH_LITERAL("resources"));
 #endif
       break;
-    case chrome::DIR_SHARED_RESOURCES:
-      if (!PathService::Get(chrome::DIR_RESOURCES, &cur))
-        return false;
-      cur = cur.Append(FILE_PATH_LITERAL("shared"));
-      break;
     case chrome::DIR_INSPECTOR:
       if (!PathService::Get(chrome::DIR_RESOURCES, &cur))
         return false;
@@ -383,21 +378,6 @@ bool PathProvider(int key, FilePath* result) {
       create_dir = true;
 #endif
       break;
-
-#if defined(OS_MACOSX)
-    case DIR_DEPRECATED_EXTERNAL_EXTENSIONS:
-      // TODO(skerner): Reading external extensions from a file inside the
-      // app budle causes several problems.  Once users have a chance to
-      // migrate, remove this path.  crbug/67203
-      if (!PathService::Get(base::DIR_EXE, &cur))
-        return false;
-
-      cur = cur.DirName();
-      cur = cur.Append(FILE_PATH_LITERAL("Extensions"));
-      create_dir = false;
-
-      break;
-#endif
 
     case chrome::DIR_DEFAULT_APPS:
 #if defined(OS_MACOSX)

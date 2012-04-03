@@ -15,7 +15,7 @@
 #include "chrome/browser/prefs/session_startup_pref.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/protector/histograms.h"
-#include "chrome/browser/protector/protector_service.h"
+#include "chrome/browser/protector/protector_utils.h"
 #include "chrome/common/chrome_notification_types.h"
 #include "chrome/common/pref_names.h"
 #include "content/public/browser/notification_service.h"
@@ -90,6 +90,8 @@ bool ProtectedPrefsWatcher::DidPrefChange(const std::string& path) const {
   const PrefService::Preference* new_pref =
       profile_->GetPrefs()->FindPreference(path.c_str());
   DCHECK(new_pref);
+  if (new_pref->IsManaged())
+    return false;
   return !backup_value->Equals(new_pref->GetValue());
 }
 

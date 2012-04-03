@@ -20,9 +20,6 @@ class SearchTermsData;
 class TemplateURL;
 class TemplateURLParsingContext;
 class WebDataService;
-namespace IPC {
-template<typename T> struct ParamTraits;
-}
 
 // TemplateURL represents the relevant portions of the Open Search Description
 // Document (http://www.opensearch.org/Specifications/OpenSearch).
@@ -53,10 +50,8 @@ class TemplateURLRef {
     NO_SUGGESTIONS_AVAILABLE = -2,
   };
 
-  TemplateURLRef();
-
-  TemplateURLRef(const std::string& url, int index_offset, int page_offset);
-
+  explicit TemplateURLRef(TemplateURL* owner);
+  TemplateURLRef(TemplateURL* owner, const std::string& url);
   ~TemplateURLRef();
 
   // Returns true if this URL supports replacement.
@@ -67,14 +62,11 @@ class TemplateURLRef {
       const SearchTermsData& search_terms_data) const;
 
   // Returns a string that is the result of replacing the search terms in
-  // the url with the specified value.
+  // the url with the specified value.  We use our owner's input encoding.
   //
   // If this TemplateURLRef does not support replacement (SupportsReplacement
   // returns false), an empty string is returned.
-  //
-  // The TemplateURL is used to determine the input encoding for the term.
   std::string ReplaceSearchTerms(
-      const TemplateURL& host,
       const string16& terms,
       int accepted_suggestion,
       const string16& original_query_for_suggestion) const;
@@ -84,7 +76,6 @@ class TemplateURLRef {
   // params, and so can use ReplaceSearchTerms instead.
   std::string ReplaceSearchTermsUsingProfile(
       Profile* profile,
-      const TemplateURL& host,
       const string16& terms,
       int accepted_suggestion,
       const string16& original_query_for_suggestion) const;
@@ -93,7 +84,6 @@ class TemplateURLRef {
   // the data for some search terms. Most of the time ReplaceSearchTerms should
   // be called.
   std::string ReplaceSearchTermsUsingTermsData(
-      const TemplateURL& host,
       const string16& terms,
       int accepted_suggestion,
       const string16& original_query_for_suggestion,
@@ -101,12 +91,6 @@ class TemplateURLRef {
 
   // Returns the raw URL. None of the parameters will have been replaced.
   const std::string& url() const { return url_; }
-
-  // Returns the index number of the first search result.
-  int index_offset() const { return index_offset_; }
-
-  // Returns the page number of the first search results.
-  int page_offset() const { return page_offset_; }
 
   // Returns true if the TemplateURLRef is valid. An invalid TemplateURLRef is
   // one that contains unknown terms, or invalid characters.
@@ -132,10 +116,8 @@ class TemplateURLRef {
   // the key of the search term, otherwise this returns an empty string.
   const std::string& GetSearchTermKey() const;
 
-  // Converts the specified term in the encoding of the host TemplateURL to a
-  // string16.
-  string16 SearchTermToString16(const TemplateURL& host,
-                                const std::string& term) const;
+  // Converts the specified term in our owner's encoding to a string16.
+  string16 SearchTermToString16(const std::string& term) const;
 
   // Returns true if this TemplateURLRef has a replacement term of
   // {google:baseURL} or {google:baseSuggestURL}.
@@ -150,7 +132,6 @@ class TemplateURLRef {
 
  private:
   friend class TemplateURL;
-  template<typename T> friend struct IPC::ParamTraits;
   FRIEND_TEST_ALL_PREFIXES(TemplateURLTest, SetPrepopulatedAndParse);
   FRIEND_TEST_ALL_PREFIXES(TemplateURLTest, ParseParameterKnown);
   FRIEND_TEST_ALL_PREFIXES(TemplateURLTest, ParseParameterUnknown);
@@ -192,7 +173,7 @@ class TemplateURLRef {
   void InvalidateCachedValues() const;
 
   // Resets the url.
-  void Set(const std::string& url, int index_offset, int page_offset);
+  void Set(const std::string& url);
 
   // Parses the parameter in url at the specified offset. start/end specify the
   // range of the parameter in the url, including the braces. If the parameter
@@ -230,15 +211,12 @@ class TemplateURLRef {
   void ParseHostAndSearchTermKey(
       const SearchTermsData& search_terms_data) const;
 
+  // The TemplateURL that contains us.  This should outlive us.
+  TemplateURL* owner_;
+
   // The raw URL. Where as this contains all the terms (such as {searchTerms}),
   // parsed_url_ has them all stripped out.
   std::string url_;
-
-  // indexOffset defined for the Url element.
-  int index_offset_;
-
-  // searchOffset defined for the Url element.
-  int page_offset_;
 
   // Whether the URL has been parsed.
   mutable bool parsed_;
@@ -272,46 +250,6 @@ class TemplateURLRef {
 // Describes the relevant portions of a single OSD document.
 class TemplateURL {
  public:
-  // Describes a single image reference. Each TemplateURL may have
-  // any number (including 0) of ImageRefs.
-  //
-  // If a TemplateURL has no images, the favicon for the generated URL
-  // should be used.
-  struct ImageRef {
-    ImageRef() : width(0), height(0) {}  // Needed by STL.
-
-    ImageRef(const std::string& type, int width, int height)
-        : type(type), width(width), height(height) {
-    }
-
-    ImageRef(const std::string& type, int width, int height, const GURL& url)
-      : type(type), width(width), height(height), url(url) {
-    }
-
-    // Mime type for the image.
-    // ICO image will have the format: image/x-icon or image/vnd.microsoft.icon
-    std::string type;
-
-    // Size of the image
-    int width;
-    int height;
-
-    // URL of the image.
-    GURL url;
-  };
-
-  // Generates a favicon URL from the specified url.
-  static GURL GenerateFaviconURL(const GURL& url);
-
-  // Returns true if |turl| is non-null and has a search URL that supports
-  // replacement.
-  static bool SupportsReplacement(const TemplateURL* turl);
-
-  // Like SupportsReplacement but usable on threads other than the UI thread.
-  static bool SupportsReplacementUsingTermsData(
-      const TemplateURL* turl,
-      const SearchTermsData& search_terms_data);
-
   TemplateURL();
 
   TemplateURL(const TemplateURL& other);
@@ -319,49 +257,43 @@ class TemplateURL {
 
   ~TemplateURL();
 
+  // Generates a favicon URL from the specified url.
+  static GURL GenerateFaviconURL(const GURL& url);
+
   // A short description of the template. This is the name we show to the user
   // in various places that use keywords. For example, the location bar shows
   // this when the user selects the keyword.
   void set_short_name(const string16& short_name) {
     short_name_ = short_name;
   }
-  string16 short_name() const { return short_name_; }
+  const string16& short_name() const { return short_name_; }
 
   // An accessor for the short_name, but adjusted so it can be appropriately
   // displayed even if it is LTR and the UI is RTL.
   string16 AdjustedShortNameForLocaleDirection() const;
 
-  // A description of the template; this may be empty.
-  void set_description(const string16& description) {
-    description_ = description;
-  }
-  string16 description() const { return description_; }
-
-  // URL providing JSON results. This is typically used to provide suggestions
-  // as your type. If NULL, this url does not support suggestions.
-  // Be sure and check the resulting TemplateURLRef for SupportsReplacement
-  // before using.
-  void SetSuggestionsURL(const std::string& url,
-                         int index_offset,
-                         int page_offset);
-  const TemplateURLRef* suggestions_url() const {
-    return suggestions_url_.url().empty() ? NULL : &suggestions_url_;
-  }
-
   // Parameterized URL for providing the results. This may be NULL.
   // Be sure and check the resulting TemplateURLRef for SupportsReplacement
   // before using.
-  void SetURL(const std::string& url, int index_offset, int page_offset);
+  void SetURL(const std::string& url);
   // Returns the TemplateURLRef that may be used for search results. This
   // returns NULL if a url element was not specified.
   const TemplateURLRef* url() const {
     return url_.url().empty() ? NULL : &url_;
   }
 
+  // URL providing JSON results. This is typically used to provide suggestions
+  // as your type. If NULL, this url does not support suggestions.
+  // Be sure and check the resulting TemplateURLRef for SupportsReplacement
+  // before using.
+  void SetSuggestionsURL(const std::string& url);
+  const TemplateURLRef* suggestions_url() const {
+    return suggestions_url_.url().empty() ? NULL : &suggestions_url_;
+  }
+
   // Parameterized URL for instant results. This may be NULL.  Be sure and check
-  // the resulting TemplateURLRef for SupportsReplacement before using. See
-  // TemplateURLRef for a description of |index_offset| and |page_offset|.
-  void SetInstantURL(const std::string& url, int index_offset, int page_offset);
+  // the resulting TemplateURLRef for SupportsReplacement before using.
+  void SetInstantURL(const std::string& url);
   // Returns the TemplateURLRef that may be used for search results. This
   // returns NULL if a url element was not specified.
   const TemplateURLRef* instant_url() const {
@@ -376,7 +308,7 @@ class TemplateURL {
 
   // The shortcut for this template url. May be empty.
   void set_keyword(const string16& keyword);
-  string16 keyword() const;
+  const string16& keyword() const;
 
   // Whether to autogenerate a keyword from the url() in GetKeyword().  Most
   // consumers should not need this.
@@ -422,19 +354,9 @@ class TemplateURL {
   }
   bool safe_for_autoreplace() const { return safe_for_autoreplace_; }
 
-  // Images for this URL. May be empty.
-  const std::vector<ImageRef>& image_refs() const { return image_refs_; }
-
-  // Convenience methods for getting/setting an ImageRef that points to a
-  // favicon. A TemplateURL need not have an ImageRef for a favicon. In such
-  // a situation GetFaviconURL returns an invalid url.
-  //
-  // If url is empty and there is an image ref for a favicon, it is removed.
-  void SetFaviconURL(const GURL& url);
-  GURL GetFaviconURL() const;
-
-  // Set of languages supported. This may be empty.
-  std::vector<string16> languages() const { return languages_; }
+  // The favicon.  This is optional.
+  void set_favicon_url(const GURL& url) { favicon_url_ = url; }
+  const GURL& favicon_url() const { return favicon_url_; }
 
   // Date this keyword was created.
   //
@@ -489,11 +411,18 @@ class TemplateURL {
   void SetPrepopulateId(int id);
   int prepopulate_id() const { return prepopulate_id_; }
 
+  const std::string& sync_guid() const { return sync_guid_; }
+  void set_sync_guid(const std::string& guid) { sync_guid_ = guid; }
+
+  // Returns true if |url| supports replacement.
+  bool SupportsReplacement() const;
+
+  // Like SupportsReplacement but usable on threads other than the UI thread.
+  bool SupportsReplacementUsingTermsData(
+      const SearchTermsData& search_terms_data) const;
+
   std::string GetExtensionId() const;
   bool IsExtensionKeyword() const;
-
-  std::string sync_guid() const { return sync_guid_; }
-  void set_sync_guid(const std::string& guid) { sync_guid_ = guid; }
 
  private:
   friend void MergeEnginesFromPrepopulateData(
@@ -501,7 +430,6 @@ class TemplateURL {
       WebDataService* service,
       std::vector<TemplateURL*>* template_urls,
       const TemplateURL** default_search_provider);
-  template<typename T> friend struct IPC::ParamTraits;
   friend class KeywordTable;
   friend class KeywordTableTest;
   friend class SearchHostToURLsMap;
@@ -517,9 +445,8 @@ class TemplateURL {
   void set_id(TemplateURLID id) { id_ = id; }
 
   string16 short_name_;
-  string16 description_;
-  TemplateURLRef suggestions_url_;
   TemplateURLRef url_;
+  TemplateURLRef suggestions_url_;
   TemplateURLRef instant_url_;
   GURL originating_url_;
   mutable string16 keyword_;
@@ -530,8 +457,7 @@ class TemplateURL {
                                     // generating a keyword failed.
   bool show_in_default_list_;
   bool safe_for_autoreplace_;
-  std::vector<ImageRef> image_refs_;
-  std::vector<string16> languages_;
+  GURL favicon_url_;
   // List of supported input encodings.
   std::vector<std::string> input_encodings_;
   TemplateURLID id_;

@@ -28,19 +28,14 @@
 #include "chrome/browser/custom_handlers/protocol_handler_registry.h"
 #include "chrome/browser/download/download_service.h"
 #include "chrome/browser/download/download_service_factory.h"
-#include "chrome/browser/extensions/component_loader.h"
-#include "chrome/browser/extensions/extension_devtools_manager.h"
-#include "chrome/browser/extensions/extension_error_reporter.h"
 #include "chrome/browser/extensions/extension_event_router.h"
-#include "chrome/browser/extensions/extension_info_map.h"
-#include "chrome/browser/extensions/extension_message_service.h"
-#include "chrome/browser/extensions/extension_navigation_observer.h"
 #include "chrome/browser/extensions/extension_pref_store.h"
+#include "chrome/browser/extensions/extension_pref_value_map.h"
 #include "chrome/browser/extensions/extension_process_manager.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_special_storage_policy.h"
-#include "chrome/browser/extensions/lazy_background_task_queue.h"
-#include "chrome/browser/extensions/unpacked_installer.h"
+#include "chrome/browser/extensions/extension_system.h"
+#include "chrome/browser/extensions/extension_system_factory.h"
 #include "chrome/browser/extensions/user_script_master.h"
 #include "chrome/browser/favicon/favicon_service.h"
 #include "chrome/browser/geolocation/chrome_geolocation_permission_context.h"
@@ -92,7 +87,6 @@
 #include "ui/base/l10n/l10n_util.h"
 
 #if defined(OS_WIN)
-#include "chrome/browser/instant/promo_counter.h"
 #include "chrome/installer/util/install_util.h"
 #elif defined(OS_CHROMEOS)
 #include "chrome/browser/chromeos/enterprise_extension_observer.h"
@@ -228,15 +222,11 @@ ProfileImpl::ProfileImpl(const FilePath& path,
       ALLOW_THIS_IN_INITIALIZER_LIST(visited_link_event_listener_(
           new VisitedLinkEventListener(this))),
       ALLOW_THIS_IN_INITIALIZER_LIST(io_data_(this)),
-      extension_devtools_manager_(NULL),
       host_content_settings_map_(NULL),
       history_service_created_(false),
       favicon_service_created_(false),
       created_web_data_service_(false),
       start_time_(Time::Now()),
-#if defined(OS_WIN)
-      checked_instant_promo_(false),
-#endif
       delegate_(delegate),
       predictor_(NULL),
       session_restore_enabled_(false) {
@@ -362,13 +352,18 @@ void ProfileImpl::DoFinalInit(bool is_new_profile) {
 
   FilePath app_path = GetPath().Append(chrome::kIsolatedAppStateDirname);
 
-  SessionStartupPref startup_pref =
+#if defined(OS_ANDROID)
+  SessionStartupPref::Type startup_pref_type =
+      SessionStartupPref::GetDefaultStartupType();
+#else
+  SessionStartupPref::Type startup_pref_type =
       BrowserInit::GetSessionStartupPref(*CommandLine::ForCurrentProcess(),
-                                         this);
+                                         this).type;
+#endif
   bool restore_old_session_cookies =
       session_restore_enabled_ &&
       (!DidLastSessionExitCleanly() ||
-       startup_pref.type == SessionStartupPref::LAST);
+       startup_pref_type == SessionStartupPref::LAST);
 
   InitHostZoomMap();
 
@@ -427,105 +422,6 @@ void ProfileImpl::InitHostZoomMap() {
                content::Source<HostZoomMap>(host_zoom_map));
 }
 
-void ProfileImpl::InitExtensions(bool extensions_enabled) {
-  if (user_script_master_ || extension_service_.get())
-    return;  // Already initialized.
-
-  const CommandLine* command_line = CommandLine::ForCurrentProcess();
-  if (command_line->HasSwitch(
-      switches::kEnableExtensionTimelineApi)) {
-    extension_devtools_manager_ = new ExtensionDevToolsManager(this);
-  }
-
-  // The ExtensionInfoMap needs to be created before the
-  // ExtensionProcessManager.
-  extension_info_map_ = new ExtensionInfoMap();
-  extension_process_manager_.reset(ExtensionProcessManager::Create(this));
-  lazy_background_task_queue_.reset(new LazyBackgroundTaskQueue(this));
-  extension_event_router_.reset(new ExtensionEventRouter(this));
-  extension_message_service_.reset(new ExtensionMessageService(
-      lazy_background_task_queue_.get()));
-  extension_navigation_observer_.reset(new ExtensionNavigationObserver(this));
-
-  ExtensionErrorReporter::Init(true);  // allow noisy errors.
-
-  user_script_master_ = new UserScriptMaster(this);
-
-  bool autoupdate_enabled = true;
-#if defined(OS_CHROMEOS)
-  if (!extensions_enabled)
-    autoupdate_enabled = false;
-  else
-    autoupdate_enabled = !command_line->HasSwitch(switches::kGuestSession);
-#endif
-  extension_service_.reset(new ExtensionService(
-      this,
-      CommandLine::ForCurrentProcess(),
-      GetPath().AppendASCII(ExtensionService::kInstallDirectoryName),
-      extension_prefs_.get(),
-      autoupdate_enabled,
-      extensions_enabled));
-
-  extension_service_->component_loader()->AddDefaultComponentExtensions();
-  if (command_line->HasSwitch(switches::kLoadComponentExtension)) {
-    CommandLine::StringType path_list = command_line->GetSwitchValueNative(
-        switches::kLoadComponentExtension);
-    StringTokenizerT<CommandLine::StringType,
-        CommandLine::StringType::const_iterator> t(path_list,
-                                                   FILE_PATH_LITERAL(","));
-    while (t.GetNext()) {
-      // Load the component extension manifest synchronously.
-      // Blocking the UI thread is acceptable here since
-      // this flag designated for developers.
-      base::ThreadRestrictions::ScopedAllowIO allow_io;
-      extension_service_->component_loader()->AddOrReplace(
-          FilePath(t.token()));
-    }
-  }
-  extension_service_->Init();
-
-  if (extensions_enabled) {
-    // Load any extensions specified with --load-extension.
-    // TODO(yoz): Seems like this should move into ExtensionService::Init.
-    if (command_line->HasSwitch(switches::kLoadExtension)) {
-      CommandLine::StringType path_list = command_line->GetSwitchValueNative(
-          switches::kLoadExtension);
-      StringTokenizerT<CommandLine::StringType,
-          CommandLine::StringType::const_iterator> t(path_list,
-                                                     FILE_PATH_LITERAL(","));
-      scoped_refptr<extensions::UnpackedInstaller> installer =
-          extensions::UnpackedInstaller::Create(extension_service_.get());
-      while (t.GetNext()) {
-        installer->LoadFromCommandLine(FilePath(t.token()));
-      }
-    }
-  }
-
-  // Make the chrome://extension-icon/ resource available.
-  GetChromeURLDataManager()->AddDataSource(new ExtensionIconSource(this));
-
-  // Initialize extension event routers. Note that on Chrome OS, this will
-  // not succeed if the user has not logged in yet, in which case the
-  // event routers are initialized in LoginUtilsImpl::CompleteLogin instead.
-  // The InitEventRouters call used to be in BrowserMain, because when bookmark
-  // import happened on first run, the bookmark bar was not being correctly
-  // initialized (see issue 40144). Now that bookmarks aren't imported and
-  // the event routers need to be initialized for every profile individually,
-  // initialize them with the extension service.
-  // If this profile is being created as part of the import process, never
-  // initialize the event routers. If import is going to run in a separate
-  // process (the profile itself is on the main process), wait for import to
-  // finish before initializing the routers.
-  if (!command_line->HasSwitch(switches::kImport) &&
-      !command_line->HasSwitch(switches::kImportFromFile)) {
-    if (g_browser_process->profile_manager()->will_import()) {
-      extension_service_->InitEventRoutersAfterImport();
-    } else {
-      extension_service_->InitEventRouters();
-    }
-  }
-}
-
 void ProfileImpl::InitPromoResources() {
   if (promo_resource_service_)
     return;
@@ -555,15 +451,13 @@ ProfileImpl::~ProfileImpl() {
       chrome::NOTIFICATION_PROFILE_DESTROYED,
       content::Source<Profile>(this),
       content::NotificationService::NoDetails());
-  // Save the session state if we're going to restore the session during the
-  // next startup.
   SessionStartupPref pref = SessionStartupPref::GetStartupPref(this);
-  if (pref.type == SessionStartupPref::LAST) {
-    if (session_restore_enabled_)
-      BrowserContext::SaveSessionState(this);
-  } else if (clear_local_state_on_exit_) {
+  // Honor the "clear local state" setting. If it's not set, keep the session
+  // data if we're going to continue the session upon startup.
+  if (clear_local_state_on_exit_)
     BrowserContext::ClearLocalOnDestruction(this);
-  }
+  else if (session_restore_enabled_ && pref.type == SessionStartupPref::LAST)
+    BrowserContext::SaveSessionState(this);
 
   StopCreateSessionServiceTimer();
 
@@ -686,27 +580,19 @@ VisitedLinkMaster* ProfileImpl::GetVisitedLinkMaster() {
 }
 
 ExtensionService* ProfileImpl::GetExtensionService() {
-  return extension_service_.get();
+  return ExtensionSystemFactory::GetForProfile(this)->extension_service();
 }
 
 UserScriptMaster* ProfileImpl::GetUserScriptMaster() {
-  return user_script_master_.get();
-}
-
-ExtensionDevToolsManager* ProfileImpl::GetExtensionDevToolsManager() {
-  return extension_devtools_manager_.get();
+  return ExtensionSystemFactory::GetForProfile(this)->user_script_master();
 }
 
 ExtensionProcessManager* ProfileImpl::GetExtensionProcessManager() {
-  return extension_process_manager_.get();
-}
-
-ExtensionMessageService* ProfileImpl::GetExtensionMessageService() {
-  return extension_message_service_.get();
+  return ExtensionSystemFactory::GetForProfile(this)->process_manager();
 }
 
 ExtensionEventRouter* ProfileImpl::GetExtensionEventRouter() {
-  return extension_event_router_.get();
+  return ExtensionSystemFactory::GetForProfile(this)->event_router();
 }
 
 ExtensionSpecialStoragePolicy*
@@ -716,10 +602,6 @@ ExtensionSpecialStoragePolicy*
         CookieSettings::Factory::GetForProfile(this));
   }
   return extension_special_storage_policy_.get();
-}
-
-LazyBackgroundTaskQueue* ProfileImpl::GetLazyBackgroundTaskQueue() {
-  return lazy_background_task_queue_.get();
 }
 
 void ProfileImpl::OnPrefsLoaded(bool success) {
@@ -746,19 +628,7 @@ void ProfileImpl::OnPrefsLoaded(bool success) {
   // Mark the session as open.
   prefs_->SetBoolean(prefs::kSessionExitedCleanly, false);
 
-  bool extensions_disabled =
-      prefs_->GetBoolean(prefs::kDisableExtensions) ||
-      CommandLine::ForCurrentProcess()->HasSwitch(switches::kDisableExtensions);
-
   ProfileDependencyManager::GetInstance()->CreateProfileServices(this, false);
-
-  // Ensure that preferences set by extensions are restored in the profile
-  // as early as possible. The constructor takes care of that.
-  extension_prefs_.reset(new ExtensionPrefs(
-      prefs_.get(),
-      GetPath().AppendASCII(ExtensionService::kInstallDirectoryName),
-      GetExtensionPrefValueMap()));
-  extension_prefs_->Init(extensions_disabled);
 
   DCHECK(!net_pref_observer_.get());
   net_pref_observer_.reset(new NetPrefObserver(
@@ -813,8 +683,10 @@ net::URLRequestContextGetter* ProfileImpl::GetRequestContext() {
 
 net::URLRequestContextGetter* ProfileImpl::GetRequestContextForRenderProcess(
     int renderer_child_id) {
-  if (extension_service_.get()) {
-    const Extension* installed_app = extension_service_->
+  ExtensionService* extension_service =
+      ExtensionSystemFactory::GetForProfile(this)->extension_service();
+  if (extension_service) {
+    const Extension* installed_app = extension_service->
         GetInstalledAppForRenderer(renderer_child_id);
     if (installed_app != NULL && installed_app->is_storage_isolated() &&
         installed_app->HasAPIPermission(
@@ -848,31 +720,6 @@ net::URLRequestContextGetter* ProfileImpl::GetRequestContextForExtensions() {
 net::URLRequestContextGetter* ProfileImpl::GetRequestContextForIsolatedApp(
     const std::string& app_id) {
   return io_data_.GetIsolatedAppRequestContextGetter(app_id);
-}
-
-void ProfileImpl::RegisterExtensionWithRequestContexts(
-    const Extension* extension) {
-  base::Time install_time;
-  if (extension->location() != Extension::COMPONENT) {
-    install_time = GetExtensionService()->extension_prefs()->
-        GetInstallTime(extension->id());
-  }
-  bool incognito_enabled =
-      GetExtensionService()->IsIncognitoEnabled(extension->id());
-  BrowserThread::PostTask(
-      BrowserThread::IO, FROM_HERE,
-      base::Bind(&ExtensionInfoMap::AddExtension, extension_info_map_.get(),
-                 make_scoped_refptr(extension), install_time,
-                 incognito_enabled));
-}
-
-void ProfileImpl::UnregisterExtensionWithRequestContexts(
-    const std::string& extension_id,
-    const extension_misc::UnloadedExtensionReason reason) {
-  BrowserThread::PostTask(
-      BrowserThread::IO, FROM_HERE,
-      base::Bind(&ExtensionInfoMap::RemoveExtension, extension_info_map_.get(),
-                 extension_id, reason));
 }
 
 net::SSLConfigService* ProfileImpl::GetSSLConfigService() {
@@ -943,12 +790,6 @@ HistoryService* ProfileImpl::GetHistoryService(ServiceAccessType sat) {
 
 HistoryService* ProfileImpl::GetHistoryServiceWithoutCreating() {
   return history_service_.get();
-}
-
-TemplateURLFetcher* ProfileImpl::GetTemplateURLFetcher() {
-  if (!template_url_fetcher_.get())
-    template_url_fetcher_.reset(new TemplateURLFetcher(this));
-  return template_url_fetcher_.get();
 }
 
 AutocompleteClassifier* ProfileImpl::GetAutocompleteClassifier() {
@@ -1129,37 +970,11 @@ void ProfileImpl::EnsureSessionServiceCreated() {
   SessionServiceFactory::GetForProfile(this);
 }
 
-ExtensionInfoMap* ProfileImpl::GetExtensionInfoMap() {
-  return extension_info_map_.get();
-}
-
 ChromeURLDataManager* ProfileImpl::GetChromeURLDataManager() {
   if (!chrome_url_data_manager_.get())
     chrome_url_data_manager_.reset(new ChromeURLDataManager(
         io_data_.GetChromeURLDataManagerBackendGetter()));
   return chrome_url_data_manager_.get();
-}
-
-PromoCounter* ProfileImpl::GetInstantPromoCounter() {
-#if defined(OS_WIN)
-  // TODO: enable this when we're ready to turn on the promo.
-  /*
-  if (!checked_instant_promo_) {
-    checked_instant_promo_ = true;
-    PrefService* prefs = GetPrefs();
-    if (!prefs->GetBoolean(prefs::kInstantEnabledOnce) &&
-        !InstantController::IsEnabled(this) &&
-        InstallUtil::IsChromeSxSProcess()) {
-      DCHECK(!instant_promo_counter_.get());
-      instant_promo_counter_.reset(
-          new PromoCounter(this, prefs::kInstantPromo, "Instant.Promo", 3, 3));
-    }
-  }
-  */
-  return instant_promo_counter_.get();
-#else
-  return NULL;
-#endif
 }
 
 #if defined(OS_CHROMEOS)

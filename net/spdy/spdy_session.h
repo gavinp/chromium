@@ -50,7 +50,8 @@ class SpdyStream;
 class SSLInfo;
 
 class NET_EXPORT SpdySession : public base::RefCounted<SpdySession>,
-                               public BufferedSpdyFramerVisitorInterface {
+                               public BufferedSpdyFramerVisitorInterface,
+                               public LayeredPool {
  public:
   // Create a new SpdySession.
   // |host_port_proxy_pair| is the host/port that this session connects to, and
@@ -155,7 +156,7 @@ class NET_EXPORT SpdySession : public base::RefCounted<SpdySession>,
   // Fills SSL info in |ssl_info| and returns true when SSL is in use.
   bool GetSSLInfo(SSLInfo* ssl_info,
                   bool* was_npn_negotiated,
-                  SSLClientSocket::NextProto* protocol_negotiated);
+                  NextProto* protocol_negotiated);
 
   // Fills SSL Certificate Request info |cert_request_info| and returns
   // true when SSL is in use.
@@ -174,7 +175,7 @@ class NET_EXPORT SpdySession : public base::RefCounted<SpdySession>,
 
   // Specify the SPDY protocol to be used for SPDY session which do not use NPN
   // to negotiate a particular protocol.
-  static void set_default_protocol(SSLClientSocket::NextProto default_protocol);
+  static void set_default_protocol(NextProto default_protocol);
 
   // Sets the max concurrent streams per session, as a ceiling on any server
   // specific SETTINGS value.
@@ -186,6 +187,10 @@ class NET_EXPORT SpdySession : public base::RefCounted<SpdySession>,
   // The initial max concurrent streams per session, can be overridden by the
   // server via SETTINGS.
   static void set_init_max_concurrent_streams(size_t value);
+
+  // Allow a SPDY proxy to push resources from origins that are different from
+  // those of their associated streams.
+  static void set_allow_spdy_proxy_push_across_origins(const char* proxy);
 
   // Send WINDOW_UPDATE frame, called by a stream whenever receive window
   // size is increased.
@@ -268,6 +273,9 @@ class NET_EXPORT SpdySession : public base::RefCounted<SpdySession>,
 
   int GetProtocolVersion() const;
 
+  // LayeredPool implementation.
+  virtual bool CloseOneIdleConnection() OVERRIDE;
+
  private:
   friend class base::RefCounted<SpdySession>;
 
@@ -275,9 +283,11 @@ class NET_EXPORT SpdySession : public base::RefCounted<SpdySession>,
   FRIEND_TEST_ALL_PREFIXES(SpdySessionSpdy2Test, Ping);
   FRIEND_TEST_ALL_PREFIXES(SpdySessionSpdy2Test, FailedPing);
   FRIEND_TEST_ALL_PREFIXES(SpdySessionSpdy2Test, GetActivePushStream);
+  FRIEND_TEST_ALL_PREFIXES(SpdySessionSpdy2Test, CloseOneIdleConnection);
   FRIEND_TEST_ALL_PREFIXES(SpdySessionSpdy3Test, Ping);
   FRIEND_TEST_ALL_PREFIXES(SpdySessionSpdy3Test, FailedPing);
   FRIEND_TEST_ALL_PREFIXES(SpdySessionSpdy3Test, GetActivePushStream);
+  FRIEND_TEST_ALL_PREFIXES(SpdySessionSpdy3Test, CloseOneIdleConnection);
 
   struct PendingCreateStream {
     PendingCreateStream(const GURL& url, RequestPriority priority,
@@ -633,6 +643,10 @@ class NET_EXPORT SpdySession : public base::RefCounted<SpdySession>,
   // (of any form), while there is a ping in flight, before we declare the
   // connection to be hung.
   base::TimeDelta hung_interval_;
+
+  // Allows a proxy to push a resource that has an origin that is different
+  // from its associated url.
+  HostPortPair allow_spdy_proxy_push_across_origins_;
 };
 
 class NetLogSpdySynParameter : public NetLog::EventParameters {

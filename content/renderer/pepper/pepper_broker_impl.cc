@@ -7,6 +7,7 @@
 #include "build/build_config.h"
 #include "content/renderer/pepper/pepper_plugin_delegate_impl.h"
 #include "content/renderer/pepper/pepper_proxy_channel_delegate_impl.h"
+#include "content/renderer/renderer_restrict_dispatch_group.h"
 #include "ipc/ipc_channel_handle.h"
 #include "ppapi/proxy/broker_dispatcher.h"
 #include "ppapi/proxy/ppapi_messages.h"
@@ -17,6 +18,8 @@
 #if defined(OS_WIN)
 #include <windows.h>
 #endif
+
+namespace content {
 
 namespace {
 
@@ -74,7 +77,8 @@ bool PepperBrokerDispatcherWrapper::Init(
     dispatcher_delegate_.reset();
     return false;
   }
-  dispatcher_->channel()->SetRestrictDispatchToSameChannel(true);
+  dispatcher_->channel()->SetRestrictDispatchChannelGroup(
+      content::kRendererRestrictDispatchGroup_Pepper);
   return true;
 }
 
@@ -245,3 +249,4 @@ void PepperBrokerImpl::ConnectPluginToBroker(
   client->BrokerConnected(ppapi::PlatformFileToInt(plugin_handle), result);
 }
 
+}  // namespace content

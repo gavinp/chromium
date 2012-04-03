@@ -25,7 +25,6 @@
 #include "content/browser/renderer_host/resource_dispatcher_host_impl.h"
 #include "content/browser/trace_controller_impl.h"
 #include "content/common/hi_res_timer_manager.h"
-#include "content/common/sandbox_policy.h"
 #include "content/public/browser/browser_main_parts.h"
 #include "content/public/browser/browser_shutdown.h"
 #include "content/public/browser/content_browser_client.h"
@@ -50,6 +49,7 @@
 #include <shellapi.h>
 
 #include "content/browser/system_message_window_win.h"
+#include "content/common/sandbox_policy.h"
 #include "ui/base/l10n/l10n_util_win.h"
 #include "net/base/winsock_init.h"
 #endif
@@ -206,7 +206,7 @@ void ImmediateShutdownAndExitProcess() {
 }
 
 // static
-AudioManager* BrowserMainLoop::GetAudioManager() {
+media::AudioManager* BrowserMainLoop::GetAudioManager() {
   return g_current_browser_main_loop->audio_manager_.get();
 }
 
@@ -327,7 +327,7 @@ void BrowserMainLoop::MainMessageLoopStart() {
   hi_res_timer_manager_.reset(new HighResolutionTimerManager);
 
   network_change_notifier_.reset(net::NetworkChangeNotifier::Create());
-  audio_manager_.reset(AudioManager::Create());
+  audio_manager_.reset(media::AudioManager::Create());
   online_state_observer_.reset(new BrowserOnlineStateObserver);
 
 #if defined(OS_WIN)

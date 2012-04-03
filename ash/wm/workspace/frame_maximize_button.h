@@ -7,6 +7,7 @@
 
 #include "ash/ash_export.h"
 #include "base/memory/scoped_ptr.h"
+#include "base/timer.h"
 #include "ui/views/controls/button/image_button.h"
 
 namespace views {
@@ -35,11 +36,6 @@ class ASH_EXPORT FrameMaximizeButton : public views::ImageButton {
   virtual void OnMouseReleased(const views::MouseEvent& event) OVERRIDE;
   virtual void OnMouseCaptureLost() OVERRIDE;
 
-  // Sets is_left_right_enabled_ and updates tooltip.
-  void SetIsLeftRightEnabled(bool e);
-
-  void set_is_maximize_enabled(bool e) { is_maximize_enabled_ = e; }
-
  protected:
   // ImageButton overrides:
   virtual SkBitmap GetImageToPaint() OVERRIDE;
@@ -53,6 +49,7 @@ class ASH_EXPORT FrameMaximizeButton : public views::ImageButton {
     SNAP_RIGHT,
     SNAP_MAXIMIZE,
     SNAP_MINIMIZE,
+    SNAP_RESTORE,
     SNAP_NONE
   };
 
@@ -63,11 +60,12 @@ class ASH_EXPORT FrameMaximizeButton : public views::ImageButton {
   void InstallEventFilter();
   void UninstallEventFilter();
 
+  // Updates the snap position from the current location. This is invoked by
+  // |update_timer_|.
+  void UpdateSnapFromCursorScreenPoint();
+
   // Updates |snap_type_| based on a mouse drag.
   void UpdateSnap(const gfx::Point& location);
-
-  // Returns true if maximizing is allowed.
-  bool AllowMaximize() const;
 
   // Returns the type of snap based on the specified location.
   SnapType SnapTypeForLocation(const gfx::Point& location) const;
@@ -92,10 +90,6 @@ class ASH_EXPORT FrameMaximizeButton : public views::ImageButton {
   // should show the snap locations.
   bool is_snap_enabled_;
 
-  // Selectively enable/disable button functionality.
-  bool is_left_right_enabled_;
-  bool is_maximize_enabled_;
-
   // Did the user drag far enough to trigger snapping?
   bool exceeded_drag_threshold_;
 
@@ -108,6 +102,8 @@ class ASH_EXPORT FrameMaximizeButton : public views::ImageButton {
   scoped_ptr<internal::SnapSizer> snap_sizer_;
 
   scoped_ptr<EscapeEventFilter> escape_event_filter_;
+
+  base::OneShotTimer<FrameMaximizeButton> update_timer_;
 
   DISALLOW_COPY_AND_ASSIGN(FrameMaximizeButton);
 };

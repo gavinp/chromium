@@ -5,10 +5,10 @@ vars = {
   "sourceforge_url": "http://%(repo)s.svn.sourceforge.net/svnroot/%(repo)s",
   "webkit_trunk": "http://svn.webkit.org/repository/webkit/trunk",
   "nacl_trunk": "http://src.chromium.org/native_client/trunk",
-  "webkit_revision": "112458",
+  "webkit_revision": "112724",
   "chromium_git": "http://git.chromium.org/git",
   "swig_revision": "69281",
-  "nacl_revision": "8118",
+  "nacl_revision": "8134",
   # After changing nacl_revision, run 'glient sync' and check native_client/DEPS
   # to update other nacl_*_revision's.
   "nacl_tools_revision": "7955",  # native_client/DEPS: tools_rev
@@ -50,7 +50,7 @@ vars = {
   "ffmpeg_hash": "c4db435602131b218d0c39e85ccf18a4be195e60",
 
   "sfntly_revision": "128",
-  "skia_revision": "3506",
+  "skia_revision": "3568",
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling Skia
   # and V8 without interference from each other.
@@ -58,12 +58,12 @@ vars = {
   "webrtc_revision": "1935",
   "jsoncpp_revision": "248",
   "nss_revision": "126189",
-  "rlz_revision": "123",
+  "rlz_revision": "125",
 }
 
 deps = {
   "src/breakpad/src":
-    (Var("googlecode_url") % "google-breakpad") + "/trunk/src@931",
+    (Var("googlecode_url") % "google-breakpad") + "/trunk/src@939",
 
   "src/build/util/support":
     "/trunk/deps/support@20411",
@@ -97,7 +97,7 @@ deps = {
     "/trunk/deps/third_party/icu46@122842",
 
   "src/third_party/hunspell":
-   "/trunk/deps/third_party/hunspell@125060",
+   "/trunk/deps/third_party/hunspell@129758",
 
   "src/third_party/hunspell_dictionaries":
     "/trunk/deps/third_party/hunspell_dictionaries@79099",
@@ -110,16 +110,16 @@ deps = {
     "/trunk/src/google@203",
 
   "src/third_party/leveldatabase/src":
-    (Var("googlecode_url") % "leveldb") + "/trunk@61",
+    (Var("googlecode_url") % "leveldb") + "/trunk@64",
 
   "src/third_party/snappy/src":
     (Var("googlecode_url") % "snappy") + "/trunk@37",
 
   "src/tools/grit":
-    (Var("googlecode_url") % "grit-i18n") + "/trunk@18",
+    (Var("googlecode_url") % "grit-i18n") + "/trunk@23",
 
   "src/tools/gyp":
-    (Var("googlecode_url") % "gyp") + "/trunk@1282",
+    (Var("googlecode_url") % "gyp") + "/trunk@1293",
 
   "src/v8":
     (Var("googlecode_url") % "v8") + "/trunk@" + Var("v8_revision"),
@@ -166,7 +166,7 @@ deps = {
     Var("webkit_trunk") + "/Tools/TestWebKitAPI@" + Var("webkit_revision"),
 
   "src/third_party/ots":
-    (Var("googlecode_url") % "ots") + "/trunk@83",
+    (Var("googlecode_url") % "ots") + "/trunk@87",
 
   "src/tools/page_cycler/acid3":
     "/trunk/deps/page_cycler/acid3@102714",
@@ -186,11 +186,11 @@ deps = {
   # When roll to another webgl conformance tests revision, please goto
   # chrome/test/gpu and run generate_webgl_conformance_test_list.py.
   "src/third_party/webgl_conformance":
-    "/trunk/deps/third_party/webgl/sdk/tests@121363",
+    "/trunk/deps/third_party/webgl/sdk/tests@129652",
 
   # We should use the same software_rendering_list.json for all branches.
   "src/chrome/browser/resources/software_rendering_list":
-    "/trunk/deps/gpu/software_rendering_list@127865",
+    "/trunk/deps/gpu/software_rendering_list@130226",
 
   # We run these layout tests as UI tests. Since many of the buildbots that
   # run layout tests do NOT have access to the LayoutTest directory, we need
@@ -218,6 +218,9 @@ deps = {
     Var("webkit_revision"),
   "src/content/test/data/layout_tests/LayoutTests/platform/chromium/fast/workers":
     Var("webkit_trunk") + "/LayoutTests/platform/chromium/fast/workers@" +
+    Var("webkit_revision"),
+  "src/content/test/data/layout_tests/LayoutTests/platform/chromium/fast/events":
+    Var("webkit_trunk") + "/LayoutTests/platform/chromium/fast/events@" +
     Var("webkit_revision"),
   "src/content/test/data/layout_tests/LayoutTests/platform/chromium-win/fast/events":
     Var("webkit_trunk") + "/LayoutTests/platform/chromium-win/fast/events@" +

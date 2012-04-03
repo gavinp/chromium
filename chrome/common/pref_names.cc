@@ -109,10 +109,6 @@ const char kAcceptLanguages[] = "intl.accept_languages";
 // stored in non-translatable part of the resource bundle.
 const char kStaticEncodings[] = "intl.static_encodings";
 
-// OBSOLETE.  The list of hostnames for which we whitelist popups (rather than
-// blocking).
-const char kPopupWhitelistedHosts[] = "profile.popup_whitelisted_sites";
-
 // WebKit preferences.
 const char kWebKitGlobalStandardFontFamily[] =
     "webkit.webprefs.global.standard_font_family";
@@ -410,13 +406,6 @@ const char kInstantEnabled[] = "instant.enabled";
 // Boolean pref indicating if instant was ever enabled.
 const char kInstantEnabledOnce[] = "instant.enabled_once";
 
-// Time when instant was last enabled.
-const char kInstantEnabledTime[] = "instant.enabled_time";
-
-// Used to maintain instant promo keys. See PromoCounter for details of subkeys
-// that are used.
-const char kInstantPromo[] = "instant.promo";
-
 // Used to migrate preferences from local state to user preferences to
 // enable multiple profiles.
 // BITMASK with possible values (see browser_prefs.cc for enum):
@@ -461,6 +450,9 @@ const char kNaturalScroll[] = "settings.touchpad.natural_scroll";
 
 // A boolean pref set to true if primary mouse button is the left button.
 const char kPrimaryMouseButtonRight[] = "settings.mouse.primary_right";
+
+// A integer pref for the touchpad sensitivity.
+const char kMouseSensitivity[] = "settings.mouse.sensitivity2";
 
 // A integer pref for the touchpad sensitivity.
 const char kTouchpadSensitivity[] = "settings.touchpad.sensitivity2";
@@ -809,10 +801,6 @@ const char kDesktopNotificationPosition[] =
 
 // Dictionary of content settings applied to all hosts by default.
 const char kDefaultContentSettings[] = "profile.default_content_settings";
-
-// OBSOLETE. Dictionary that maps hostnames to content related settings.
-// Default settings will be applied to hosts not in this pref.
-const char kPerHostContentSettings[] = "profile.per_host_content_settings";
 
 // Version of the pattern format used to define content settings.
 const char kContentSettingsVersion[] = "profile.content_settings.pref_version";
@@ -1792,22 +1780,43 @@ const char kRestoreSessionStateDialogShown[] =
 const char kWebIntentsEnabled[] = "webintents.enabled";
 
 #if defined(USE_AURA)
-const char kPinnedLauncherApps[] = "pinned_launcher_apps";
+// Boolean value indicating whether the shelf always hides.
+const char kAlwaysAutoHideShelf[] =
+    "auto_hide_shelf";
+// String value corresponding to ash::Shell::ShelfAutoHideBehavior.
+const char kShelfAutoHideBehavior[] =
+    "auto_hide_behavior";
+const char kPinnedLauncherApps[] =
+    "pinned_launcher_apps";
 
-const char kMaximumSecondsBetweenDoubleClick[] =
-    "gesture.maximum_seconds_between_double_click";
-const char kMaximumTouchDownDurationInSecondsForClick[] =
-    "gesture.maximum_touch_down_duration_in_seconds_for_click";
-const char kMaximumTouchMoveInPixelsForClick[] =
-    "gesture.maximum_touch_move_in_pixels_for_click";
+const char kLongPressTimeInSeconds[] =
+    "gesture.long_press_time_in_seconds";
+const char kMaxSecondsBetweenDoubleClick[] =
+    "gesture.max_seconds_between_double_click";
+const char kMaxSeparationForGestureTouchesInPixels[] =
+    "gesture.max_separation_for_gesture_touches_in_pixels";
+const char kMaxTouchDownDurationInSecondsForClick[] =
+    "gesture.max_touch_down_duration_in_seconds_for_click";
+const char kMaxTouchMoveInPixelsForClick[] =
+    "gesture.max_touch_move_in_pixels_for_click";
+const char kMinDistanceForPinchScrollInPixels[] =
+    "gesture.min_distance_for_pinch_scroll_in_pixels";
 const char kMinFlickSpeedSquared[] =
     "gesture.min_flick_speed_squared";
-const char kMinimumTouchDownDurationInSecondsForClick[] =
-    "gesture.minimum_touch_down_duration_in_seconds_for_click";
-
-// String value corresponding to ash::Shell::ShelfAutoHideBehavior.
-const char kShelfAutoHideBehavior[] = "auto_hide_behavior";
-
+const char kMinPinchUpdateDistanceInPixels[] =
+    "gesture.min_pinch_update_distance_in_pixels";
+const char kMinRailBreakVelocity[] =
+    "gesture.min_rail_break_velocity";
+const char kMinScrollDeltaSquared[] =
+    "gesture.min_scroll_delta_squared";
+const char kMinTouchDownDurationInSecondsForClick[] =
+    "gesture.min_touch_down_duration_in_seconds_for_click";
+const char kPointsBufferedForVelocity[] =
+    "gesture.points_buffered_for_velocity";
+const char kRailBreakProportion[] =
+    "gesture.rail_break_proportion";
+const char kRailStartProportion[] =
+    "gesture.rail_start_proportion";
 #endif
 
 // Indicates whether the browser is in managed mode.

@@ -859,8 +859,13 @@ void RenderViewContextMenu::AppendPageItems() {
 
   menu_model_.AddItemWithStringId(IDC_VIEW_SOURCE,
                                   IDS_CONTENT_CONTEXT_VIEWPAGESOURCE);
-  menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_VIEWPAGEINFO,
-                                  IDS_CONTENT_CONTEXT_VIEWPAGEINFO);
+  // Only add View Page Info if there's a browser.  This is a temporary thing
+  // while View Page Info crashes Chrome Frame; see http://crbug.com/120901.
+  // TODO(grt) Remove this once page info is back for Chrome Frame.
+  if (!external_) {
+    menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_VIEWPAGEINFO,
+                                    IDS_CONTENT_CONTEXT_VIEWPAGEINFO);
+  }
 }
 
 void RenderViewContextMenu::AppendFrameItems() {
@@ -872,8 +877,13 @@ void RenderViewContextMenu::AppendFrameItems() {
   //   IDS_CONTENT_CONTEXT_PRINTFRAME
   menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_VIEWFRAMESOURCE,
                                   IDS_CONTENT_CONTEXT_VIEWFRAMESOURCE);
-  menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_VIEWFRAMEINFO,
-                                  IDS_CONTENT_CONTEXT_VIEWFRAMEINFO);
+  // Only add View Frame Info if there's a browser.  This is a temporary thing
+  // while View Frame Info crashes Chrome Frame; see http://crbug.com/120901.
+  // TODO(grt) Remove this once frame info is back for Chrome Frame.
+  if (!external_) {
+    menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_VIEWFRAMEINFO,
+                                    IDS_CONTENT_CONTEXT_VIEWFRAMEINFO);
+  }
 }
 
 void RenderViewContextMenu::AppendCopyItem() {
@@ -1092,9 +1102,11 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
   // Extension items.
   if (id >= IDC_EXTENSIONS_CONTEXT_CUSTOM_FIRST &&
       id <= IDC_EXTENSIONS_CONTEXT_CUSTOM_LAST) {
-    // In the future we may add APIs for extensions to disable items, but for
-    // now all items are implicitly enabled.
-    return true;
+    ExtensionMenuItem* item = GetExtensionMenuItem(id);
+    // If this is the parent menu item, it is always enabled.
+    if (!item)
+      return true;
+    return item->enabled();
   }
 
   if (id >= IDC_CONTENT_CONTEXT_PROTOCOL_HANDLER_FIRST &&
@@ -1821,8 +1833,8 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
           net::StripWWW(UTF8ToUTF16((params_.page_url.host())));
       template_url->set_short_name(keyword);
       template_url->set_keyword(keyword);
-      template_url->SetURL(params_.keyword_url.spec(), 0, 0);
-      template_url->SetFaviconURL(TemplateURL::GenerateFaviconURL(
+      template_url->SetURL(params_.keyword_url.spec());
+      template_url->set_favicon_url(TemplateURL::GenerateFaviconURL(
           params_.page_url.GetOrigin()));
 
       TabContentsWrapper* tab_contents_wrapper =
@@ -1909,15 +1921,6 @@ bool RenderViewContextMenu::IsDevCommandEnabled(int id) const {
           prefs::kWebKitGlobalJavascriptEnabled) ||
           command_line->HasSwitch(switches::kDisableJavaScript))
         return false;
-#if defined(OS_MACOSX)
-    } else {
-      // Disable dev tools for popup extensions for Mac OS X builds, as the
-      // extension popups for these builds do not support dynamically inspecting
-      // the popups.
-      // TODO(benwells): Add support for these builds and remove this #if.
-      if (!extension->is_platform_app())
-        return false;
-#endif
     }
 
     // Don't enable the web inspector if the developer tools are disabled via

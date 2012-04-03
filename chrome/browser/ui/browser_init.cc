@@ -58,6 +58,7 @@
 #include "chrome/browser/protector/protected_prefs_watcher.h"
 #include "chrome/browser/protector/protector_service.h"
 #include "chrome/browser/protector/protector_service_factory.h"
+#include "chrome/browser/protector/protector_utils.h"
 #include "chrome/browser/search_engines/template_url.h"
 #include "chrome/browser/search_engines/template_url_service.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
@@ -1635,8 +1636,8 @@ std::vector<GURL> BrowserInit::GetURLsFromCommandLine(
         DCHECK(search_url->SupportsReplacement());
         string16 search_term = param.LossyDisplayName().substr(2);
         urls.push_back(GURL(search_url->ReplaceSearchTermsUsingProfile(
-            profile, *default_provider, search_term,
-            TemplateURLRef::NO_SUGGESTIONS_AVAILABLE, string16())));
+            profile, search_term, TemplateURLRef::NO_SUGGESTIONS_AVAILABLE,
+            string16())));
         continue;
       }
     }

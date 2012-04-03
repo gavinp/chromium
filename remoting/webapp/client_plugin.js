@@ -42,6 +42,23 @@ remoting.ClientPlugin.prototype.initialize = function(onDone) {};
 remoting.ClientPlugin.prototype.isSupportedVersion = function() {};
 
 /**
+ * Set of features for which hasFeature() can be used to test.
+ *
+ * @enum {string}
+ */
+remoting.ClientPlugin.Feature = {
+  HIGH_QUALITY_SCALING: 'highQualityScaling',
+  INJECT_KEY_EVENT: 'injectKeyEvent',
+  SEND_CLIPBOARD_ITEM: 'sendClipboardItem'
+};
+
+/**
+ * @param {remoting.ClientPlugin.Feature} feature The feature to test for.
+ * @return {boolean} True if the plugin supports the named feature.
+ */
+remoting.ClientPlugin.prototype.hasFeature = function(feature) {};
+
+/**
  * @return {Element} HTML element that correspods to the plugin.
  */
 remoting.ClientPlugin.prototype.element = function() {};
@@ -50,12 +67,6 @@ remoting.ClientPlugin.prototype.element = function() {};
  * Deletes the plugin.
  */
 remoting.ClientPlugin.prototype.cleanup = function() {};
-
-/**
- * @return {boolean} True if the plugin supports high-quality scaling.
- */
-remoting.ClientPlugin.prototype.isHiQualityScalingSupported =
-    function() {};
 
 /**
  * Must be called for each incoming stanza received from the host.
@@ -91,8 +102,25 @@ remoting.ClientPlugin.prototype.setScaleToFit =
 remoting.ClientPlugin.prototype.releaseAllKeys = function() {};
 
 /**
+ * Send a key event to the host.
+ *
+ * @param {number} usbKeycode The USB-style code of the key to inject.
+ * @param {boolean} pressed True to inject a key press, False for a release.
+ */
+remoting.ClientPlugin.prototype.injectKeyEvent =
+    function(usbKeycode, pressed) {};
+
+/**
  * Returns an associative array with a set of stats for this connection.
  *
  * @return {remoting.ClientSession.PerfStats} The connection statistics.
  */
 remoting.ClientPlugin.prototype.getPerfStats = function() {};
+
+/**
+ * Sends a clipboard item to the host.
+ *
+ * @param {string} mimeType The MIME type of the clipboard item.
+ * @param {string} item The clipboard item.
+ */
+remoting.ClientPlugin.prototype.sendClipboardItem = function(mimeType, item) {};

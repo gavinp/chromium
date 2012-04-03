@@ -11,6 +11,7 @@
 namespace media {
 class ChunkDemuxerClient;
 class DataSource;
+class FFmpegVideoDecoder;
 class FilterCollection;
 class MessageLoopFactory;
 }
@@ -32,21 +33,31 @@ bool BuildMediaStreamCollection(const WebKit::WebURL& url,
                                 media::MessageLoopFactory* message_loop_factory,
                                 media::FilterCollection* filter_collection);
 
-// Builds the required filters for handling media source URLs and adds them to
-// |filter_collection| returning true if successful.
+// Builds the required filters for handling media source URLs, adds them to
+// |filter_collection| and fills |video_decoder| returning true if successful.
 //
 // |filter_collection| is not modified if this method returns false.
-bool BuildMediaSourceCollection(const WebKit::WebURL& url,
-                                const WebKit::WebURL& media_source_url,
-                                media::ChunkDemuxerClient* client,
-                                media::MessageLoopFactory* message_loop_factory,
-                                media::FilterCollection* filter_collection);
+bool BuildMediaSourceCollection(
+    const WebKit::WebURL& url,
+    const WebKit::WebURL& media_source_url,
+    media::ChunkDemuxerClient* client,
+    media::MessageLoopFactory* message_loop_factory,
+    media::FilterCollection* filter_collection,
+    scoped_refptr<media::FFmpegVideoDecoder>* video_decoder);
 
 // Builds the required filters for handling regular URLs and adds them to
-// |filter_collection|.
-void BuildDefaultCollection(const scoped_refptr<media::DataSource>& data_source,
-                            media::MessageLoopFactory* message_loop_factory,
-                            media::FilterCollection* filter_collection);
+// |filter_collection| and fills |video_decoder| returning true if successful.
+//
+// |local_source| refers to whether the data being fetched requires network
+// access.
+//
+// TODO(scherkus): a data source should be able to tell us this.
+void BuildDefaultCollection(
+    const scoped_refptr<media::DataSource>& data_source,
+    bool local_source,
+    media::MessageLoopFactory* message_loop_factory,
+    media::FilterCollection* filter_collection,
+    scoped_refptr<media::FFmpegVideoDecoder>* video_decoder);
 
 }  // webkit_media
 

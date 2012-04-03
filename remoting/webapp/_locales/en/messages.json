@@ -17,10 +17,6 @@
     "message": "All connections",
     "description": "In the connection history dialog, clicking this button shows all recent connections unfiltered."
   },
-  "ASK_PIN_DIALOG_DESCRIPTION": {
-    "message": "To protect access to this computer, please choose a PIN. This PIN will be required when connecting from another location.",
-    "description": "Explanatory text displayed when the user enables remote access or changes the PIN."
-  },
   "ASK_PIN_DIALOG_LABEL": {
     "message": "PIN",
     "description": "Label next to the PIN entry edit box. The user must enter a PIN before enabling remote access to their computer."
@@ -186,6 +182,10 @@
     "message": "Full screen",
     "description": "Menu option for toggle full-screen mode. Equivalent to using the Wrench menu to do the same thing."
   },
+  "GET_STARTED": {
+    "message": "Get started",
+    "description": "Button displayed underneath explanatory text for app features. Clicking causes the text, infographic and the button itself to be replaced by the actual UI for that feature."
+  },
   "HELP": {
     "message": "Help",
     "description": "Help link, displayed in the top-left (assuming ltr layout) corner of the main screen. Clicking this takes the user to our FAQ."
@@ -218,6 +218,50 @@
     "message": "To securely access this computer from anywhere you sign in to Chromoting, you must first enable remote connections.",
     "description": "Message displayed when the current computer is not accepting remote connections, instructing the user how to enable them."
   },
+  "HOST_SETUP_DIALOG_DESCRIPTION": {
+    "message": "To protect access to this computer, please choose a PIN. This PIN will be required when connecting from another location.",
+    "description": "Explanatory text displayed when the user enables remote access or changes the PIN."
+  },
+  "HOST_SETUP_HOST_FAILED": {
+    "message": "Failed to start remote access service.",
+    "description": "Message shown when host service fails to start when enabling the host on local computer."
+  },
+  "HOST_SETUP_REGISTRATION_FAILED": {
+    "message": "Failed to register this computer.",
+    "description": "Message shown when host registration fails when enabling the host on local computer."
+  },
+  "HOST_SETUP_STARTED": {
+    "message": "Remote connections for this computer have been enabled.",
+    "description": "Message shown after access to local computer has been enabled successfully."
+  },
+  "HOST_SETUP_STARTING": {
+    "message": "enabling remote connections for this computer\u2026",
+    "description": "Message shown when local machine is being registered in the directory and when starting the host."
+  },
+  "HOST_SETUP_STOP_FAILED": {
+    "message": "Failed to disable remote access to this computer. Please try again later.",
+    "description": "Message shown after we've failed to stop the host."
+  },
+  "HOST_SETUP_STOPPED": {
+    "message": "Remote connections for this computer have been disabled.",
+    "description": "Message shown after host has been stopped."
+  },
+  "HOST_SETUP_STOPPING": {
+    "message": "disabling remote connections for this computer\u2026",
+    "description": "Message shown when host is being stopped on the local machine."
+  },
+  "HOST_SETUP_UPDATED_PIN": {
+    "message": "PIN has been updated.",
+    "description": "Message shown after changing PIN for the local computer."
+  },
+  "HOST_SETUP_UPDATING_PIN": {
+    "message": "PIN for this computer is being updated\u2026",
+    "description": "Message shown while changing PIN for the local computer."
+  },
+  "HOST_SETUP_UPDATE_PIN_FAILED": {
+    "message": "Failed to update the PIN. Please try again later.",
+    "description": "Message shown we fail to update PIN for the local computer."
+  },
   "HOME_SHARE_BUTTON": {
     "message": "Share",
     "description": "Clicking this button starts the desktop sharing process."
@@ -242,9 +286,17 @@
     "message": "Once they enter the code your sharing session will begin.",
     "description": "Instructions shown below the access code when it is ready to be conveyed to the client."
   },
+  "IT2ME_FIRST_RUN": {
+    "message": "User-to-user screen sharing, perfect for remote technical support.",
+    "description": "Description of the 'IT2Me' remote support functionality, displayed until the user clicks a 'get started' button, at which point it is replaced by the actual UI for that functionality."
+  },
   "LABEL_CONNECTED": {
     "message": "Connected:",
     "description": "String displayed in front of the host when a connection is active informing the client user who they are connected to."
+  },
+  "ME2ME_FIRST_RUN": {
+    "message": "Access your own computer from anywhere.",
+    "description": "Description of the 'Me2Me' remote access functionality, displayed until the user clicks a 'get started' button, at which point it is replaced by the actual UI for that functionality."
   },
   "MESSAGE_GENERATING": {
     "message": "Generating access code\u2026",

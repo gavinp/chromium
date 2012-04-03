@@ -79,7 +79,7 @@ class ModelEntry {
             Profile::EXPLICIT_ACCESS);
     if (!favicon_service)
       return;
-    GURL favicon_url = template_url()->GetFaviconURL();
+    GURL favicon_url = template_url()->favicon_url();
     if (!favicon_url.is_valid()) {
       // The favicon url isn't always set. Guess at one here.
       if (template_url_->url() && template_url_->url()->IsValid()) {
@@ -257,7 +257,7 @@ void TemplateURLTableModel::Add(int index,
   TemplateURL* turl = new TemplateURL();
   turl->set_short_name(short_name);
   turl->set_keyword(keyword);
-  turl->SetURL(url, 0, 0);
+  turl->SetURL(url);
   template_url_service_->Add(turl);
   ModelEntry* entry = new ModelEntry(this, turl);
   template_url_service_->AddObserver(this);
@@ -275,7 +275,7 @@ void TemplateURLTableModel::ModifyTemplateURL(int index,
   template_url_service_->RemoveObserver(this);
   template_url_service_->ResetTemplateURL(template_url, title, keyword, url);
   if (template_url_service_->GetDefaultSearchProvider() == template_url &&
-      !TemplateURL::SupportsReplacement(template_url)) {
+      !template_url->SupportsReplacement()) {
     // The entry was the default search provider, but the url has been modified
     // so that it no longer supports replacement. Reset the default search
     // provider so that it doesn't point to a bogus entry.

@@ -40,6 +40,8 @@ remoting.ClientPluginAsync = function(plugin) {
 
   /** @type {number} */
   this.pluginApiVersion_ = -1;
+  /** @type {Array.<string>} */
+  this.pluginApiFeatures_ = [];
   /** @type {number} */
   this.pluginApiMinVersion_ = -1;
   /** @type {boolean} */
@@ -66,7 +68,7 @@ remoting.ClientPluginAsync = function(plugin) {
  * @const
  * @private
  */
-remoting.ClientPluginAsync.prototype.API_VERSION_ = 5;
+remoting.ClientPluginAsync.prototype.API_VERSION_ = 6;
 
 /**
  * The oldest API version that we support.
@@ -97,6 +99,18 @@ remoting.ClientPluginAsync.prototype.handleMessage_ = function(message_str) {
       return;
     }
     this.pluginApiVersion_ = /** @type {number} */ message.data['apiVersion'];
+    if (this.pluginApiVersion_ >= 7) {
+      if (typeof message.data['apiFeatures'] != 'string') {
+        console.error('Received invalid hello message: ' + message_str);
+        return;
+      }
+      this.pluginApiFeatures_ =
+          /** @type {Array.<string>} */ message.data['apiFeatures'].split(' ');
+    } else if (this.pluginApiVersion_ >= 6) {
+      this.pluginApiFeatures_ = ['highQualityScaling', 'injectKeyEvent'];
+    } else {
+      this.pluginApiFeatures_ = ['highQualityScaling'];
+    }
     this.pluginApiMinVersion_ =
         /** @type {number} */ message.data['apiMinVersion'];
     this.helloReceived_ = true;
@@ -158,6 +172,16 @@ remoting.ClientPluginAsync.prototype.handleMessage_ = function(message_str) {
     }
     this.perfStats_ =
         /** @type {remoting.ClientSession.PerfStats} */ message.data;
+  } else if (message.method = 'injectClipboardItem') {
+    if (typeof message.data['mimeType'] != 'string' ||
+        typeof message.data['item'] != 'string') {
+      console.error('Received incorrect injectClipboardItem message.');
+      return;
+    }
+    if (remoting.clipboard) {
+      remoting.clipboard.fromHost(message.data['mimeType'],
+                                  message.data['item']);
+    }
   }
 }
 
@@ -200,10 +224,23 @@ remoting.ClientPluginAsync.prototype.isSupportedVersion = function() {
 };
 
 /**
- * @return {boolean} True if the plugin supports high-quality scaling.
+ * @param {remoting.ClientPlugin.Feature} feature The feature to test for.
+ * @return {boolean} True if the plugin supports the named feature.
  */
-remoting.ClientPluginAsync.prototype.isHiQualityScalingSupported = function() {
-  return true;
+remoting.ClientPluginAsync.prototype.hasFeature = function(feature) {
+  if (!this.helloReceived_) {
+    console.error(
+        "hasFeature() is called before the plugin is initialized.");
+    return false;
+  }
+  return this.pluginApiFeatures_.indexOf(feature) > -1;
+};
+
+/**
+ * @return {boolean} True if the plugin supports the injectKeyEvent API.
+ */
+remoting.ClientPluginAsync.prototype.isInjectKeyEventSupported = function() {
+  return this.pluginApiVersion_ >= 6;
 };
 
 /**
@@ -267,10 +304,40 @@ remoting.ClientPluginAsync.prototype.releaseAllKeys = function() {
 };
 
 /**
+ * Send a key event to the host.
+ *
+ * @param {number} usbKeycode The USB-style code of the key to inject.
+ * @param {boolean} pressed True to inject a key press, False for a release.
+ */
+remoting.ClientPluginAsync.prototype.injectKeyEvent =
+    function(usbKeycode, pressed) {
+  this.plugin.postMessage(JSON.stringify(
+      { method: 'injectKeyEvent', data: {
+          'usb_keycode': usbKeycode,
+          'pressed': pressed}
+      }));
+};
+
+/**
  * Returns an associative array with a set of stats for this connecton.
  *
  * @return {remoting.ClientSession.PerfStats} The connection statistics.
  */
 remoting.ClientPluginAsync.prototype.getPerfStats = function() {
   return this.perfStats_;
+};
+
+/**
+ * Sends a clipboard item to the host.
+ *
+ * @param {string} mimeType The MIME type of the clipboard item.
+ * @param {string} item The clipboard item.
+ */
+remoting.ClientPluginAsync.prototype.sendClipboardItem =
+    function(mimeType, item) {
+  if (!this.hasFeature(remoting.ClientPlugin.Feature.SEND_CLIPBOARD_ITEM))
+    return;
+  this.plugin.postMessage(JSON.stringify(
+      { method: 'sendClipboardItem',
+        data: { mimeType: mimeType, item: item }}));
 };

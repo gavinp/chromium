@@ -39,16 +39,16 @@ class DummyDemuxerStream : public DemuxerStream {
   DISALLOW_COPY_AND_ASSIGN(DummyDemuxerStream);
 };
 
-class DummyDemuxer : public Demuxer {
+class MEDIA_EXPORT DummyDemuxer : public Demuxer {
  public:
   DummyDemuxer(bool has_video, bool has_audio, bool local_source);
   virtual ~DummyDemuxer();
 
   // Demuxer implementation.
+  virtual void Initialize(const PipelineStatusCB& status_cb) OVERRIDE;
   virtual scoped_refptr<DemuxerStream> GetStream(
       DemuxerStream::Type type) OVERRIDE;
   virtual void set_host(DemuxerHost* demuxer_host) OVERRIDE;
-  virtual void SetPreload(Preload preload) OVERRIDE;
   virtual base::TimeDelta GetStartTime() const OVERRIDE;
   virtual int GetBitrate() OVERRIDE;
   virtual bool IsLocalSource() OVERRIDE;

@@ -409,6 +409,8 @@
         'common/net/gaia/oauth2_access_token_consumer.h',
         'common/net/gaia/oauth2_access_token_fetcher.cc',
         'common/net/gaia/oauth2_access_token_fetcher.h',
+        'common/net/gaia/oauth2_api_call_flow.cc',
+        'common/net/gaia/oauth2_api_call_flow.h',
         'common/net/gaia/oauth2_mint_token_consumer.h',
         'common/net/gaia/oauth2_mint_token_fetcher.cc',
         'common/net/gaia/oauth2_mint_token_fetcher.h',
@@ -439,10 +441,17 @@
               '../build/linux/system.gyp:ssl',
             ],
           },
-          {  # else: OS is not in the above list
+        ],
+        ['os_posix != 1 or OS == "mac"', {
             'sources!': [
               'common/net/x509_certificate_model_nss.cc',
               'common/net/x509_certificate_model_openssl.cc',
+            ],
+          },
+        ],
+        ['OS == "android"', {
+            'dependencies': [
+              '../build/android/system.gyp:ssl',
             ],
           },
         ],

@@ -40,10 +40,6 @@ function onLoad() {
   var doAuthRedirect = function() {
     remoting.oauth2.doAuthRedirect();
   };
-  var stopDaemon = function() {
-    remoting.daemonPlugin.stop();
-    remoting.daemonPlugin.updateDom();
-  };
   /** @type {Array.<{event: string, id: string, fn: function(Event):void}>} */
   var actions = [
       { event: 'click', id: 'clear-oauth', fn: remoting.clearOAuth2 },
@@ -66,12 +62,23 @@ function onLoad() {
       { event: 'click', id: 'toolbar-stub',
         fn: function() { remoting.toolbar.toggle(); } },
       { event: 'click', id: 'start-daemon',
-        fn: function() { remoting.askPinDialog.showForStart(); } },
+        fn: function() { remoting.hostSetupDialog.showForStart(); } },
       { event: 'click', id: 'change-daemon-pin',
-        fn: function() { remoting.askPinDialog.showForPin(); } },
-      { event: 'click', id: 'stop-daemon', fn: stopDaemon },
+        fn: function() { remoting.hostSetupDialog.showForPin(); } },
+      { event: 'click', id: 'stop-daemon',
+        fn: function() { remoting.hostSetupDialog.showForStop(); } },
       { event: 'submit', id: 'access-code-form', fn: sendAccessCode },
-      { event: 'submit', id: 'pin-form', fn: connectHostWithPin }
+      { event: 'submit', id: 'pin-form', fn: connectHostWithPin },
+      { event: 'click', id: 'get-started-it2me',
+        fn: remoting.showIt2MeUiAndSave },
+      { event: 'click', id: 'get-started-me2me',
+        fn: remoting.showMe2MeUiAndSave },
+      { event: 'click', id: 'daemon-pin-cancel',
+        fn: function() { remoting.setMode(remoting.AppMode.HOME); } },
+      { event: 'click', id: 'host-config-done-dismiss',
+        fn: function() { remoting.setMode(remoting.AppMode.HOME); } },
+      { event: 'click', id: 'host-config-error-dismiss',
+        fn: function() { remoting.setMode(remoting.AppMode.HOME); } }
   ];
 
   for (var i = 0; i < actions.length; ++i) {

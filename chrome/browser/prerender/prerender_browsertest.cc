@@ -1964,8 +1964,10 @@ IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, PrerenderNavigateClickGoBack) {
   GoBackToPrerender(current_browser());
 }
 
+// Disabled due to timeouts on commit queue.
+// http://crbug.com/121130
 IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest,
-                       PrerenderNavigateNavigateGoBack) {
+                       DISABLED_PrerenderNavigateNavigateGoBack) {
   PrerenderTestURL("files/prerender/prerender_page_with_link.html",
                    FINAL_STATUS_USED,
                    1);
@@ -1983,7 +1985,10 @@ IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, PrerenderClickClickGoBack) {
   GoBackToPrerender(current_browser());
 }
 
-IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, PrerenderClickNavigateGoBack) {
+// Disabled due to timeouts on commit queue.
+// http://crbug.com/121130
+IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest,
+                       DISABLED_PrerenderClickNavigateGoBack) {
   PrerenderTestURL("files/prerender/prerender_page_with_link.html",
                    FINAL_STATUS_USED,
                    1);

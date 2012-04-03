@@ -508,10 +508,10 @@ TEST_PPAPI_OUT_OF_PROCESS_WITH_SSL_SERVER(TCPSocketPrivate)
 TEST_PPAPI_IN_PROCESS_WITH_SSL_SERVER(TCPSocketPrivate)
 TEST_PPAPI_NACL_WITH_SSL_SERVER(TCPSocketPrivate)
 
-TEST_PPAPI_IN_PROCESS_VIA_HTTP(UDPSocketPrivate)
 // Flaky: http://crbug.com/120470
+TEST_PPAPI_IN_PROCESS_VIA_HTTP(DISABLED_UDPSocketPrivate)
 TEST_PPAPI_OUT_OF_PROCESS_VIA_HTTP(DISABLED_UDPSocketPrivate)
-TEST_PPAPI_NACL_VIA_HTTP(UDPSocketPrivate)
+TEST_PPAPI_NACL_VIA_HTTP(DISABLED_UDPSocketPrivate)
 
 TEST_PPAPI_NACL_VIA_HTTP_DISALLOWED_SOCKETS(TCPServerSocketPrivateDisallowed)
 TEST_PPAPI_NACL_VIA_HTTP_DISALLOWED_SOCKETS(TCPSocketPrivateDisallowed)
@@ -662,8 +662,15 @@ TEST_PPAPI_IN_PROCESS(Var)
 TEST_PPAPI_OUT_OF_PROCESS(Var)
 TEST_PPAPI_NACL_VIA_HTTP(Var)
 
+// Flaky on mac, http://crbug.com/121107
+#if defined(OS_MACOSX)
+#define MAYBE_VarDeprecated DISABLED_VarDeprecated
+#else
+#define MAYBE_VarDeprecated VarDeprecated
+#endif
+
 TEST_PPAPI_IN_PROCESS(VarDeprecated)
-TEST_PPAPI_OUT_OF_PROCESS(VarDeprecated)
+TEST_PPAPI_OUT_OF_PROCESS(MAYBE_VarDeprecated)
 
 // Windows defines 'PostMessage', so we have to undef it.
 #ifdef PostMessage
@@ -682,8 +689,8 @@ TEST_PPAPI_OUT_OF_PROCESS(PostMessage_SendingArrayBuffer)
 TEST_PPAPI_OUT_OF_PROCESS(PostMessage_MessageEvent)
 TEST_PPAPI_OUT_OF_PROCESS(PostMessage_NoHandler)
 TEST_PPAPI_OUT_OF_PROCESS(PostMessage_ExtraParam)
-#if !defined(OS_WIN)
-// Times out on Windows XP and Windows 7: http://crbug.com/95557
+#if !defined(OS_WIN) && !(defined(OS_LINUX) && defined(ARCH_CPU_64_BITS))
+// Times out on Windows XP, Windows 7, and Linux x64: http://crbug.com/95557
 TEST_PPAPI_OUT_OF_PROCESS(PostMessage_NonMainThread)
 #endif
 TEST_PPAPI_NACL_VIA_HTTP(PostMessage_SendInInit)
@@ -742,9 +749,16 @@ TEST_PPAPI_OUT_OF_PROCESS_VIA_HTTP(MAYBE_FileIO_ReadWriteSetLength)
 TEST_PPAPI_OUT_OF_PROCESS_VIA_HTTP(MAYBE_FileIO_TouchQuery)
 TEST_PPAPI_OUT_OF_PROCESS_VIA_HTTP(MAYBE_FileIO_WillWriteWillSetLength)
 
+// PPAPINaclTest.FileIO_ParallelReads is flaky on Mac. http://crbug.com/121104
+#if defined(OS_MACOSX)
+#define MAYBE_FileIO_ParallelReads DISABLED_FileIO_ParallelReads
+#else
+#define MAYBE_FileIO_ParallelReads FileIO_ParallelReads
+#endif
+
 TEST_PPAPI_NACL_VIA_HTTP(FileIO_Open)
 TEST_PPAPI_NACL_VIA_HTTP(FileIO_AbortCalls)
-TEST_PPAPI_NACL_VIA_HTTP(FileIO_ParallelReads)
+TEST_PPAPI_NACL_VIA_HTTP(MAYBE_FileIO_ParallelReads)
 TEST_PPAPI_NACL_VIA_HTTP(FileIO_ParallelWrites)
 TEST_PPAPI_NACL_VIA_HTTP(FileIO_NotAllowMixedReadWrite)
 TEST_PPAPI_NACL_VIA_HTTP(MAYBE_FileIO_TouchQuery)

@@ -9,6 +9,7 @@
 #include "base/utf_string_conversions.h"
 #include "chrome/browser/chromeos/cros/cros_library.h"
 #include "chrome/browser/chromeos/cros/onc_constants.h"
+#include "chrome/browser/chromeos/enrollment_dialog_view.h"
 #include "chrome/common/net/x509_certificate_model.h"
 #include "grit/chromium_strings.h"
 #include "grit/generated_resources.h"
@@ -24,6 +25,7 @@
 #include "ui/views/controls/textfield/textfield.h"
 #include "ui/views/layout/grid_layout.h"
 #include "ui/views/layout/layout_constants.h"
+#include "ui/views/widget/widget.h"
 
 namespace {
 
@@ -226,15 +228,12 @@ void VPNConfigView::ButtonPressed(views::Button* sender,
                                   const views::Event& event) {
 }
 
-void VPNConfigView::ItemChanged(views::Combobox* combo_box,
-                                int prev_index, int new_index) {
-  if (prev_index == new_index)
-    return;
-  if (combo_box == provider_type_combobox_) {
-    provider_type_ = static_cast<ProviderType>(new_index);
+void VPNConfigView::OnSelectedIndexChanged(views::Combobox* combobox) {
+  if (combobox == provider_type_combobox_) {
+    provider_type_ = static_cast<ProviderType>(combobox->selected_index());
     UpdateControls();
-  } else if (combo_box == user_cert_combobox_ ||
-             combo_box == server_ca_cert_combobox_) {
+  } else if (combobox == user_cert_combobox_ ||
+             combobox == server_ca_cert_combobox_) {
     // Do nothing.
   } else {
     NOTREACHED();
@@ -309,6 +308,9 @@ bool VPNConfigView::Login() {
       case PROVIDER_TYPE_MAX:
         break;
     }
+    vpn->SetEnrollmentDelegate(
+        EnrollmentDialogView::CreateEnrollmentDelegate(
+            GetWidget()->GetNativeWindow()));
     cros->ConnectToVirtualNetwork(vpn);
   }
   // Connection failures are responsible for updating the UI, including

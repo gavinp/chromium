@@ -14,7 +14,6 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/geolocation_permission_context.h"
 #include "content/public/browser/speech_recognition_preferences.h"
-#include "content/shell/shell_browser_main_parts.h"
 #include "content/shell/shell_download_manager_delegate.h"
 #include "content/shell/shell_resource_context.h"
 #include "content/shell/shell_url_request_context_getter.h"
@@ -84,9 +83,12 @@ class ShellSpeechRecognitionPreferences : public SpeechRecognitionPreferences {
 
 }  // namespace
 
-ShellBrowserContext::ShellBrowserContext(
-    ShellBrowserMainParts* shell_main_parts)
-    : shell_main_parts_(shell_main_parts) {
+ShellBrowserContext* ShellBrowserContext::GetInstance() {
+  return Singleton<ShellBrowserContext>::get();
+}
+
+ShellBrowserContext::ShellBrowserContext() {
+  InitWhileIOAllowed();
 }
 
 ShellBrowserContext::~ShellBrowserContext() {
@@ -96,10 +98,7 @@ ShellBrowserContext::~ShellBrowserContext() {
   }
 }
 
-FilePath ShellBrowserContext::GetPath() {
-  if (!path_.empty())
-    return path_;
-
+void ShellBrowserContext::InitWhileIOAllowed() {
 #if defined(OS_WIN)
   CHECK(PathService::Get(base::DIR_LOCAL_APP_DATA, &path_));
   path_ = path_.Append(std::wstring(L"content_shell"));
@@ -118,7 +117,9 @@ FilePath ShellBrowserContext::GetPath() {
 
   if (!file_util::PathExists(path_))
     file_util::CreateDirectory(path_);
+}
 
+FilePath ShellBrowserContext::GetPath() {
   return path_;
 }
 

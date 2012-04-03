@@ -4,12 +4,14 @@
 
 #include "ash/wm/shelf_layout_manager.h"
 
+#include "ash/focus_cycler.h"
 #include "ash/launcher/launcher.h"
 #include "ash/screen_ash.h"
 #include "ash/shell.h"
 #include "ash/shell_delegate.h"
 #include "ash/shell_window_ids.h"
 #include "ash/test/ash_test_base.h"
+#include "ui/aura/client/aura_constants.h"
 #include "ui/aura/env.h"
 #include "ui/aura/monitor.h"
 #include "ui/aura/monitor_manager.h"
@@ -49,6 +51,17 @@ class ShelfLayoutManagerTest : public ash::test::AshTestBase {
   void SetState(ShelfLayoutManager* shelf,
                 ShelfLayoutManager::VisibilityState state) {
     shelf->SetState(state);
+  }
+
+  aura::Window* CreateTestWindow() {
+    aura::Window* window = new aura::Window(NULL);
+    window->SetProperty(aura::client::kShowStateKey, ui::SHOW_STATE_NORMAL);
+    window->SetType(aura::client::WINDOW_TYPE_NORMAL);
+    window->Init(ui::LAYER_TEXTURED);
+    aura::Window* parent = Shell::GetInstance()->GetContainer(
+        internal::kShellWindowId_DefaultContainer);
+    window->SetParent(parent);
+    return window;
   }
 
  private:
@@ -317,6 +330,126 @@ TEST_F(ShelfLayoutManagerTest, SetAutoHideBehavior) {
   EXPECT_EQ(ShelfLayoutManager::VISIBLE, shelf->visibility_state());
   EXPECT_EQ(gfx::Screen::GetMonitorWorkAreaNearestWindow(window).bottom(),
             widget->GetWorkAreaBoundsInScreen().bottom());
+}
+
+// Verifies the shelf is visible when status/launcher is focused.
+TEST_F(ShelfLayoutManagerTest, VisibileWhenStatusOrLauncherFocused) {
+  // Since ShelfLayoutManager queries for mouse location, move the mouse so
+  // it isn't over the shelf.
+  aura::test::EventGenerator generator(
+      Shell::GetInstance()->GetRootWindow(), gfx::Point());
+  generator.MoveMouseTo(0, 0);
+
+  ShelfLayoutManager* shelf = GetShelfLayoutManager();
+  views::Widget* widget = new views::Widget;
+  views::Widget::InitParams params(views::Widget::InitParams::TYPE_WINDOW);
+  params.bounds = gfx::Rect(0, 0, 200, 200);
+  // Widget is now owned by the parent window.
+  widget->Init(params);
+  widget->Show();
+  shelf->SetAutoHideBehavior(SHELF_AUTO_HIDE_BEHAVIOR_ALWAYS);
+  EXPECT_EQ(ShelfLayoutManager::AUTO_HIDE, shelf->visibility_state());
+  EXPECT_EQ(ShelfLayoutManager::AUTO_HIDE_HIDDEN, shelf->auto_hide_state());
+
+  // Focus the launcher. Have to go through the focus cycler as normal focus
+  // requests to it do nothing.
+  shelf->launcher()->GetFocusCycler()->RotateFocus(FocusCycler::FORWARD);
+  EXPECT_EQ(ShelfLayoutManager::AUTO_HIDE_SHOWN, shelf->auto_hide_state());
+
+  widget->Activate();
+  EXPECT_EQ(ShelfLayoutManager::AUTO_HIDE_HIDDEN, shelf->auto_hide_state());
+
+  shelf->status()->Activate();
+  EXPECT_EQ(ShelfLayoutManager::AUTO_HIDE_SHOWN, shelf->auto_hide_state());
+}
+
+// Makes sure shelf will be visible when app list opens as shelf is in VISIBLE
+// state,and toggling app list won't change shelf visibility state.
+TEST_F(ShelfLayoutManagerTest, OpenAppListWithShelfVisibleState) {
+  Shell* shell = Shell::GetInstance();
+  ShelfLayoutManager* shelf = Shell::GetInstance()->shelf();
+  shelf->LayoutShelf();
+  shell->SetShelfAutoHideBehavior(SHELF_AUTO_HIDE_BEHAVIOR_DEFAULT);
+
+  // Create a normal unmaximized windowm shelf should be visible.
+  aura::Window* window = CreateTestWindow();
+  window->SetBounds(gfx::Rect(0, 0, 100, 100));
+  window->Show();
+  EXPECT_FALSE(shell->GetAppListTargetVisibility());
+  EXPECT_EQ(ShelfLayoutManager::VISIBLE, shelf->visibility_state());
+
+  // Toggle app list to show, and the shelf stays visible.
+  shell->ToggleAppList();
+  EXPECT_TRUE(shell->GetAppListTargetVisibility());
+  EXPECT_EQ(ShelfLayoutManager::VISIBLE, shelf->visibility_state());
+
+  // Toggle app list to hide, and the shelf stays visible.
+  shell->ToggleAppList();
+  EXPECT_FALSE(shell->GetAppListTargetVisibility());
+  EXPECT_EQ(ShelfLayoutManager::VISIBLE, shelf->visibility_state());
+}
+
+// Makes sure shelf will be shown with AUTO_HIDE_SHOWN state when app list opens
+// as shelf is in AUTO_HIDE state, and toggling app list won't change shelf
+// visibility state.
+TEST_F(ShelfLayoutManagerTest, OpenAppListWithShelfAutoHideState) {
+  Shell* shell = Shell::GetInstance();
+  ShelfLayoutManager* shelf = Shell::GetInstance()->shelf();
+  shelf->LayoutShelf();
+  shell->SetShelfAutoHideBehavior(SHELF_AUTO_HIDE_BEHAVIOR_DEFAULT);
+
+  // Create a window and show it in maximized state.
+  aura::Window* window = CreateTestWindow();
+  window->SetBounds(gfx::Rect(0, 0, 100, 100));
+  window->SetProperty(aura::client::kShowStateKey, ui::SHOW_STATE_MAXIMIZED);
+  window->Show();
+
+  EXPECT_FALSE(shell->GetAppListTargetVisibility());
+  EXPECT_EQ(ShelfLayoutManager::AUTO_HIDE, shelf->visibility_state());
+
+  // Toggle app list to show.
+  shell->ToggleAppList();
+  // The shelf's auto hide state won't be changed until the timer fires, so
+  // calling shell->UpdateShelfVisibility() is kind of manually helping it to
+  // update the state.
+  shell->UpdateShelfVisibility();
+  EXPECT_TRUE(shell->GetAppListTargetVisibility());
+  EXPECT_EQ(ShelfLayoutManager::AUTO_HIDE, shelf->visibility_state());
+  EXPECT_EQ(ShelfLayoutManager::AUTO_HIDE_SHOWN, shelf->auto_hide_state());
+
+  // Toggle app list to hide.
+  shell->ToggleAppList();
+  EXPECT_FALSE(shell->GetAppListTargetVisibility());
+  EXPECT_EQ(ShelfLayoutManager::AUTO_HIDE, shelf->visibility_state());
+}
+
+// Makes sure shelf will be hidden when app list opens as shelf is in HIDDEN
+// state, and toggling app list won't change shelf visibility state.
+TEST_F(ShelfLayoutManagerTest, OpenAppListWithShelfHiddenState) {
+  Shell* shell = Shell::GetInstance();
+  ShelfLayoutManager* shelf = Shell::GetInstance()->shelf();
+  // For shelf to be visible, app list is not open in initial state.
+  shelf->LayoutShelf();
+
+  // Create a window and make it full screen.
+  aura::Window* window = CreateTestWindow();
+  window->SetBounds(gfx::Rect(0, 0, 100, 100));
+  window->SetProperty(aura::client::kShowStateKey, ui::SHOW_STATE_FULLSCREEN);
+  window->Show();
+
+  // App list and shelf is not shown.
+  EXPECT_FALSE(shell->GetAppListTargetVisibility());
+  EXPECT_EQ(ShelfLayoutManager::HIDDEN, shelf->visibility_state());
+
+  // Toggle app list to show.
+  shell->ToggleAppList();
+  EXPECT_TRUE(shell->GetAppListTargetVisibility());
+  EXPECT_EQ(ShelfLayoutManager::HIDDEN, shelf->visibility_state());
+
+  // Toggle app list to hide.
+  shell->ToggleAppList();
+  EXPECT_FALSE(shell->GetAppListTargetVisibility());
+  EXPECT_EQ(ShelfLayoutManager::HIDDEN, shelf->visibility_state());
 }
 
 }  // namespace internal

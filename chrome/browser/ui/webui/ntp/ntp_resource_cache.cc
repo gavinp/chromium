@@ -12,7 +12,6 @@
 #include "base/string16.h"
 #include "base/string_number_conversions.h"
 #include "base/stringprintf.h"
-#include "base/time.h"
 #include "base/utf_string_conversions.h"
 #include "base/values.h"
 #include "chrome/browser/defaults.h"
@@ -265,8 +264,7 @@ void NTPResourceCache::CreateNewTabIncognitoHTML() {
       l10n_util::GetStringFUTF16(
           IDS_NEW_TAB_OTR_EXTENSIONS_MESSAGE,
           l10n_util::GetStringUTF16(IDS_PRODUCT_NAME),
-          ASCIIToUTF16(std::string(chrome::kChromeUISettingsURL) +
-                       chrome::kExtensionsSubPage)));
+          ASCIIToUTF16(chrome::kChromeUIExtensionsURL)));
   bool bookmark_bar_attached = profile_->GetPrefs()->GetBoolean(
       prefs::kShowBookmarkBar);
   localized_strings.SetString("bookmarkbarattached",
@@ -364,6 +362,8 @@ void NTPResourceCache::CreateNewTabHTML() {
   localized_strings.SetBoolean("isSuggestionsPageEnabled",
       NewTabUI::IsSuggestionsPageEnabled());
   localized_strings.SetBoolean("showApps", NewTabUI::ShouldShowApps());
+  localized_strings.SetString("hideSessionMenuItemText",
+      l10n_util::GetStringUTF16(IDS_POLICY_HIDE));
 
 #if defined(OS_CHROMEOS)
   localized_strings.SetString("expandMenu",

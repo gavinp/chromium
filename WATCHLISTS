@@ -184,7 +184,7 @@
         'chrome/browser/ui/webui/ntp/.*',
     },
     'cookie_monster': {
-      'filepath': 'net/base/cookie_.*|'\
+      'filepath': 'net/cookies/.*|'\
         'chrome/browser/net/sqlite_persistent_cookie_store.*',
     },
     'autofill': {
@@ -341,7 +341,7 @@
     'valgrind': ['bruening+watch@chromium.org',
                  'glider+watch@chromium.org',
                  'timurrrr+watch@chromium.org'],
-    'base': ['brettw-cc@chromium.org'],
+    'base': ['brettw-cc@chromium.org', 'erikwright@chromium.org'],
     'browser_main': ['brettw-cc@chromium.org'],
     'browser_resources': ['arv@chromium.org'],
     'bubble': ['alicet@chromium.org', 'msw+watch@chromium.org'],
@@ -375,7 +375,8 @@
     'tests': [],
     'automation': ['kkania@chromium.org',
                    'robertshield@chromium.org'],
-    'chrome_frame': ['amit@chromium.org', 'robertshield@chromium.org'],
+    'chrome_frame': ['amit@chromium.org', 'grt+watch@chromium.org',
+                     'robertshield@chromium.org'],
     'nacl': ['native-client-reviews@googlegroups.com'],
     'appcache': ['michaeln@chromium.org'],
     'gpu': ['apatrick@chromium.org'],
@@ -456,5 +457,6 @@
     'metrics': ['jar@chromium.org',
                 'isherman@chromium.org',
                 'mad@chromium.org'],
+    'installer': ['grt+watch@chromium.org'],
   },
 }

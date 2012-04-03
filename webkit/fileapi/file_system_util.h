@@ -17,9 +17,11 @@ namespace fileapi {
 extern const char kPersistentDir[];
 extern const char kTemporaryDir[];
 extern const char kExternalDir[];
+extern const char kIsolatedDir[];
 extern const char kPersistentName[];
 extern const char kTemporaryName[];
 extern const char kExternalName[];
+extern const char kIsolatedName[];
 
 // Cracks the given filesystem |url| and populates |origin_url|, |type|
 // and |file_path|.  Returns true if the given |url| is a valid filesystem
@@ -91,6 +93,19 @@ GURL GetOriginURLFromIdentifier(const std::string& origin_identifier);
 // Returns the string representation of the given filesystem |type|.
 // Returns an empty string if the |type| is invalid.
 std::string GetFileSystemTypeString(FileSystemType type);
+
+// Encodes |file_path| to a string.
+// Following conditions should be held:
+//  - StringToFilePath(FilePathToString(path)) == path
+//  - StringToFilePath(FilePathToString(path) + "/" + "SubDirectory") ==
+//    path.AppendASCII("SubDirectory");
+//
+// TODO(tzik): Replace CreateFilePath and FilePathToString in
+// third_party/leveldatabase/env_chromium.cc with them.
+std::string FilePathToString(const FilePath& file_path);
+
+// Decode a file path from |file_path_string|.
+FilePath StringToFilePath(const std::string& file_path_string);
 
 }  // namespace fileapi
 

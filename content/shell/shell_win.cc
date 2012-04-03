@@ -7,7 +7,6 @@
 #include <windows.h>
 #include <commctrl.h>
 
-#include "base/message_loop.h"
 #include "base/string_piece.h"
 #include "base/utf_string_conversions.h"
 #include "base/win/resource_util.h"
@@ -61,6 +60,10 @@ base::StringPiece Shell::PlatformResourceProvider(int key) {
 }
 
 void Shell::PlatformExit() {
+  std::vector<Shell*> windows = windows_;
+  for (std::vector<Shell*>::iterator it = windows.begin();
+       it != windows.end(); ++it)
+    DestroyWindow((*it)->window_);
 }
 
 void Shell::PlatformCleanUp() {
@@ -182,6 +185,10 @@ void Shell::PlatformResizeSubViews() {
              rc.bottom - kURLBarHeight, TRUE);
 }
 
+void Shell::Close() {
+  DestroyWindow(window_);
+}
+
 ATOM Shell::RegisterWindowClass() {
   WNDCLASSEX wcex = {
       sizeof(WNDCLASSEX),
@@ -236,8 +243,6 @@ LRESULT CALLBACK Shell::WndProc(HWND hwnd, UINT message, WPARAM wParam,
     }
     case WM_DESTROY: {
       delete shell;
-      if (windows_.empty())
-        MessageLoop::current()->Quit();
       return 0;
     }
 

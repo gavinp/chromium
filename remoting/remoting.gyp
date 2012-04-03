@@ -17,7 +17,7 @@
     # binaries from Chrome.
     'variables': {
       'version_py_path': '../chrome/tools/build/version.py',
-      'version_path': '../chrome/VERSION',
+      'version_path': '../remoting/VERSION',
     },
     'version_py_path': '<(version_py_path)',
     'version_path': '<(version_path)',
@@ -121,7 +121,6 @@
       'resources/icon_host.png',
       'resources/icon_pencil.png',
       'resources/icon_warning.png',
-      'webapp/ask_pin_dialog.js',
       'webapp/client_plugin.js',
       'webapp/client_plugin_async.js',
       'webapp/client_plugin_v1.js',
@@ -139,6 +138,7 @@
       'webapp/host_list.js',
       'webapp/host_screen.js',
       'webapp/host_session.js',
+      'webapp/host_setup_dialog.js',
       'webapp/host_table_entry.js',
       'webapp/l10n.js',
       'webapp/log_to_server.js',
@@ -166,6 +166,8 @@
       'resources/chromoting128.png',
       'resources/disclosure_arrow_down.png',
       'resources/disclosure_arrow_right.png',
+      'resources/infographic_my_computers.png',
+      'resources/infographic_remote_assistance.png',
       'resources/tick.png',
     ],
   },
@@ -236,9 +238,12 @@
             '<(INTERMEDIATE_DIR)',
           ],
           'dependencies': [
+            '../base/base.gyp:base',
             'remoting_version_resources',
           ],
           'sources': [
+            'host/branding.cc',
+            'host/branding.h',
             'host/elevated_controller.idl',
             'host/elevated_controller.rc',
             'host/elevated_controller_module_win.cc',
@@ -266,6 +271,8 @@
           ],
           'sources': [
             'base/scoped_sc_handle_win.h',
+            'host/branding.cc',
+            'host/branding.h',
             'host/chromoting_messages.cc',
             'host/chromoting_messages.h',
             'host/host_service.rc',
@@ -293,7 +300,7 @@
         # The .RC files are generated from the "version.rc.version" template and
         # placed in the "<(SHARED_INTERMEDIATE_DIR)/remoting_version" folder.
         # The substiture strings are taken from:
-        #   - chrome/VERSION - the current version of Chrome.
+        #   - remoting/VERSION - the current version of Chromoting.
         #   - build/util/LASTCHANGE - the last source code revision.
         #   - xxx_branding - UI/localizable strings.
         #   - xxx.ver - per-binary non-localizable strings such as the binary
@@ -303,6 +310,13 @@
           'type': 'none',
           'dependencies': [
             '../build/util/build_util.gyp:lastchange#target',
+          ],
+          'inputs': [
+            'chromium_branding',
+            'google_chrome_branding',
+            'version.rc.version',
+            '<(DEPTH)/build/util/LASTCHANGE',
+            '<(version_path)',
           ],
           'direct_dependent_settings': {
             'include_dirs': [
@@ -383,6 +397,17 @@
           'variables': {
             'sas_dll_path': '<(DEPTH)/third_party/platformsdk_win7/files/redist/x86/sas.dll'
           },
+          'conditions': [
+            ['branding == "Chrome"', {
+              'variables': {
+                 'branding': '-dOfficialBuild=1',
+              },
+            }, { # else branding!="Chrome"
+              'variables': {
+                 'branding': '',
+              },
+            }],
+          ],
           'rules': [
             {
               'rule_name': 'candle',
@@ -402,6 +427,7 @@
                 '-dVersion=<(version_full) '
                 '"-dFileSource=<(PRODUCT_DIR)." '
                 '"-dSasDllPath=<(sas_dll_path)" '
+                '<(branding) '
                 '-out <@(_outputs)',
                 '"<(RULE_INPUT_PATH)"',
               ],
@@ -430,6 +456,7 @@
                 '-dVersion=<(version_full) '
                 '"-dFileSource=<(PRODUCT_DIR)." '
                 '"-dSasDllPath=<(sas_dll_path)" '
+                '<(branding) '
                 '-out "<(PRODUCT_DIR)/<(RULE_INPUT_ROOT).msi"',
                 '"<(RULE_INPUT_PATH)"',
               ],
@@ -491,6 +518,8 @@
         '../third_party/npapi/npapi.gyp:npapi',
       ],
       'sources': [
+        'host/branding.cc',
+        'host/branding.h',
         'host/it2me_host_user_interface.cc',
         'host/it2me_host_user_interface.h',
         'host/plugin/daemon_controller.h',
@@ -545,7 +574,11 @@
             '../ipc/ipc.gyp:ipc',
             'remoting_version_resources',
           ],
+          'include_dirs': [
+            '<(INTERMEDIATE_DIR)',
+          ],
           'sources': [
+            'host/elevated_controller.idl',
             'host/plugin/host_plugin.def',
             'host/plugin/host_plugin.rc',
             '<(SHARED_INTERMEDIATE_DIR)/remoting_version/host_plugin_version.rc'
@@ -595,6 +628,7 @@
             'webapp/client_screen.js',
             'webapp/main.html',
             'webapp/host_table_entry.js',
+            'webapp/host_setup_dialog.js',
             'webapp/manifest.json',
             'webapp/remoting.js',
             'host/plugin/host_script_object.cc',
@@ -785,6 +819,8 @@
         'host/policy_hack/nat_policy_win.cc',
         'host/register_support_host_request.cc',
         'host/register_support_host_request.h',
+        'host/remote_input_filter.cc',
+        'host/remote_input_filter.h',
         'host/screen_recorder.cc',
         'host/screen_recorder.h',
         'host/server_log_entry.cc',
@@ -936,6 +972,8 @@
         '../content/content.gyp:content_common',
       ],
       'sources': [
+        'host/branding.cc',
+        'host/branding.h',
         'host/host_event_logger.h',
         'host/remoting_me2me_host.cc',
       ],
@@ -1094,8 +1132,8 @@
         'protocol/jingle_session.h',
         'protocol/jingle_session_manager.cc',
         'protocol/jingle_session_manager.h',
-        'protocol/key_event_tracker.cc',
-        'protocol/key_event_tracker.h',
+        'protocol/input_event_tracker.cc',
+        'protocol/input_event_tracker.h',
         'protocol/libjingle_transport_factory.cc',
         'protocol/libjingle_transport_factory.h',
         'protocol/me2me_host_authenticator_factory.cc',
@@ -1106,6 +1144,8 @@
         'protocol/message_reader.h',
         'protocol/negotiating_authenticator.cc',
         'protocol/negotiating_authenticator.h',
+        'protocol/pepper_network_manager.cc',
+        'protocol/pepper_network_manager.h',
         'protocol/pepper_transport_factory.cc',
         'protocol/pepper_transport_factory.h',
         'protocol/pepper_transport_socket_adapter.cc',
@@ -1200,6 +1240,7 @@
         '../base/base.gyp:base_i18n',
         '../base/base.gyp:test_support_base',
         '../media/media.gyp:media',
+        '../net/net.gyp:net_test_support',
         '../ppapi/ppapi.gyp:ppapi_cpp',
         '../testing/gmock.gyp:gmock',
         '../testing/gtest.gyp:gtest',
@@ -1226,6 +1267,7 @@
         'host/capturer_linux_unittest.cc',
         'host/capturer_mac_unittest.cc',
         'host/capturer_win_unittest.cc',
+        'host/remote_input_filter_unittest.cc',
         'host/test_key_pair.h',
         'jingle_glue/fake_signal_strategy.cc',
         'jingle_glue/fake_signal_strategy.h',
@@ -1244,7 +1286,7 @@
         'protocol/fake_session.h',
         'protocol/jingle_messages_unittest.cc',
         'protocol/jingle_session_unittest.cc',
-        'protocol/key_event_tracker_unittest.cc',
+        'protocol/input_event_tracker_unittest.cc',
         'protocol/message_decoder_unittest.cc',
         'protocol/message_reader_unittest.cc',
         'protocol/negotiating_authenticator_unittest.cc',

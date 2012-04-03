@@ -56,6 +56,12 @@ class BaseDownloadItemModel {
 
   content::DownloadItem* download() { return download_; }
 
+  // Get the status message of the given interrupt |reason|.
+  static string16 InterruptReasonStatusMessage(int reason);
+
+  // Get the description of the given interrupt |reason|.
+  static string16 InterruptReasonMessage(int reason);
+
  protected:
   content::DownloadItem* download_;
 };

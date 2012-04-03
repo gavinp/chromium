@@ -38,7 +38,11 @@ remoting.AppMode = {
       CLIENT_SESSION_FINISHED_ME2ME: 'home.client.session-finished.me2me',
     HISTORY: 'home.history',
     CONFIRM_HOST_DELETE: 'home.confirm-host-delete',
-    ASK_PIN: 'home.ask-pin',
+    HOST_SETUP: 'home.host-setup',
+      HOST_SETUP_ASK_PIN: 'home.host-setup.ask-pin',
+      HOST_SETUP_PROCESSING: 'home.host-setup.processing',
+      HOST_SETUP_DONE: 'home.host-setup.done',
+      HOST_SETUP_ERROR: 'home.host-setup.error',
   IN_SESSION: 'in-session'
 };
 
@@ -119,3 +123,32 @@ remoting.setMode = function(mode) {
 remoting.getMajorMode = function() {
   return remoting.currentMode.split('.')[0];
 };
+
+remoting.showOrHideIt2MeUi = function() {
+  var visited = !!window.localStorage.getItem('it2me-visited');
+  document.getElementById('it2me-first-run').hidden = visited;
+  document.getElementById('it2me-content').hidden = !visited;
+};
+
+remoting.showOrHideMe2MeUi = function() {
+  var visited = !!window.localStorage.getItem('me2me-visited');
+  document.getElementById('me2me-first-run').hidden = visited;
+  document.getElementById('me2me-content').hidden = !visited;
+};
+
+remoting.showIt2MeUiAndSave = function() {
+  window.localStorage.setItem('it2me-visited', true);
+  remoting.showOrHideIt2MeUi();
+};
+
+remoting.showMe2MeUiAndSave = function() {
+  window.localStorage.setItem('me2me-visited', true);
+  remoting.showOrHideMe2MeUi();
+};
+
+remoting.resetInfographics = function() {
+  window.localStorage.removeItem('it2me-visited');
+  window.localStorage.removeItem('me2me-visited');
+  remoting.showOrHideIt2MeUi();
+  remoting.showOrHideMe2MeUi();
+}

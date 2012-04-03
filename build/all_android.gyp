@@ -12,6 +12,7 @@
       'target_name': 'All',
       'type': 'none',
       'dependencies': [
+        '../content/content.gyp:content_shell_apk',
         'util/build_util.gyp:*',
         'android_builder_tests',
       ],
@@ -34,6 +35,7 @@
         '../sql/sql.gyp:sql_unittests',
         '../ipc/ipc.gyp:ipc_tests',
         '../net/net.gyp:net_unittests',
+        '../ui/ui.gyp:ui_unittests',
         '../third_party/WebKit/Source/WebKit/chromium/All.gyp:*',
         # From here down: not added to run_tests.py yet.
         '../jingle/jingle.gyp:jingle_unittests',

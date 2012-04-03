@@ -62,7 +62,7 @@ class AndroidProviderBackend {
   // |selection| is the SQL WHERE clause without 'WHERE'.
   // |selection_args| is the arguments for WHERE clause.
   // |sort_order| is the SQL ORDER clause.
-  AndroidStatement* QueryBookmarks(
+  AndroidStatement* QueryHistoryAndBookmarks(
       const std::vector<BookmarkRow::BookmarkColumnID>& projections,
       const std::string& selection,
       const std::vector<string16>& selection_args,
@@ -74,13 +74,13 @@ class AndroidProviderBackend {
   // |row| is the value to update.
   // |selection| is the SQL WHERE clause without 'WHERE'.
   // |selection_args| is the arguments for the WHERE clause.
-  bool UpdateBookmarks(const BookmarkRow& row,
-                       const std::string& selection,
-                       const std::vector<string16>& selection_args,
-                       int* update_count);
+  bool UpdateHistoryAndBookmarks(const BookmarkRow& row,
+                                 const std::string& selection,
+                                 const std::vector<string16>& selection_args,
+                                 int* update_count);
 
   // Inserts the given values and returns the URLID of the inserted row.
-  AndroidURLID InsertBookmark(const BookmarkRow& values);
+  AndroidURLID InsertHistoryAndBookmark(const BookmarkRow& values);
 
   // Deletes the specified rows and returns the number of the deleted rows in
   // |deleted_count|.
@@ -88,15 +88,53 @@ class AndroidProviderBackend {
   // |selection_args| is the arguments for the WHERE clause.
   //
   // if |selection| is empty all history and bookmarks are deleted.
-  bool DeleteBookmarks(const std::string& selection,
-                       const std::vector<string16>& selection_args,
-                       int* deleted_count);
+  bool DeleteHistoryAndBookmarks(const std::string& selection,
+                                 const std::vector<string16>& selection_args,
+                                 int* deleted_count);
+
+  // SearchTerms --------------------------------------------------------------
+  //
+  // Returns the result of the given query.
+  // |projections| specifies the result columns, can not be empty, otherwise
+  // NULL is returned.
+  // |selection| is the SQL WHERE clause without 'WHERE'.
+  // |selection_args| is the arguments for WHERE clause.
+  // |sort_order| the SQL ORDER clause.
+  AndroidStatement* QuerySearchTerms(
+      const std::vector<SearchRow::SearchColumnID>& projections,
+      const std::string& selection,
+      const std::vector<string16>& selection_args,
+      const std::string& sort_order);
+
+  // Runs the given update and returns the number of updated rows in
+  // |update_count| and return true, false returned if there is any error.
+  //
+  // |row| is the value need to update.
+  // |selection| is the SQL WHERE clause without 'WHERE'.
+  // |selection_args| is the arguments for WHERE clause.
+  bool UpdateSearchTerms(const SearchRow& row,
+                         const std::string& selection,
+                         const std::vector<string16>& selection_args,
+                         int* update_count);
+
+  // Inserts the given valus and return the SearchTermID of inserted row.
+  SearchTermID InsertSearchTerm(const SearchRow& values);
+
+  // Deletes the matched rows and the number of deleted rows is returned in
+  // |deleted_count|.
+  // |selection| is the SQL WHERE clause without 'WHERE'.
+  // |selection_args| is the arguments for WHERE clause.
+  //
+  // if |selection| is empty all search be deleted.
+  bool DeleteSearchTerms(const std::string& selection,
+                         const std::vector<string16>& selection_args,
+                         int * deleted_count);
 
  private:
   friend class AndroidProviderBackendTest;
 
   FRIEND_TEST_ALL_PREFIXES(AndroidProviderBackendTest, UpdateTables);
-  FRIEND_TEST_ALL_PREFIXES(AndroidProviderBackendTest, UpdateBookmarks);
+  FRIEND_TEST_ALL_PREFIXES(AndroidProviderBackendTest, UpdateSearchTermTable);
 
   struct HistoryNotification {
     HistoryNotification(int type, HistoryDetails* detail);
@@ -147,7 +185,7 @@ class AndroidProviderBackend {
   // |row| is the value to update.
   // |selection| is the SQL WHERE clause without 'WHERE'.
   // |selection_args| is the arguments for the WHERE clause.
-  bool UpdateBookmarks(const BookmarkRow& row,
+  bool UpdateHistoryAndBookmarks(const BookmarkRow& row,
                        const std::string& selection,
                        const std::vector<string16>& selection_args,
                        int* update_count,
@@ -155,8 +193,8 @@ class AndroidProviderBackend {
 
   // Inserts the given values and returns the URLID of the inserted row.
   // The notifications of change is returned in |notifications|.
-  AndroidURLID InsertBookmark(const BookmarkRow& values,
-                              HistoryNotifications* notifications);
+  AndroidURLID InsertHistoryAndBookmark(const BookmarkRow& values,
+                                        HistoryNotifications* notifications);
 
   // Deletes the specified rows and returns the number of the deleted rows in
   // |deleted_count|.
@@ -166,10 +204,10 @@ class AndroidProviderBackend {
   // The notifications of change is returned in |notifications|.
   //
   // if |selection| is empty all history and bookmarks are deleted.
-  bool DeleteBookmarks(const std::string& selection,
-                       const std::vector<string16>& selection_args,
-                       int* deleted_count,
-                       HistoryNotifications* notifications);
+  bool DeleteHistoryAndBookmarks(const std::string& selection,
+                                 const std::vector<string16>& selection_args,
+                                 int* deleted_count,
+                                 HistoryNotifications* notifications);
 
   // Initializes and updates tables if necessary.
   bool EnsureInitializedAndUpdated();
@@ -192,12 +230,21 @@ class AndroidProviderBackend {
   // Update the bookmark_cache table for favicon.
   bool UpdateFavicon();
 
+  // Update the search_term table
+  bool UpdateSearchTermTable();
+
   // Append the specified result columns in |projections| to the given
   // |result_column|.
   // To support the lazy binding, the index of favicon column will be
   // returned if it exists, otherwise returns -1.
   int AppendBookmarkResultColumn(
       const std::vector<BookmarkRow::BookmarkColumnID>& projections,
+      std::string* result_column);
+
+  // Append the specified search result columns in |projections| to the given
+  // |result_column|.
+  void AppendSearchResultColumn(
+      const std::vector<SearchRow::SearchColumnID>& projections,
       std::string* result_column);
 
   // Runs the given query on |virtual_table| and returns true if succeeds, the
@@ -207,6 +254,13 @@ class AndroidProviderBackend {
                        const char* virtual_table,
                        TableIDRows* rows);
 
+  // Runs the given query on search_terms table and returns true on success,
+  // The selected search term are returned in |rows|.
+  typedef std::vector<string16> SearchTerms;
+  bool GetSelectedSearchTerms(const std::string& selection,
+                              const std::vector<string16>& selection_args,
+                              SearchTerms* rows);
+
   // Simulates update url by deleting the previous URL and creating a new one.
   // Return true on success.
   bool SimulateUpdateURL(const BookmarkRow& row,
@@ -215,13 +269,18 @@ class AndroidProviderBackend {
 
   // Query bookmark without sync the tables. It should be used after syncing
   // tables.
-  AndroidStatement* QueryBookmarksInternal(
+  AndroidStatement* QueryHistoryAndBookmarksInternal(
       const std::vector<BookmarkRow::BookmarkColumnID>& projections,
       const std::string& selection,
       const std::vector<string16>& selection_args,
       const std::string& sort_order);
 
   void BroadcastNotifications(const HistoryNotifications& notifications);
+
+  // Add the search term from the given |values|. It will add the values.url()
+  // in the urls table if it doesn't exist, insert visit in the visits table,
+  // also add keyword in keyword_search_term.
+  bool AddSearchTerm(const SearchRow& values);
 
   // SQLHandlers for different tables.
   scoped_ptr<SQLHandler> urls_handler_;

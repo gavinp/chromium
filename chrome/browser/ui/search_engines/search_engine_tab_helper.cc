@@ -7,6 +7,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url.h"
 #include "chrome/browser/search_engines/template_url_fetcher.h"
+#include "chrome/browser/search_engines/template_url_fetcher_factory.h"
 #include "chrome/browser/search_engines/template_url_service.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/ui/search_engines/template_url_fetcher_ui_callbacks.h"
@@ -86,7 +87,8 @@ void SearchEngineTabHelper::OnPageHasOSDD(
   Profile* profile =
       Profile::FromBrowserContext(web_contents()->GetBrowserContext());
   if (!web_contents()->IsActiveEntry(page_id) ||
-      !profile->GetTemplateURLFetcher() || profile->IsOffTheRecord())
+      !TemplateURLFetcherFactory::GetForProfile(profile) ||
+      profile->IsOffTheRecord())
     return;
 
   TemplateURLFetcher::ProviderType provider_type =
@@ -116,8 +118,8 @@ void SearchEngineTabHelper::OnPageHasOSDD(
 
   // Download the OpenSearch description document. If this is successful, a
   // new keyword will be created when done.
-  profile->GetTemplateURLFetcher()->ScheduleDownload(keyword, doc_url,
-      entry->GetFavicon().url, web_contents(),
+  TemplateURLFetcherFactory::GetForProfile(profile)->ScheduleDownload(
+      keyword, doc_url, entry->GetFavicon().url, web_contents(),
       new TemplateURLFetcherUICallbacks(this, web_contents()), provider_type);
 }
 
@@ -184,7 +186,7 @@ void SearchEngineTabHelper::GenerateKeywordIfNecessary(
   // its url.
   const GURL& favicon_url = current_favicon.is_valid() ?
       current_favicon : TemplateURL::GenerateFaviconURL(params.referrer.url);
-  new_url->SetURL(url.spec(), 0, 0);
-  new_url->SetFaviconURL(favicon_url);
+  new_url->SetURL(url.spec());
+  new_url->set_favicon_url(favicon_url);
   url_service->Add(new_url);
 }

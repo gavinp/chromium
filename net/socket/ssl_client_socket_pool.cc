@@ -295,16 +295,16 @@ int SSLConnectJob::DoSSLConnectComplete(int result) {
   // If we want spdy over npn, make sure it succeeded.
   if (status == SSLClientSocket::kNextProtoNegotiated) {
     ssl_socket_->set_was_npn_negotiated(true);
-    SSLClientSocket::NextProto protocol_negotiated =
+    NextProto protocol_negotiated =
         SSLClientSocket::NextProtoFromString(proto);
     ssl_socket_->set_protocol_negotiated(protocol_negotiated);
     // If we negotiated either version of SPDY, we must have
     // advertised it, so allow it.
     // TODO(mbelshe): verify it was a protocol we advertised?
-    if (protocol_negotiated == SSLClientSocket::kProtoSPDY1 ||
-        protocol_negotiated == SSLClientSocket::kProtoSPDY2 ||
-        protocol_negotiated == SSLClientSocket::kProtoSPDY21 ||
-        protocol_negotiated == SSLClientSocket::kProtoSPDY3) {
+    if (protocol_negotiated == kProtoSPDY1 ||
+        protocol_negotiated == kProtoSPDY2 ||
+        protocol_negotiated == kProtoSPDY21 ||
+        protocol_negotiated == kProtoSPDY3) {
       ssl_socket_->set_was_spdy_negotiated(true);
     }
   }
@@ -479,9 +479,21 @@ SSLClientSocketPool::SSLClientSocketPool(
       ssl_config_service_(ssl_config_service) {
   if (ssl_config_service_)
     ssl_config_service_->AddObserver(this);
+  if (transport_pool_)
+    transport_pool_->AddLayeredPool(this);
+  if (socks_pool_)
+    socks_pool_->AddLayeredPool(this);
+  if (http_proxy_pool_)
+    http_proxy_pool_->AddLayeredPool(this);
 }
 
 SSLClientSocketPool::~SSLClientSocketPool() {
+  if (http_proxy_pool_)
+    http_proxy_pool_->RemoveLayeredPool(this);
+  if (socks_pool_)
+    socks_pool_->RemoveLayeredPool(this);
+  if (transport_pool_)
+    transport_pool_->RemoveLayeredPool(this);
   if (ssl_config_service_)
     ssl_config_service_->RemoveObserver(this);
 }
@@ -534,6 +546,13 @@ void SSLClientSocketPool::Flush() {
   base_.Flush();
 }
 
+bool SSLClientSocketPool::IsStalled() const {
+  return base_.IsStalled() ||
+      (transport_pool_ && transport_pool_->IsStalled()) ||
+      (socks_pool_ && socks_pool_->IsStalled()) ||
+      (http_proxy_pool_ && http_proxy_pool_->IsStalled());
+}
+
 void SSLClientSocketPool::CloseIdleSockets() {
   base_.CloseIdleSockets();
 }
@@ -550,6 +569,14 @@ int SSLClientSocketPool::IdleSocketCountInGroup(
 LoadState SSLClientSocketPool::GetLoadState(
     const std::string& group_name, const ClientSocketHandle* handle) const {
   return base_.GetLoadState(group_name, handle);
+}
+
+void SSLClientSocketPool::AddLayeredPool(LayeredPool* layered_pool) {
+  base_.AddLayeredPool(layered_pool);
+}
+
+void SSLClientSocketPool::RemoveLayeredPool(LayeredPool* layered_pool) {
+  base_.RemoveLayeredPool(layered_pool);
 }
 
 DictionaryValue* SSLClientSocketPool::GetInfoAsValue(
@@ -589,6 +616,12 @@ ClientSocketPoolHistograms* SSLClientSocketPool::histograms() const {
 
 void SSLClientSocketPool::OnSSLConfigChanged() {
   Flush();
+}
+
+bool SSLClientSocketPool::CloseOneIdleConnection() {
+  if (base_.CloseOneIdleSocket())
+    return true;
+  return base_.CloseOneIdleConnectionInLayeredPool();
 }
 
 }  // namespace net

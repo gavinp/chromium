@@ -553,7 +553,7 @@ void PrerenderManager::RecordPerceivedPageLoadTime(
           Profile::FromBrowserContext(web_contents->GetBrowserContext()));
   if (!prerender_manager)
     return;
-  if (!prerender_manager->is_enabled())
+  if (!prerender_manager->IsEnabled())
     return;
   bool was_prerender =
       prerender_manager->IsWebContentsPrerendered(web_contents);
@@ -568,21 +568,6 @@ void PrerenderManager::RecordPerceivedPageLoadTime(
     prerender_manager->histograms_->RecordPercentLoadDoneAtSwapin(
         fraction_plt_elapsed_at_swap_in);
   }
-}
-
-bool PrerenderManager::is_enabled() const {
-  DCHECK(CalledOnValidThread());
-  if (!enabled_)
-    return false;
-  for (std::list<const PrerenderCondition*>::const_iterator it =
-           prerender_conditions_.begin();
-       it != prerender_conditions_.end();
-       ++it) {
-    const PrerenderCondition* condition = *it;
-    if (!condition->CanPrerender())
-      return false;
-  }
-  return true;
 }
 
 void PrerenderManager::set_enabled(bool enabled) {
@@ -855,6 +840,9 @@ bool PrerenderManager::AddPrerender(
     const content::Referrer& referrer,
     SessionStorageNamespace* session_storage_namespace) {
   DCHECK(CalledOnValidThread());
+
+  if (!IsEnabled())
+    return false;
 
   if (origin == ORIGIN_LINK_REL_PRERENDER &&
       IsGoogleSearchResultURL(referrer.url)) {
@@ -1236,6 +1224,21 @@ void PrerenderManager::RecordFinalStatus(Origin origin,
       origin, experiment_id,
       PrerenderContents::MATCH_COMPLETE_DEFAULT,
       final_status);
+}
+
+bool PrerenderManager::IsEnabled() const {
+  DCHECK(CalledOnValidThread());
+  if (!enabled_)
+    return false;
+  for (std::list<const PrerenderCondition*>::const_iterator it =
+           prerender_conditions_.begin();
+       it != prerender_conditions_.end();
+       ++it) {
+    const PrerenderCondition* condition = *it;
+    if (!condition->CanPrerender())
+      return false;
+  }
+  return true;
 }
 
 PrerenderManager* FindPrerenderManagerUsingRenderProcessId(

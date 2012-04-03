@@ -11,7 +11,6 @@
 #include "media/base/demuxer_stream.h"
 #include "media/base/media_export.h"
 #include "media/base/pipeline_status.h"
-#include "media/base/preload.h"
 
 namespace media {
 
@@ -46,6 +45,12 @@ class MEDIA_EXPORT Demuxer
   // to be released before the host object is destroyed by the pipeline.
   virtual void set_host(DemuxerHost* host);
 
+  // Completes initialization of the demuxer.
+  //
+  // TODO(scherkus): pass in DemuxerHost here instead of using set_host(),
+  // see http://crbug.com/111585
+  virtual void Initialize(const PipelineStatusCB& status_cb) = 0;
+
   // The pipeline playback rate has been changed.  Demuxers may implement this
   // method if they need to respond to this call.
   virtual void SetPlaybackRate(float playback_rate);
@@ -68,9 +73,6 @@ class MEDIA_EXPORT Demuxer
   // Returns the given stream type, or NULL if that type is not present.
   virtual scoped_refptr<DemuxerStream> GetStream(DemuxerStream::Type type) = 0;
 
-  // Alert the Demuxer that the video preload value has been changed.
-  virtual void SetPreload(Preload preload) = 0;
-
   // Returns the starting time for the media file.
   virtual base::TimeDelta GetStartTime() const = 0;
 
@@ -80,6 +82,8 @@ class MEDIA_EXPORT Demuxer
 
   // Returns true if the source is from a local file or stream (such as a
   // webcam stream), false otherwise.
+  //
+  // TODO(scherkus): See http://crbug.com/120426 on why we should remove this.
   virtual bool IsLocalSource() = 0;
 
   // Returns true if seeking is possible; false otherwise.

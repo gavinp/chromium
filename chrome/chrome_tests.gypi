@@ -112,8 +112,12 @@
         'browser/chromeos/dbus/mock_cryptohome_client.h',
         'browser/chromeos/dbus/mock_dbus_thread_manager.cc',
         'browser/chromeos/dbus/mock_dbus_thread_manager.h',
+        'browser/chromeos/dbus/mock_flimflam_ipconfig_client.cc',
+        'browser/chromeos/dbus/mock_flimflam_ipconfig_client.h',
         'browser/chromeos/dbus/mock_flimflam_network_client.cc',
         'browser/chromeos/dbus/mock_flimflam_network_client.h',
+        'browser/chromeos/dbus/mock_flimflam_profile_client.cc',
+        'browser/chromeos/dbus/mock_flimflam_profile_client.h',
         'browser/chromeos/dbus/mock_image_burner_client.cc',
         'browser/chromeos/dbus/mock_image_burner_client.h',
         'browser/chromeos/dbus/mock_introspectable_client.cc',
@@ -143,6 +147,8 @@
         'browser/extensions/test_extension_prefs.h',
         'browser/extensions/test_extension_service.cc',
         'browser/extensions/test_extension_service.h',
+        'browser/extensions/test_extension_system.cc',
+        'browser/extensions/test_extension_system.h',
         'browser/mock_browsing_data_appcache_helper.cc',
         'browser/mock_browsing_data_appcache_helper.h',
         'browser/mock_browsing_data_cookie_helper.cc',
@@ -356,8 +362,6 @@
         'test/ui/npapi_test_helper.cc',
         'test/ui/npapi_test_helper.h',
         'test/ui/run_all_unittests.cc',
-        'test/ui/ui_layout_test.cc',
-        'test/ui/ui_layout_test.h',
         'test/ui/ui_perf_test.cc',
         'test/ui/ui_perf_test.h',
         'test/ui/ui_test.cc',
@@ -684,7 +688,6 @@
           ],
           'dependencies': [
             'chrome.gyp:chrome_version_resources',
-            'chrome.gyp:installer_util_strings',
             '../sandbox/sandbox.gyp:sandbox',
             '../third_party/iaccessible2/iaccessible2.gyp:iaccessible2',
             '../third_party/isimpledom/isimpledom.gyp:isimpledom',
@@ -788,7 +791,6 @@
         # New tests should be browser_tests. browser_tests are sharded and are
         # less flakier.
         'app/chrome_main_uitest.cc',
-        'browser/audio_layout_uitest.cc',
         'browser/browser_encoding_uitest.cc',
         'browser/custom_handlers/custom_handlers_uitest.cc',
         'browser/download/save_page_uitest.cc',
@@ -798,7 +800,6 @@
         'browser/iframe_uitest.cc',
         'browser/images_uitest.cc',
         'browser/locale_tests_uitest.cc',
-        'browser/media_uitest.cc',
         'browser/metrics/metrics_service_uitest.cc',
         'browser/net/load_timing_observer_uitest.cc',
         'browser/prefs/pref_service_uitest.cc',
@@ -835,10 +836,7 @@
         'test/ui/named_interface_uitest.cc',
         'test/ui/npapi_uitest.cc',
         'test/ui/sandbox_uitests.cc',
-        '../content/browser/appcache/appcache_ui_test.cc',
-        '../content/browser/in_process_webkit/dom_storage_uitest.cc',
         '../content/browser/renderer_host/resource_dispatcher_host_uitest.cc',
-        '../content/worker/test/worker_uitest.cc',
         # DON'T ADD NEW FILES! SEE NOTE AT TOP OF SECTION.
       ],
       'conditions': [
@@ -1319,6 +1317,7 @@
         'browser/chromeos/cros/onc_network_parser_unittest.cc',
         'browser/chromeos/cros_settings_unittest.cc',
         'browser/chromeos/customization_document_unittest.cc',
+        'browser/chromeos/dbus/blocking_method_caller_unittest.cc',
         'browser/chromeos/dbus/cros_dbus_service_unittest.cc',
         'browser/chromeos/dbus/introspect_util_unittest.cc',
         'browser/chromeos/dbus/proxy_resolution_service_provider_unittest.cc',
@@ -1401,6 +1400,7 @@
         'browser/cookies_tree_model_unittest.cc',
         'browser/custom_handlers/protocol_handler_registry_unittest.cc',
         'browser/diagnostics/diagnostics_model_unittest.cc',
+        'browser/download/download_item_model_unittest.cc',
         'browser/download/download_request_infobar_delegate_unittest.cc',
         'browser/download/download_request_limiter_unittest.cc',
         'browser/download/download_shelf_unittest.cc',
@@ -1490,6 +1490,11 @@
         'browser/google/google_util_unittest.cc',
         'browser/gpu_blacklist_unittest.cc',
         'browser/gpu_util_unittest.cc',
+        'browser/history/android/android_cache_database_unittest.cc',
+        'browser/history/android/android_history_types_unittest.cc',
+        'browser/history/android/android_provider_backend_unittest.cc',
+        'browser/history/android/urls_sql_handler_unittest.cc',
+        'browser/history/android/visit_sql_handler_unittest.cc',
         'browser/history/expire_history_backend_unittest.cc',
         'browser/history/history_backend_unittest.cc',
         'browser/history/history_querying_unittest.cc',
@@ -1525,7 +1530,6 @@
         'browser/importer/importer_unittest_utils.h',
         'browser/importer/safari_importer_unittest.mm',
         'browser/importer/toolbar_importer_unittest.cc',
-        'browser/instant/promo_counter_unittest.cc',
         'browser/intents/cws_intents_registry_unittest.cc',
         'browser/intents/register_intent_handler_infobar_delegate_unittest.cc',
         'browser/intents/web_intents_registry_unittest.cc',
@@ -1895,8 +1899,6 @@
         'browser/ui/cocoa/location_bar/autocomplete_text_field_unittest_helper.mm',
         'browser/ui/cocoa/location_bar/ev_bubble_decoration_unittest.mm',
         'browser/ui/cocoa/location_bar/image_decoration_unittest.mm',
-        'browser/ui/cocoa/location_bar/instant_opt_in_controller_unittest.mm',
-        'browser/ui/cocoa/location_bar/instant_opt_in_view_unittest.mm',
         'browser/ui/cocoa/location_bar/keyword_hint_decoration_unittest.mm',
         'browser/ui/cocoa/location_bar/omnibox_popup_view_unittest.mm',
         'browser/ui/cocoa/location_bar/selected_keyword_decoration_unittest.mm',
@@ -1955,10 +1957,12 @@
         'browser/ui/gtk/gtk_chrome_shrinkable_hbox_unittest.cc',
         'browser/ui/gtk/gtk_util_unittest.cc',
         'browser/ui/gtk/omnibox/omnibox_popup_view_gtk_unittest.cc',
+        'browser/ui/gtk/one_click_signin_dialog_gtk_unittest.cc',
         'browser/ui/gtk/reload_button_gtk_unittest.cc',
         'browser/ui/gtk/status_icons/status_tray_gtk_unittest.cc',
         'browser/ui/gtk/tabs/tab_renderer_gtk_unittest.cc',
         'browser/ui/gtk/theme_service_gtk_unittest.cc',
+        'browser/ui/intents/web_intent_inline_disposition_delegate_unittest.cc',
         'browser/ui/intents/web_intent_picker_model_unittest.cc',
         'browser/ui/intents/web_intent_picker_unittest.cc',
         'browser/ui/intents/web_intents_model_unittest.cc',
@@ -1979,6 +1983,7 @@
         'browser/ui/toolbar/wrench_menu_model_unittest.cc',
         'browser/ui/views/accessibility_event_router_views_unittest.cc',
         'browser/ui/views/ash/app_list/app_list_model_builder_unittest.cc',
+        'browser/ui/views/ash/key_rewriter_unittest.cc',
         'browser/ui/views/ash/launcher/launcher_updater_unittest.cc',
         'browser/ui/views/bookmarks/bookmark_context_menu_test.cc',
         'browser/ui/views/bookmarks/bookmark_editor_view_unittest.cc',
@@ -2076,9 +2081,11 @@
         'common/net/gaia/google_service_auth_error_unittest.cc',
         'common/net/gaia/oauth_request_signer_unittest.cc',
         'common/net/gaia/oauth2_access_token_fetcher_unittest.cc',
+        'common/net/gaia/oauth2_api_call_flow_unittest.cc',
         'common/net/gaia/oauth2_mint_token_fetcher_unittest.cc',
         'common/net/gaia/oauth2_mint_token_flow_unittest.cc',
         'common/net/gaia/oauth2_revocation_fetcher_unittest.cc',
+        'common/net/x509_certificate_model_unittest.cc',
         'common/service_process_util_unittest.cc',
         'common/string_ordinal_unittest.cc',
         'common/switch_utils_unittest.cc',
@@ -2088,6 +2095,7 @@
         'common/worker_thread_ticker_unittest.cc',
         'common/zip_reader_unittest.cc',
         'common/zip_unittest.cc',
+        'nacl/nacl_ipc_adapter_unittest.cc',
         'nacl/nacl_validation_query_unittest.cc',
         'renderer/chrome_content_renderer_client_unittest.cc',
         'renderer/content_settings_observer_unittest.cc',
@@ -2153,10 +2161,12 @@
           'sources!': [
             'browser/ui/cocoa/one_click_signin_bubble_controller_unittest.mm',
             'browser/ui/cocoa/one_click_signin_dialog_controller_unittest.mm',
+            'browser/ui/gtk/one_click_signin_dialog_gtk_unittest.cc',
           ]
         }],
         ['disable_nacl==1', {
           'sources!':[
+            'nacl/nacl_ipc_adapter_unittest.cc',
             'nacl/nacl_validation_query_unittest.cc',
           ],
         }],
@@ -2368,7 +2378,6 @@
         ['OS=="win"', {
           'dependencies': [
             'chrome_version_resources',
-            'installer_util_strings',
             '../third_party/iaccessible2/iaccessible2.gyp:iaccessible2',
             '../third_party/isimpledom/isimpledom.gyp:isimpledom',
           ],
@@ -2452,11 +2461,30 @@
             # about:flags is unsupported.
             'browser/about_flags_unittest.cc',
 
+            # There's no Browser/BrowserList on Android.
+            'browser/browser_commands_unittest.cc',
+            'browser/net/gaia/gaia_oauth_fetcher_unittest.cc',
+            'browser/profiles/off_the_record_profile_impl_unittest.cc',
+            'browser/sessions/session_service_unittest.cc',
+            'browser/sync/profile_sync_service_session_unittest.cc',
+            'browser/sync/sync_global_error_unittest.cc',
+            'browser/sync/sync_setup_wizard_unittest.cc',
+            'browser/ui/browser_list_unittest.cc',
+            'browser/ui/browser_unittest.cc',
+            'browser/ui/toolbar/toolbar_model_unittest.cc',
+            'browser/ui/toolbar/wrench_menu_model_unittest.cc',
+            'browser/ui/webui/html_dialog_tab_contents_delegate_unittest.cc',
+            'test/base/browser_with_test_window_test.cc',
+            'test/base/browser_with_test_window_test.h',
+            'test/base/test_browser_window.h',
+
             'browser/ui/window_sizer_unittest.cc',
           ],
           'sources/': [
             ['exclude', '^browser/chrome_to_mobile'],
             ['exclude', '^browser/printing/'],
+            ['exclude', '^browser/tabs/pinned_tab_'],
+            ['exclude', '^browser/tabs/tab_strip_model'],
             ['exclude', '^browser/themes/'],
             ['exclude', '^browser/ui/panels'],
             ['exclude', '^browser/ui/tabs/'],
@@ -2484,6 +2512,11 @@
             'browser/plugin_finder_unittest.cc',
           ],
         }],
+        ['enable_protector_service==0', {
+          'sources/': [
+            ['exclude', '^browser/protector/'],
+          ],
+        }],
         ['toolkit_views==1', {
           'dependencies': [
             '../ui/views/views.gyp:views',
@@ -2497,6 +2530,11 @@
             ['exclude', '^../views/'],
             ['exclude', '^../ui/views/'],
             ['exclude', '^browser/extensions/key_identifier_conversion_views_unittest.cc'],
+          ],
+        }],
+        ['use_nss==0 and use_openssl==0', {
+          'sources!': [
+            'common/net/x509_certificate_model_unittest.cc',
           ],
         }],
         ['use_openssl==1', {
@@ -2615,6 +2653,8 @@
         'browser/chromeos/extensions/external_filesystem_apitest.cc',
         'browser/chromeos/gdata/gdata_documents_service_browsertest.cc',
         'browser/chromeos/input_method/input_method_manager_browsertest.cc',
+        'browser/chromeos/kiosk_mode/mock_kiosk_mode_settings.cc',
+        'browser/chromeos/kiosk_mode/mock_kiosk_mode_settings.h',
         'browser/chromeos/login/enrollment/enterprise_enrollment_screen_browsertest.cc',
         'browser/chromeos/login/existing_user_controller_browsertest.cc',
         'browser/chromeos/login/login_browsertest.cc',
@@ -2640,6 +2680,7 @@
         'browser/chromeos/login/wizard_in_process_browser_test.h',
         'browser/chromeos/media/media_player_browsertest.cc',
         'browser/chromeos/process_proxy/process_proxy_browsertest.cc',
+        'browser/chromeos/ui/idle_logout_dialog_view_browsertest.cc',
         'browser/content_settings/content_settings_browsertest.cc',
         'browser/crash_recovery_browsertest.cc',
         'browser/custom_handlers/protocol_handler_registry_browsertest.cc',
@@ -2816,6 +2857,7 @@
         'browser/ui/cocoa/applescript/window_applescript_test.mm',
         'browser/ui/find_bar/find_bar_host_browsertest.cc',
         'browser/ui/global_error_service_browsertest.cc',
+        'browser/ui/gtk/one_click_signin_bubble_gtk_browsertest.cc',
         'browser/ui/gtk/view_id_util_browsertest.cc',
         'browser/ui/intents/web_intent_picker_controller_browsertest.cc',
         'browser/ui/login/login_prompt_browsertest.cc',
@@ -2879,6 +2921,8 @@
         'renderer/safe_browsing/phishing_thumbnailer_browsertest.cc',
         'renderer/translate_helper_browsertest.cc',
         'test/automation/dom_automation_browsertest.cc',
+        'test/base/layout_test_http_server.cc',
+        'test/base/layout_test_http_server.h',
         'test/base/in_process_browser_test_browsertest.cc',
         'test/base/chrome_render_view_test.cc',
         'test/base/chrome_render_view_test.h',
@@ -2920,13 +2964,17 @@
         '../content/browser/accessibility/dump_accessibility_tree_helper_mac.mm',
         '../content/browser/accessibility/dump_accessibility_tree_helper_win.cc',
         '../content/browser/accessibility/renderer_accessibility_browsertest.cc',
+        '../content/browser/appcache/appcache_browsertest.cc',
+        '../content/browser/audio_browsertest.cc',
         '../content/browser/child_process_security_policy_browsertest.cc',
         '../content/browser/device_orientation/device_orientation_browsertest.cc',
         '../content/browser/download/mhtml_generation_browsertest.cc',
         '../content/browser/fileapi/file_system_browsertest.cc',
+        '../content/browser/in_process_webkit/dom_storage_browsertest.cc',
         '../content/browser/in_process_webkit/indexed_db_browsertest.cc',
         '../content/browser/in_process_webkit/indexed_db_layout_browsertest.cc',
         '../content/browser/indexed_db/idbbindingutilities_browsertest.cc',
+        '../content/browser/media_browsertest.cc',
         '../content/browser/plugin_data_remover_impl_browsertest.cc',
         '../content/browser/plugin_service_impl_browsertest.cc',
         '../content/browser/renderer_host/render_process_host_browsertest.cc',
@@ -2935,6 +2983,7 @@
         '../content/browser/renderer_host/resource_dispatcher_host_browsertest.cc',
         '../content/browser/speech/speech_recognition_browsertest.cc',
         '../content/browser/webkit_browsertest.cc',
+        '../content/browser/worker_host/test/worker_browsertest.cc',
         '../content/renderer/mouse_lock_dispatcher_browsertest.cc',
         '../content/renderer/render_view_browsertest.cc',
         '../content/renderer/render_view_browsertest_mac.mm',
@@ -2975,6 +3024,7 @@
       'conditions': [
         ['enable_one_click_signin==0', {
           'sources!': [
+            'browser/ui/gtk/one_click_signin_bubble_gtk_browsertest.cc',
             'browser/ui/views/sync/one_click_signin_bubble_view_browsertest.cc',
           ]
         }],
@@ -3117,7 +3167,6 @@
           ],
           'dependencies': [
             'chrome_version_resources',
-            'installer_util_strings',
             '../third_party/iaccessible2/iaccessible2.gyp:iaccessible2',
             '../sandbox/sandbox.gyp:sandbox',
           ],
@@ -3364,7 +3413,6 @@
           ],
           'dependencies': [
             'chrome_version_resources',
-            'installer_util_strings',
             '../sandbox/sandbox.gyp:sandbox',
           ],
           'conditions': [
@@ -3477,7 +3525,6 @@
         ['OS=="win"', {
           'dependencies': [
             'chrome_version_resources',
-            'installer_util_strings',
             '../sandbox/sandbox.gyp:sandbox',
           ],
           'sources': [
@@ -3842,7 +3889,6 @@
           ],
           'dependencies': [
             'chrome_version_resources',
-            'installer_util_strings',
             '../sandbox/sandbox.gyp:sandbox',
           ],
           'conditions': [
@@ -3966,7 +4012,6 @@
           ],
           'dependencies': [
             'chrome_version_resources',
-            'installer_util_strings',
             '../sandbox/sandbox.gyp:sandbox',
           ],
           'conditions': [
@@ -4052,7 +4097,6 @@
         ['OS=="win"', {
           'dependencies': [
             'chrome_version_resources',
-            'installer_util_strings',
             '../sandbox/sandbox.gyp:sandbox',
           ],
           'include_dirs': [
@@ -4390,14 +4434,16 @@
                 '..',
                 '<(sysroot)/usr/include/python<(python_ver)',
               ],
-              'dependencies': [
-                '../build/linux/system.gyp:gtk',
-              ],
               'link_settings': {
                 'libraries': [
                   '-lpython<(python_ver)',
                 ],
               },
+            }],
+            ['toolkit_uses_gtk == 1', {
+              'dependencies': [
+                '../build/linux/system.gyp:gtk',
+              ],
             }],
             ['OS=="mac"', {
               'include_dirs': [

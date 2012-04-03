@@ -243,12 +243,18 @@ IPC_MESSAGE_CONTROL3(ExtensionMsg_UsingWebRequestAPI,
                      bool /* adblock_plus */,
                      bool /* other_webrequest */)
 
-// Ask the renderer if it is ready to shutdown. Used for lazy background pages
-// when they are considered idle. The renderer will reply with the same
-// sequence_id so that we can tell which message it is responding to.
-IPC_MESSAGE_CONTROL2(ExtensionMsg_ShouldClose,
+// Ask the lazy background page if it is ready to unload. This is sent when the
+// page is considered idle. The renderer will reply with the same sequence_id
+// so that we can tell which message it is responding to.
+IPC_MESSAGE_CONTROL2(ExtensionMsg_ShouldUnload,
                      std::string /* extension_id */,
                      int /* sequence_id */)
+
+// If we complete a round of ShouldUnload->ShouldUnloadAck messages without the
+// lazy background page becoming active again, we are ready to unload. This
+// message tells the page to dispatch the unload event.
+IPC_MESSAGE_CONTROL1(ExtensionMsg_Unload,
+                     std::string /* extension_id */)
 
 // Messages sent from the renderer to the browser.
 
@@ -319,8 +325,9 @@ IPC_MESSAGE_ROUTED2(ExtensionHostMsg_PostMessage,
 
 // Send a message to an extension process.  The handle is the value returned
 // by ViewHostMsg_OpenChannelTo*.
-IPC_MESSAGE_CONTROL1(ExtensionHostMsg_CloseChannel,
-                     int /* port_id */)
+IPC_MESSAGE_CONTROL2(ExtensionHostMsg_CloseChannel,
+                     int /* port_id */,
+                     bool /* connection_error */)
 
 // Used to get the extension message bundle.
 IPC_SYNC_MESSAGE_CONTROL1_1(ExtensionHostMsg_GetMessageBundle,
@@ -367,10 +374,14 @@ IPC_MESSAGE_ROUTED4(ExtensionHostMsg_GetAppNotifyChannel,
 IPC_MESSAGE_ROUTED1(ExtensionHostMsg_ResponseAck,
                     int /* request_id */)
 
-// Response to ExtensionMsg_ShouldClose.
-IPC_MESSAGE_CONTROL2(ExtensionHostMsg_ShouldCloseAck,
+// Response to ExtensionMsg_ShouldUnload.
+IPC_MESSAGE_CONTROL2(ExtensionHostMsg_ShouldUnloadAck,
                      std::string /* extension_id */,
                      int /* sequence_id */)
+
+// Response to ExtensionMsg_Unload, after we dispatch the unload event.
+IPC_MESSAGE_CONTROL1(ExtensionHostMsg_UnloadAck,
+                     std::string /* extension_id */)
 
 // Response to the renderer for the above message.
 IPC_MESSAGE_ROUTED3(ExtensionMsg_GetAppNotifyChannelResponse,
@@ -378,7 +389,19 @@ IPC_MESSAGE_ROUTED3(ExtensionMsg_GetAppNotifyChannelResponse,
                     std::string /* error */,
                     int32 /* callback_id */)
 
+// Dispatch the Port.onConnect event for message channels.
+IPC_MESSAGE_ROUTED5(ExtensionMsg_DispatchOnConnect,
+                    int /* target_port_id */,
+                    std::string /* channel_name */,
+                    std::string /* tab_json */,
+                    std::string /* source_extension_id */,
+                    std::string /* target_extension_id */)
+
 // Deliver a message sent with ExtensionHostMsg_PostMessage.
 IPC_MESSAGE_ROUTED2(ExtensionMsg_DeliverMessage,
                     int /* target_port_id */,
                     std::string /* message */)
+
+IPC_MESSAGE_ROUTED2(ExtensionMsg_DispatchOnDisconnect,
+                    int /* port_id */,
+                    bool /* connection_error */)

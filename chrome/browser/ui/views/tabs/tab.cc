@@ -19,13 +19,13 @@
 #include "ui/base/animation/multi_animation.h"
 #include "ui/base/animation/throb_animation.h"
 #include "ui/base/resource/resource_bundle.h"
+#include "ui/base/touch/touch_mode_support.h"
 #include "ui/gfx/canvas.h"
 #include "ui/gfx/favicon_size.h"
 #include "ui/gfx/font.h"
 #include "ui/gfx/path.h"
 #include "ui/gfx/skbitmap_operations.h"
 #include "ui/views/controls/button/image_button.h"
-#include "ui/views/touchui/touch_mode_support.h"
 #include "ui/views/widget/tooltip_manager.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/window/non_client_view.h"
@@ -66,7 +66,12 @@ static const int kCloseButtonVertFuzz = 1;
 static const int kCloseButtonVertFuzz = 0;
 #endif
 static const int kTabIconSize = gfx::kFaviconSize;
+// Additional horizontal offset for close button relative to title text.
+#if defined(USE_ASH)
+static const int kCloseButtonHorzFuzz = 7;
+#else
 static const int kCloseButtonHorzFuzz = 5;
+#endif
 static const int kTouchModeMinimumWidth = 160;
 
 // When a non-mini-tab becomes a mini-tab the width of the tab animates. If

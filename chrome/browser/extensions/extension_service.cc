@@ -41,6 +41,7 @@
 #include "chrome/browser/extensions/extension_browser_event_router.h"
 #include "chrome/browser/extensions/extension_cookies_api.h"
 #include "chrome/browser/extensions/extension_data_deleter.h"
+#include "chrome/browser/extensions/extension_disabled_ui.h"
 #include "chrome/browser/extensions/extension_error_reporter.h"
 #include "chrome/browser/extensions/extension_global_error.h"
 #include "chrome/browser/extensions/extension_host.h"
@@ -52,6 +53,8 @@
 #include "chrome/browser/extensions/extension_sorting.h"
 #include "chrome/browser/extensions/extension_special_storage_policy.h"
 #include "chrome/browser/extensions/extension_sync_data.h"
+#include "chrome/browser/extensions/extension_system.h"
+#include "chrome/browser/extensions/extension_system_factory.h"
 #include "chrome/browser/extensions/extension_web_ui.h"
 #include "chrome/browser/extensions/extension_webnavigation_api.h"
 #include "chrome/browser/extensions/external_extension_provider_impl.h"
@@ -376,6 +379,7 @@ ExtensionService::ExtensionService(Profile* profile,
                                    bool autoupdate_enabled,
                                    bool extensions_enabled)
     : profile_(profile),
+      system_(ExtensionSystemFactory::GetForProfile(profile)),
       extension_prefs_(extension_prefs),
       settings_frontend_(extensions::SettingsFrontend::Create(profile)),
       pending_extension_manager_(*ALLOW_THIS_IN_INITIALIZER_LIST(this)),
@@ -699,7 +703,8 @@ void ExtensionService::ReloadExtension(const std::string& extension_id) {
     // If the extension has an inspector open for its background page, detach
     // the inspector and hang onto a cookie for it, so that we can reattach
     // later.
-    ExtensionProcessManager* manager = profile_->GetExtensionProcessManager();
+    // TODO(yoz): this is not incognito-safe!
+    ExtensionProcessManager* manager = system_->process_manager();
     ExtensionHost* host = manager->GetBackgroundHostForExtension(extension_id);
     if (host && DevToolsAgentHostRegistry::HasDevToolsAgentHost(
             host->render_view_host())) {
@@ -989,7 +994,7 @@ void ExtensionService::NotifyExtensionLoaded(const Extension* extension) {
   // that the request context doesn't yet know about. The profile is responsible
   // for ensuring its URLRequestContexts appropriately discover the loaded
   // extension.
-  profile_->RegisterExtensionWithRequestContexts(extension);
+  system_->RegisterExtensionWithRequestContexts(extension);
 
   // Tell renderers about the new extension, unless it's a theme (renderers
   // don't need to know about themes).
@@ -1136,7 +1141,7 @@ void ExtensionService::NotifyExtensionUnloaded(
       host->Send(new ExtensionMsg_Unloaded(extension->id()));
   }
 
-  profile_->UnregisterExtensionWithRequestContexts(extension->id(), reason);
+  system_->UnregisterExtensionWithRequestContexts(extension->id(), reason);
   profile_->GetExtensionSpecialStoragePolicy()->
       RevokeRightsForExtension(extension);
 
@@ -1879,7 +1884,7 @@ void ExtensionService::UnloadExtension(
   if (!extension) {
     // In case the extension may have crashed/uninstalled. Allow the profile to
     // clean up its RequestContexts.
-    profile_->UnregisterExtensionWithRequestContexts(extension_id, reason);
+    system_->UnregisterExtensionWithRequestContexts(extension_id, reason);
     return;
   }
 
@@ -1904,7 +1909,7 @@ if (disabled_extensions_.Contains(extension->id())) {
     // Make sure the profile cleans up its RequestContexts when an already
     // disabled extension is unloaded (since they are also tracking the disabled
     // extensions).
-    profile_->UnregisterExtensionWithRequestContexts(extension_id, reason);
+    system_->UnregisterExtensionWithRequestContexts(extension_id, reason);
     return;
   }
 
@@ -2028,14 +2033,15 @@ bool ExtensionService::AddExtension(const Extension* extension) {
   bool disabled = extension_prefs_->IsExtensionDisabled(extension->id());
   if (disabled) {
     disabled_extensions_.Insert(scoped_extension);
-    // TODO(aa): This seems dodgy. AddExtension() could get called with a
-    // disabled extension for other reasons other than that an update was
-    // disabled, e.g. as in ExtensionManagementTest.InstallRequiresConfirm.
-    content::NotificationService::current()->Notify(
-        chrome::NOTIFICATION_EXTENSION_UPDATE_DISABLED,
-        content::Source<Profile>(profile_),
-        content::Details<const Extension>(extension));
     SyncExtensionChangeIfNeeded(*extension);
+
+    if (extension_prefs_->DidExtensionEscalatePermissions(extension->id())) {
+      content::NotificationService::current()->Notify(
+          chrome::NOTIFICATION_EXTENSION_UPDATE_DISABLED,
+          content::Source<Profile>(profile_),
+          content::Details<const Extension>(extension));
+      extensions::AddExtensionDisabledError(this, extension);
+    }
     // Although the extension is disabled, we technically did succeed in adding
     // it to the list of installed extensions.
     return true;
@@ -2474,7 +2480,7 @@ void ExtensionService::Observe(int type,
       BrowserThread::PostTask(
           BrowserThread::IO, FROM_HERE,
           base::Bind(&ExtensionInfoMap::UnregisterAllExtensionsInProcess,
-                     profile_->GetExtensionInfoMap(),
+                     system_->info_map(),
                      process->GetID()));
       break;
     }

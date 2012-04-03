@@ -25,16 +25,13 @@ class MEDIA_EXPORT ChunkDemuxer : public Demuxer, public StreamParserHost {
   explicit ChunkDemuxer(ChunkDemuxerClient* client);
   virtual ~ChunkDemuxer();
 
-  void Init(const PipelineStatusCB& cb);
-
   // Demuxer implementation.
-  virtual void set_host(DemuxerHost* host) OVERRIDE;
+  virtual void Initialize(const PipelineStatusCB& cb) OVERRIDE;
   virtual void Stop(const base::Closure& callback) OVERRIDE;
   virtual void Seek(base::TimeDelta time, const PipelineStatusCB&  cb) OVERRIDE;
   virtual void OnAudioRendererDisabled() OVERRIDE;
   virtual scoped_refptr<DemuxerStream> GetStream(
       DemuxerStream::Type type) OVERRIDE;
-  virtual void SetPreload(Preload preload) OVERRIDE;
   virtual base::TimeDelta GetStartTime() const OVERRIDE;
   virtual int GetBitrate() OVERRIDE;
   virtual bool IsLocalSource() OVERRIDE;
@@ -95,10 +92,6 @@ class MEDIA_EXPORT ChunkDemuxer : public Demuxer, public StreamParserHost {
   bool seek_waits_for_data_;
 
   ByteQueue byte_queue_;
-
-  // Stores an error that happens after initilization but before set_host().
-  // TODO(acolwell): Remove this when http://crbug.com/111585 is fixed.
-  PipelineStatus deferred_error_;
 
   DISALLOW_COPY_AND_ASSIGN(ChunkDemuxer);
 };

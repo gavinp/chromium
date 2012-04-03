@@ -15,6 +15,8 @@
 #include "chrome/browser/extensions/extension_processes_api.h"
 #include "chrome/browser/extensions/extension_processes_api_constants.h"
 #include "chrome/browser/extensions/extension_service.h"
+#include "chrome/browser/extensions/extension_system.h"
+#include "chrome/browser/extensions/extension_system_factory.h"
 #include "chrome/browser/extensions/extension_tabs_module.h"
 #include "chrome/browser/extensions/lazy_background_task_queue.h"
 #include "chrome/browser/extensions/process_map.h"
@@ -101,7 +103,8 @@ void ExtensionEventRouter::DispatchEvent(IPC::Message::Sender* ipc_sender,
 
 ExtensionEventRouter::ExtensionEventRouter(Profile* profile)
     : profile_(profile),
-      extension_devtools_manager_(profile->GetExtensionDevToolsManager()) {
+      extension_devtools_manager_(
+          ExtensionSystemFactory::GetForProfile(profile)->devtools_manager()) {
   registrar_.Add(this, content::NOTIFICATION_RENDERER_PROCESS_TERMINATED,
                  content::NotificationService::AllSources());
   registrar_.Add(this, content::NOTIFICATION_RENDERER_PROCESS_CLOSED,
@@ -393,7 +396,8 @@ void ExtensionEventRouter::MaybeLoadLazyBackgroundPage(
     return;
 
   if (!CanDispatchEventNow(profile, extension)) {
-    profile->GetLazyBackgroundTaskQueue()->AddPendingTask(
+    ExtensionSystemFactory::GetForProfile(profile)->
+        lazy_background_task_queue()->AddPendingTask(
         profile, extension->id(),
         base::Bind(&ExtensionEventRouter::DispatchPendingEvent,
                    base::Unretained(this), event));
@@ -424,11 +428,16 @@ void ExtensionEventRouter::IncrementInFlightEvents(
 
 void ExtensionEventRouter::OnExtensionEventAck(
     Profile* profile, const std::string& extension_id) {
-  const Extension* extension =
-      profile->GetExtensionService()->extensions()->GetByID(extension_id);
-  if (extension && extension->has_lazy_background_page()) {
+  // Don't decrement the count if the background page has gone away. This can
+  // happen if the event was dispatched while unloading the page.
+  // TODO(mpcomplete): This might be insufficient.. what if the page goes away
+  // and comes back before we get the ack? Then we'll have an imbalanced
+  // keepalive count.
+  ExtensionHost* host = profile->GetExtensionProcessManager()->
+      GetBackgroundHostForExtension(extension_id);
+  if (host && host->extension()->has_lazy_background_page()) {
     profile->GetExtensionProcessManager()->DecrementLazyKeepaliveCount(
-        extension);
+        host->extension());
   }
 }
 

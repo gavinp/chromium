@@ -616,6 +616,21 @@ class PyUITest(pyautolib.PyUITestBase, unittest.TestCase):
     return True
 
   @staticmethod
+  def GetPlatform():
+    """Return the platform name."""
+    # Since ChromeOS is also Linux, we check for it first.
+    if PyUITest.IsChromeOS():
+      return 'chromeos'
+    elif PyUITest.IsLinux():
+      return 'linux'
+    elif PyUITest.IsMac():
+      return 'mac'
+    elif PyUITest.IsWin():
+      return 'win'
+    else:
+      return 'unknown'
+
+  @staticmethod
   def EvalDataFrom(filename):
     """Return eval of python code from given file.
 
@@ -1126,8 +1141,7 @@ class PyUITest(pyautolib.PyUITestBase, unittest.TestCase):
       An ordered list of dictionaries describing info about each search engine.
 
       Example:
-        [ { u'description': u'',
-            u'display_url': u'{google:baseURL}search?q=%s',
+        [ { u'display_url': u'{google:baseURL}search?q=%s',
             u'host': u'www.google.com',
             u'in_default_list': True,
             u'is_default': True,
@@ -1137,8 +1151,7 @@ class PyUITest(pyautolib.PyUITestBase, unittest.TestCase):
             u'short_name': u'Google',
             u'supports_replacement': True,
             u'url': u'{google:baseURL}search?q={searchTerms}'},
-          { u'description': u'',
-            u'display_url': u'http://search.yahoo.com/search?p=%s',
+          { u'display_url': u'http://search.yahoo.com/search?p=%s',
             u'host': u'search.yahoo.com',
             u'in_default_list': True,
             u'is_default': False,

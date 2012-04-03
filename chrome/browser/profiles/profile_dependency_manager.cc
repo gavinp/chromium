@@ -23,6 +23,7 @@
 #include "chrome/browser/profiles/profile_keyed_service.h"
 #include "chrome/browser/profiles/profile_keyed_service_factory.h"
 #include "chrome/browser/protector/protector_service_factory.h"
+#include "chrome/browser/search_engines/template_url_fetcher_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/sessions/session_service_factory.h"
 #include "chrome/browser/sessions/tab_restore_service_factory.h"
@@ -180,9 +181,13 @@ void ProfileDependencyManager::AssertFactoriesBuilt() {
   NTPResourceCacheFactory::GetInstance();
   PasswordStoreFactory::GetInstance();
   PersonalDataManagerFactory::GetInstance();
+#if !defined(OS_ANDROID)
   PinnedTabServiceFactory::GetInstance();
+#endif
   PluginPrefsFactory::GetInstance();
+#if defined(ENABLE_PROTECTOR_SERVICE)
   protector::ProtectorServiceFactory::GetInstance();
+#endif
   prerender::PrerenderManagerFactory::GetInstance();
   ProfileSyncServiceFactory::GetInstance();
   SessionServiceFactory::GetInstance();
@@ -195,6 +200,7 @@ void ProfileDependencyManager::AssertFactoriesBuilt() {
 #if defined(ENABLE_THEMES)
   ThemeServiceFactory::GetInstance();
 #endif
+  TemplateURLFetcherFactory::GetInstance();
   TemplateURLServiceFactory::GetInstance();
   TokenServiceFactory::GetInstance();
 #if defined(ENABLE_WEB_INTENTS)

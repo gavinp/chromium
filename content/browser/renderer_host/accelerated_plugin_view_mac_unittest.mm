@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright (c) 2012 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,9 @@
 #include "base/logging.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/platform_test.h"
+#import "ui/base/cocoa/underlay_opengl_hosting_window.h"
 
-@interface UnderlayCountingWindow : NSWindow {
+@interface UnderlayCountingWindow : NSWindow<UnderlayableSurface> {
  @private
   int underlayCount_;
 }

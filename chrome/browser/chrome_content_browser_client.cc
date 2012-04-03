@@ -31,6 +31,8 @@
 #include "chrome/browser/extensions/extension_message_handler.h"
 #include "chrome/browser/extensions/extension_process_manager.h"
 #include "chrome/browser/extensions/extension_service.h"
+#include "chrome/browser/extensions/extension_system.h"
+#include "chrome/browser/extensions/extension_system_factory.h"
 #include "chrome/browser/extensions/extension_web_ui.h"
 #include "chrome/browser/extensions/extension_webkit_preferences.h"
 #include "chrome/browser/geolocation/chrome_access_token_store.h"
@@ -621,7 +623,7 @@ void ChromeContentBrowserClient::SiteInstanceGotProcess(
   BrowserThread::PostTask(
       BrowserThread::IO, FROM_HERE,
       base::Bind(&ExtensionInfoMap::RegisterExtensionProcess,
-                 profile->GetExtensionInfoMap(),
+                 ExtensionSystemFactory::GetForProfile(profile)->info_map(),
                  extension->id(),
                  site_instance->GetProcess()->GetID(),
                  site_instance->GetId()));
@@ -650,7 +652,7 @@ void ChromeContentBrowserClient::SiteInstanceDeleting(
   BrowserThread::PostTask(
       BrowserThread::IO, FROM_HERE,
       base::Bind(&ExtensionInfoMap::UnregisterExtensionProcess,
-                 profile->GetExtensionInfoMap(),
+                 ExtensionSystemFactory::GetForProfile(profile)->info_map(),
                  extension->id(),
                  site_instance->GetProcess()->GetID(),
                  site_instance->GetId()));
@@ -911,17 +913,7 @@ bool ChromeContentBrowserClient::AllowSaveLocalState(
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::IO));
   ProfileIOData* io_data = ProfileIOData::FromResourceContext(context);
 
-  if (!io_data->clear_local_state_on_exit()->GetValue())
-    return true;
-
-  // Disable clearing the local state on exit if the browsing session is going
-  // to be restored on the next startup.
-  SessionStartupPref::Type startup_pref =
-      SessionStartupPref::PrefValueToType(
-          io_data->session_startup_pref()->GetValue());
-  return (startup_pref == SessionStartupPref::LAST &&
-          !CommandLine::ForCurrentProcess()->HasSwitch(
-              switches::kDisableRestoreSessionState));
+  return !io_data->clear_local_state_on_exit()->GetValue();
 }
 
 bool ChromeContentBrowserClient::AllowWorkerDatabase(
