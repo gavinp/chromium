@@ -15,7 +15,7 @@
 class Profile;
 
 namespace content {
-class Referrer;
+struct Referrer;
 }
 
 namespace gfx {

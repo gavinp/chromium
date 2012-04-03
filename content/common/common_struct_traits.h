@@ -6,7 +6,9 @@
 #define CONTENT_COMMON_COMMON_MESSAGE_TRAITS_H_
 #pragma once
 
-#incluce "content/public/common/referrer.h"
+#include "content/public/common/referrer.h"
+
+#include "ipc/ipc_message_macros.h"
 #include "ipc/ipc_param_traits.h"
 
 IPC_STRUCT_TRAITS_BEGIN(content::Referrer)
