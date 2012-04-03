@@ -27,7 +27,7 @@ class VisitedLinkSlave;
 struct ChromeViewHostMsg_GetPluginInfo_Status;
 
 namespace content {
-class Referrer;
+struct Referrer;
 }
 
 namespace gfx {

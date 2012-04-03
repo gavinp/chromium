@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 // Multiply-included message file, no traditional include guard.
+#include "content/common/common_struct_traits.h"
 #include "content/public/common/referrer.h"
 #include "googleurl/src/gurl.h"
 #include "ipc/ipc_message.h"
@@ -11,13 +12,6 @@
 #include "ui/gfx/size.h"
 
 #define IPC_MESSAGE_START PrerenderMsgStart
-
-IPC_ENUM_TRAITS(WebKit::WebReferrerPolicy)
-
-IPC_STRUCT_TRAITS_BEGIN(content::Referrer)
-  IPC_STRUCT_TRAITS_MEMBER(url)
-  IPC_STRUCT_TRAITS_MEMBER(policy)
-IPC_STRUCT_TRAITS_END()
 
 // Prerender Link Manager Messages
 // These are messages sent from the renderer to the browser in

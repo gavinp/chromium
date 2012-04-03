@@ -23,7 +23,7 @@ class ExtensionInfoMap;
 class GURL;
 
 namespace content {
-class Referrer;
+struct Referrer;
 }
 
 namespace gfx {

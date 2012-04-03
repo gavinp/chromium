@@ -258,7 +258,7 @@ void RendererWebKitPlatformSupportImpl::prefetchHostName(
       hostname_utf8.data(), hostname_utf8.length());
 }
 
-void RendererWebKitPlatformSupportImpl::startPrerender(
+void RendererWebKitPlatformSupportImpl::addPrerender(
     const int prerender_id,
     const WebKit::WebURL& url,
     const WebKit::WebString& referrer,

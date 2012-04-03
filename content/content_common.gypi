@@ -111,6 +111,7 @@
     'common/chrome_descriptors.h',
     'common/clipboard_messages.cc',
     'common/clipboard_messages.h',
+    'common/common_struct_traits.h'
     'common/content_message_generator.cc',
     'common/content_message_generator.h',
     'common/content_export.h',

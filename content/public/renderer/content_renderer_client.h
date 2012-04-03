@@ -18,7 +18,7 @@ class GURL;
 class SkBitmap;
 
 namespace content {
-class Referrer;
+struct Referrer;
 }
 
 namespace WebKit {
@@ -60,7 +60,7 @@ template<class T> class Handle;
 
 namespace content {
 
-class Referrer;
+struct Referrer;
 class RenderView;
 
 // Embedder API for participating in renderer logic.
