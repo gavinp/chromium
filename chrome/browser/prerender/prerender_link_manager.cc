@@ -106,8 +106,7 @@ void PrerenderLinkManager::OnAddPrerender(
   if (prerender::PrerenderManager* prerender_manager =
       prerender::PrerenderManagerFactory::GetForProfile(profile)) {
     prerender_manager->link_manager()->OnAddPrerenderImpl(
-        prerender_id, child_id, render_view_route_id,
-        url, referrer, size);
+        prerender_id, child_id, url, referrer, size, render_view_route_id);
   }
 }
 
@@ -117,8 +116,8 @@ void PrerenderLinkManager::OnCancelPrerender(Profile* profile,
                                              int child_id) {
   if (prerender::PrerenderManager* prerender_manager =
       prerender::PrerenderManagerFactory::GetForProfile(profile))
-    prerender_manager->link_manager()->OnCancelLinkPrerenderImpl(prerender_id,
-                                                                 child_id);
+    prerender_manager->link_manager()->OnCancelPrerenderImpl(prerender_id,
+                                                             child_id);
 }
 
 // static

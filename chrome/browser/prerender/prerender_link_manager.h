@@ -59,8 +59,8 @@ class PrerenderLinkManager {
       const content::Referrer& referrer,
       const gfx::Size& size,
       int render_view_route_id);
-  void OnCancelLinkPrerenderImpl(int prerender_id, int child_id);
-  void OnAbandonLinkPrerenderImpl(int prerender_id, int child_id);
+  void OnCancelPrerenderImpl(int prerender_id, int child_id);
+  void OnAbandonPrerenderImpl(int prerender_id, int child_id);
 
   PrerenderManager* manager_;
   PrerenderIdToUrlMap id_map_;
