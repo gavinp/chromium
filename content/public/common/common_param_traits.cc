@@ -5,12 +5,15 @@
 #include "content/public/common/common_param_traits.h"
 
 #include "content/public/common/content_constants.h"
+#include "content/public/common/referrer.h"
 #include "net/base/host_port_pair.h"
 #include "net/base/upload_data.h"
 #include "net/http/http_response_headers.h"
 #include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/WebKit/Source/Platform/chromium/public/WebReferrerPolicy.h"
 #include "ui/base/range/range.h"
 #include "ui/gfx/rect.h"
+
 
 namespace {
 
@@ -442,6 +445,34 @@ void ParamTraits<base::PlatformFileInfo>::Log(
   LogParam(p.last_accessed.ToDoubleT(), l);
   l->append(",");
   LogParam(p.creation_time.ToDoubleT(), l);
+  l->append(")");
+}
+
+void ParamTraits<content::Referrer>::Write(
+    Message* m, const param_type& p) {
+  WriteParam(m, p.url);
+  WriteParam(m, p.policy);
+}
+
+bool ParamTraits<content::Referrer>::Read(
+    const Message* m, PickleIterator* iter, param_type* r) {
+  GURL url;
+  if (!ReadParam(m, iter, &url))
+    return false;
+  WebKit::WebReferrerPolicy policy;
+  if (!ReadParam(m, iter, &policy))
+    return false;
+  r->url = url;
+  r->policy = policy;
+  return true;
+}
+
+void ParamTraits<content::Referrer>::Log(
+    const param_type& p, std::string* l) {
+  l->append("(");
+  LogParam(p.url, l);
+  l->append(",");
+  LogParam(p.policy, l);
   l->append(")");
 }
 

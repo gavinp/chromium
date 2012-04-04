@@ -534,6 +534,8 @@ RenderViewImpl::RenderViewImpl(
   new TextInputClientObserver(this);
 #endif  // defined(OS_MACOSX)
 
+  webview()->setPrerendererClient(this);
+
   // The next group of objects all implement RenderViewObserver, so are deleted
   // along with the RenderView automatically.
   devtools_agent_ = new DevToolsAgent(this);

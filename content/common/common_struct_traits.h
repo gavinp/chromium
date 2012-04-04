@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef CONTENT_COMMON_COMMON_MESSAGE_TRAITS_H_
-#define CONTENT_COMMON_COMMON_MESSAGE_TRAITS_H_
-#pragma once
+//#ifndef CONTENT_COMMON_COMMON_MESSAGE_TRAITS_H_
+//#define CONTENT_COMMON_COMMON_MESSAGE_TRAITS_H_
+//#pragma once
 
 #include "content/public/common/referrer.h"
 
@@ -16,4 +16,4 @@ IPC_STRUCT_TRAITS_BEGIN(content::Referrer)
   IPC_STRUCT_TRAITS_MEMBER(policy)
 IPC_STRUCT_TRAITS_END()
 
-#endif  // CONTENT_COMMON_COMMON_MESSAGE_TRAITS_H_
+//#endif  // CONTENT_COMMON_COMMON_MESSAGE_TRAITS_H_
