@@ -110,6 +110,20 @@ void MockContentRendererClient::PrefetchHostName(
     const char* hostname, size_t length) {
 }
 
+void MockContentRendererClient::NewLinkPrerender(
+    int prerender_id,
+    int render_view_route_id,
+    const GURL& url,
+    const content::Referrer& referrer,
+    const gfx::Size& size) {
+}
+
+void MockContentRendererClient::RemovedLinkPrerender(int prerender_id) {
+}
+
+void MockContentRendererClient::UnloadedLinkPrerender(int prerender_id) {
+}
+
 bool MockContentRendererClient::ShouldOverridePageVisibilityState(
     const RenderView* render_view,
     WebKit::WebPageVisibilityState* override_state) const {

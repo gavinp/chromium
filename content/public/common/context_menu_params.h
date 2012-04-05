@@ -15,7 +15,7 @@
 #include "content/public/common/ssl_status.h"
 #include "webkit/glue/webmenuitem.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebContextMenuData.h"
-#include "third_party/WebKit/Source/WebKit/chromium/public/WebReferrerPolicy.h"
+#include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebReferrerPolicy.h"
 
 namespace content {
 

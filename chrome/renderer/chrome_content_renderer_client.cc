@@ -24,6 +24,7 @@
 #include "chrome/common/extensions/extension_process_policy.h"
 #include "chrome/common/extensions/extension_set.h"
 #include "chrome/common/jstemplate_builder.h"
+#include "chrome/common/prerender_messages.h"
 #include "chrome/common/render_messages.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/renderer/autofill/autofill_agent.h"
@@ -750,6 +751,26 @@ bool ChromeContentRendererClient::IsLinkVisited(unsigned long long link_hash) {
 void ChromeContentRendererClient::PrefetchHostName(const char* hostname,
                                                    size_t length) {
   net_predictor_->Resolve(hostname, length);
+}
+
+void ChromeContentRendererClient::NewLinkPrerender(
+    int prerender_id,
+    int render_view_route_id,
+    const GURL& url,
+    const content::Referrer& referrer,
+    const gfx::Size& size) {
+  RenderThread::Get()->Send(new PrerenderMsg_NewLinkPrerender(
+      prerender_id, render_view_route_id, GURL(url), referrer, size));
+}
+
+void ChromeContentRendererClient::RemovedLinkPrerender(int prerender_id) {
+  RenderThread::Get()->Send(new PrerenderMsg_RemovedLinkPrerender(
+      prerender_id));
+}
+
+void ChromeContentRendererClient::UnloadedLinkPrerender(int prerender_id) {
+  RenderThread::Get()->Send(new PrerenderMsg_UnloadedLinkPrerender(
+      prerender_id));
 }
 
 bool ChromeContentRendererClient::ShouldOverridePageVisibilityState(

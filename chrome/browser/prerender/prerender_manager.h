@@ -52,6 +52,7 @@ namespace prerender {
 class PrerenderCondition;
 class PrerenderHistograms;
 class PrerenderHistory;
+class PrerenderLinkManager;
 class PrerenderTracker;
 
 // PrerenderManager is responsible for initiating and keeping prerendered
@@ -239,6 +240,8 @@ class PrerenderManager : public base::SupportsWeakPtr<PrerenderManager>,
   // Records that some visible tab navigated (or was redirected) to the
   // provided URL.
   void RecordNavigation(const GURL& url);
+
+  PrerenderLinkManager* link_manager() { return link_manager_.get(); }
 
  protected:
   void SetPrerenderContentsFactory(
@@ -456,6 +459,8 @@ class PrerenderManager : public base::SupportsWeakPtr<PrerenderManager>,
   scoped_ptr<PrerenderHistograms> histograms_;
 
   scoped_ptr<MostVisitedSites> most_visited_;
+
+  scoped_ptr<PrerenderLinkManager> link_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(PrerenderManager);
 };

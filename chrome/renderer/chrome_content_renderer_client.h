@@ -26,6 +26,14 @@ class VisitedLinkSlave;
 
 struct ChromeViewHostMsg_GetPluginInfo_Status;
 
+namespace content {
+class Referrer;
+}
+
+namespace gfx {
+class Size;
+}
+
 namespace prerender {
 class PrerenderDispatcher;
 }
@@ -96,6 +104,13 @@ class ChromeContentRendererClient : public content::ContentRendererClient {
                                              size_t length) OVERRIDE;
   virtual bool IsLinkVisited(unsigned long long link_hash) OVERRIDE;
   virtual void PrefetchHostName(const char* hostname, size_t length) OVERRIDE;
+  virtual void NewLinkPrerender(int prerender_id,
+                                int render_view_route_id,
+                                const GURL& url,
+                                const content::Referrer& referrer,
+                                const gfx::Size& size) OVERRIDE;
+  virtual void RemovedLinkPrerender(int prerender_id) OVERRIDE;
+  virtual void UnloadedLinkPrerender(int prerender_id) OVERRIDE;
   virtual bool ShouldOverridePageVisibilityState(
       const content::RenderView* render_view,
       WebKit::WebPageVisibilityState* override_state) const OVERRIDE;

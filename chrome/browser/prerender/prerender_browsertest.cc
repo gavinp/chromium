@@ -566,6 +566,10 @@ class PrerenderBrowserTest : public InProcessBrowserTest {
     OpenDestURLWithJSImpl("WindowOpen()");
   }
 
+  void RemoveLinkElementAndNavigate() const {
+    OpenDestURLWithJSImpl("RemoveLinkElementAndNavigate()");
+  }
+
   void ClickToNextPageAfterPrerender(Browser* browser) {
     ui_test_utils::WindowedNotificationObserver new_page_observer(
         content::NOTIFICATION_NAV_ENTRY_COMMITTED,
@@ -889,6 +893,12 @@ IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, PrerenderPage) {
   PrerenderTestURL("files/prerender/prerender_page.html", FINAL_STATUS_USED, 1);
   NavigateToDestURL();
 }
+
+IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, PrerenderPageRemovingLink) {
+  set_loader_path("files/prerender/prerender_loader_removing_link.html");
+  PrerenderTestURL("files/prerender/prerender_page.html",
+                   FINAL_STATUS_CANCELLED, 1);
+  RemoveLinkElementAndNavigate();
 
 // Checks that prerendering works in incognito mode.
 IN_PROC_BROWSER_TEST_F(PrerenderBrowserTest, PrerenderIncognito) {

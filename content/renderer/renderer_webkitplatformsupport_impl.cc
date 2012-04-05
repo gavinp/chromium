@@ -21,6 +21,7 @@
 #include "content/common/webmessageportchannel_impl.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/gpu_info.h"
+#include "content/public/common/referrer.h"
 #include "content/public/renderer/content_renderer_client.h"
 #include "content/renderer/gamepad_shared_memory_reader.h"
 #include "content/renderer/media/audio_device.h"
@@ -46,6 +47,7 @@
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebRuntimeFeatures.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebSerializedScriptValue.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/WebStorageEventDispatcher.h"
+#include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebReferrerPolicy.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebURL.h"
 #include "third_party/WebKit/Source/WebKit/chromium/public/platform/WebVector.h"
 #include "webkit/glue/simple_webmimeregistry_impl.h"
@@ -254,6 +256,29 @@ void RendererWebKitPlatformSupportImpl::prefetchHostName(
   UTF16ToUTF8(hostname.data(), hostname.length(), &hostname_utf8);
   content::GetContentClient()->renderer()->PrefetchHostName(
       hostname_utf8.data(), hostname_utf8.length());
+}
+
+void RendererWebKitPlatformSupportImpl::newLinkPrerender(
+    int prerender_id,
+    WebKit::WebView* webView,
+    const WebKit::WebURL& url,
+    const WebKit::WebString& referrer,
+    WebKit::WebReferrerPolicy policy,
+    const WebKit::WebSize& size) {
+  RenderViewImpl* render_view = RenderViewImpl::FromWebView(webView);
+  const int render_view_route_id = render_view->GetRoutingID();
+  content::Referrer content_referrer(GURL(referrer), policy);
+  content::GetContentClient()->renderer()->NewLinkPrerender(
+      prerender_id, render_view_route_id, GURL(url), content_referrer, size);
+}
+
+void RendererWebKitPlatformSupportImpl::removedLinkPrerender(int prerender_id) {
+  content::GetContentClient()->renderer()->RemovedLinkPrerender(prerender_id);
+}
+
+void RendererWebKitPlatformSupportImpl::unloadedLinkPrerender(
+    int prerender_id) {
+  content::GetContentClient()->renderer()->UnloadedLinkPrerender(prerender_id);
 }
 
 bool

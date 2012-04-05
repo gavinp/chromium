@@ -22,6 +22,14 @@ struct ExtensionHostMsg_Request_Params;
 class ExtensionInfoMap;
 class GURL;
 
+namespace content {
+class Referrer;
+}
+
+namespace gfx {
+class Size;
+}
+
 namespace net {
 class URLRequestContextGetter;
 }
@@ -158,6 +166,13 @@ class ChromeRenderMessageFilter : public content::BrowserMessageFilter {
                    const GURL& url,
                    const GURL& first_party_for_cookies,
                    const std::string& cookie);
+  void OnNewLinkPrerender(int prerender_id,
+                          int render_view_route_id,
+                          const GURL& url,
+                          const content::Referrer& referrer,
+                          const gfx::Size& size);
+  void OnRemovedLinkPrerender(int prerender_id);
+  void OnUnloadedLinkPrerender(int prerender_id);
 
   int render_process_id_;
 
